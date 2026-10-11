@@ -1,0 +1,47 @@
+{
+  "name": "otto",
+  "private": true,
+  "version": "0.1.0",
+  "description": "A calm desktop and mobile app for running OpenCode agents on cloud machines.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "tauri": "tauri",
+    "app:dev": "tauri dev",
+    "app:build": "tauri build",
+    "ios:dev": "tauri ios dev",
+    "android:dev": "tauri android dev",
+    "oc:local": "bash scripts/dev-server.sh"
+  },
+  "dependencies": {
+    "@fontsource-variable/jetbrains-mono": "^5.3.0",
+    "@tauri-apps/api": "2",
+    "@tauri-apps/plugin-http": "2",
+    "@tauri-apps/plugin-notification": "2",
+    "@tauri-apps/plugin-opener": "2",
+    "@tauri-apps/plugin-store": "2",
+    "lucide-react": "^1.55.0",
+    "motion": "^14.1.0",
+    "react": "19",
+    "react-dom": "19",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "shiki": "^4.5.0",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@opencode/client": "2.0.26",
+    "@tailwindcss/vite": "^4.3.3",
+    "@tauri-apps/cli": "2",
+    "@types/react": "19",
+    "@types/react-dom": "19",
+    "@vitejs/plugin-react": "^6.1.2",
+    "tailwindcss": "^4.3.3",
+    "typescript": "5.9",
+    "vite": "^8.3.4"
+  }
+}

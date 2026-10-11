@@ -1,0 +1,334 @@
+import { Check, ChevronDown, Folder, FolderGit2, FolderPlus, GitBranchPlus, Search } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { ModelInfo } from "@opencode/client";
+import { useChat } from "../../state/chat";
+import { agentColor } from "../../lib/agentColor";
+import { Popover, MenuItem } from "../ui/Popover";
+import { Spinner } from "../ui/AgentClock";
+import { basename, compactNumber, prettyPath } from "../../lib/format";
+import type { ModelRef } from "../../lib/opencode/client";
+import { toast } from "../../state/ui";
+
+const PROVIDER_NAMES: Record<string, string> = {
+  opencode: "OpenCode Zen",
+  "opencode-go": "OpenCode Go",
+  anthropic: "Anthropic",
+  openai: "OpenAI",
+  openrouter: "OpenRouter",
+  google: "Google",
+  deepseek: "DeepSeek",
+  "github-copilot": "GitHub Copilot",
+  "cloudflare-workers-ai": "Cloudflare",
+  "zai-coding-plan": "Z.AI",
+  xai: "xAI",
+  mistral: "Mistral",
+  groq: "Groq",
+};
+
+export function providerName(id: string) {
+  return PROVIDER_NAMES[id] ?? id.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function isFree(m: ModelInfo) {
+  return m.id.endsWith("-free") || m.id.endsWith(":free") || (m.cost?.[0]?.input === 0 && m.cost?.[0]?.output === 0);
+}
+
+function useCurrentModel(sessionId: string | null): { ref: ModelRef | null; info: ModelInfo | null } {
+  const sessionModel = useChat((s) => (sessionId ? s.sessions[sessionId]?.model : undefined));
+  const picked = useChat((s) => s.pickedModel);
+  const def = useChat((s) => s.defaultModel);
+  const models = useChat((s) => s.models);
+  const ref = (sessionModel as ModelRef | undefined) ?? picked ?? def ?? null;
+  const info = ref ? (models.find((m) => m.providerID === ref.providerID && m.id === ref.id) ?? null) : null;
+  return { ref, info };
+}
+
+export function ModelPicker({ sessionId, compact = false }: { sessionId: string | null; compact?: boolean }) {
+  const anchor = useRef<HTMLButtonElement>(null);
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const models = useChat((s) => s.models);
+  const broken = useChat((s) => s.brokenModels);
+  const setModel = useChat((s) => s.setModel);
+  const refreshCatalog = useChat((s) => s.refreshCatalog);
+  const { ref, info } = useCurrentModel(sessionId);
+
+  useEffect(() => {
+    if (open && models.length === 0) void refreshCatalog();
+  }, [open, models.length, refreshCatalog]);
+
+  const groups = useMemo(() => {
+    const term = q.trim().toLowerCase();
+    const list = models.filter((m) => m.status !== "deprecated" && m.enabled !== false && !broken.includes(`${m.providerID}/${m.id}`) && (!term || `${m.name} ${m.id} ${m.providerID}`.toLowerCase().includes(term)));
+    const by = new Map<string, ModelInfo[]>();
+    for (const m of list) {
+      const arr = by.get(m.providerID) ?? [];
+      arr.push(m);
+      by.set(m.providerID, arr);
+    }
+    const order = (p: string) => (p === "opencode" ? 0 : p === "anthropic" ? 1 : p === "openai" ? 2 : 3);
+    return [...by.entries()]
+      .sort((a, b) => order(a[0]) - order(b[0]) || a[0].localeCompare(b[0]))
+      .map(([p, ms]) => [p, ms.sort((a, b) => b.time.released - a.time.released).slice(0, term ? 50 : 14)] as const);
+  }, [models, q, broken]);
+
+  const label = info?.name ?? ref?.id ?? "Choose model";
+  const variant = ref?.variant && ref.variant !== "default" ? ref.variant : null;
+
+  return (
+    <>
+      <button
+        ref={anchor}
+        onClick={() => setOpen((v) => !v)}
+        className="flex h-8 min-w-0 items-center gap-1 rounded-md px-2 text-[13px] text-ink-2 transition-colors hover:bg-hover hover:text-ink"
+      >
+        <span className="truncate">{compact ? shortName(label) : label}</span>
+        {variant && <span className="text-muted">{cap(variant)}</span>}
+        <ChevronDown size={13} className="shrink-0 text-faint" />
+      </button>
+      <Popover open={open} onClose={() => setOpen(false)} anchor={anchor.current} placement="top-end" width={340}>
+        <div className="border-b border-line p-2">
+          <div className="field flex h-8 items-center gap-2 rounded-lg px-2.5">
+            <Search size={14} className="text-faint" />
+            <input data-autofocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search models" className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-faint" />
+          </div>
+        </div>
+        <div className="scroll-quiet max-h-[min(420px,55vh)] overflow-y-auto p-1.5">
+          {models.length === 0 && <div className="p-6 text-center text-[13px] text-muted">No models yet. Connect a provider in Settings.</div>}
+          {groups.map(([provider, ms]) => (
+            <div key={provider} className="mb-1">
+              <div className="px-2 pt-2 pb-1 text-[12px] font-medium text-muted">{providerName(provider)}</div>
+              {ms.map((m) => {
+                const active = ref?.providerID === m.providerID && ref?.id === m.id;
+                return (
+                  <MenuItem
+                    key={`${m.providerID}/${m.id}`}
+                    active={active}
+                    label={/\bfree\b/i.test(m.name) || !isFree(m) ? m.name : `${m.name} · Free`}
+                    right={
+                      <span className="flex items-center gap-2">
+                        <span className="text-[12px] text-faint tabular-nums" title={`${m.limit.context.toLocaleString()} token context`}>
+                          {compactNumber(m.limit.context)}
+                        </span>
+                        <Check size={14} className={`text-ink-2 ${active ? "" : "invisible"}`} />
+                      </span>
+                    }
+                    onClick={() => {
+                      void setModel({ providerID: m.providerID, id: m.id }, sessionId);
+                      if (!m.variants?.length) setOpen(false);
+                    }}
+                  />
+                );
+              })}
+            </div>
+          ))}
+        </div>
+        {info && info.variants?.length > 0 && (
+          <div className="flex items-center gap-1 border-t border-line p-2">
+            <span className="px-1.5 text-[12px] text-muted">Effort</span>
+            {info.variants.map((v) => (
+              <button
+                key={v.id}
+                onClick={() => void setModel({ providerID: info.providerID, id: info.id, variant: v.id }, sessionId)}
+                className={`rounded-md px-2 py-1 text-[12.5px] transition-colors ${(ref?.variant ?? "default") === v.id ? "bg-active font-medium text-ink" : "text-muted hover:bg-hover hover:text-ink"}`}
+              >
+                {cap(v.id)}
+              </button>
+            ))}
+          </div>
+        )}
+      </Popover>
+    </>
+  );
+}
+
+export function AgentPicker({ sessionId }: { sessionId: string | null }) {
+  const anchor = useRef<HTMLButtonElement>(null);
+  const [open, setOpen] = useState(false);
+  const agents = useChat((s) => s.agents);
+  const picked = useChat((s) => s.pickedAgent);
+  const sessionAgent = useChat((s) => (sessionId ? s.sessions[sessionId]?.agent : undefined));
+  const setAgent = useChat((s) => s.setAgent);
+  const current = sessionAgent ?? picked;
+  const refreshCatalog = useChat((s) => s.refreshCatalog);
+  const primary = agents.filter((a) => a.mode !== "subagent" && !a.hidden);
+  const info = agents.find((a) => a.id === current);
+  useEffect(() => {
+    if (open && agents.length === 0) void refreshCatalog();
+  }, [open, agents.length, refreshCatalog]);
+  return (
+    <>
+      <button ref={anchor} onClick={() => setOpen((v) => !v)} title="Switch agent (Tab)" className="flex h-8 items-center gap-1.5 rounded-md px-2 text-[13px] text-ink-2 hover:bg-hover hover:text-ink">
+        <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: agentColor(current, info?.color) }} />
+        {info?.name ?? cap(current)}
+        <ChevronDown size={13} className="text-faint" />
+      </button>
+      <Popover open={open} onClose={() => setOpen(false)} anchor={anchor.current} placement="top-start" width={280}>
+        <div className="scroll-quiet max-h-[50vh] overflow-y-auto p-1.5">
+          {primary.length === 0 && (
+            <div className="flex justify-center py-4 text-muted">
+              <Spinner />
+            </div>
+          )}
+          {primary.map((a) => (
+            <MenuItem
+              key={a.id}
+              active={a.id === current}
+              icon={<span className="h-2 w-2 rounded-full" style={{ background: agentColor(a.id, a.color) }} />}
+              label={a.name}
+              hint={a.description}
+              right={<Check size={14} className={`text-ink-2 ${a.id === current ? "" : "invisible"}`} />}
+              onClick={() => {
+                void setAgent(a.id, sessionId);
+                setOpen(false);
+              }}
+            />
+          ))}
+        </div>
+      </Popover>
+    </>
+  );
+}
+
+/**
+ * Project folder for new sessions. Lists folders in the server's home
+ * (~/projects on Boat) and can clone a git repo or create a folder.
+ */
+export function ProjectPicker({ disabled }: { disabled?: boolean }) {
+  const anchor = useRef<HTMLButtonElement>(null);
+  const [open, setOpen] = useState(false);
+  const client = useChat((s) => s.client);
+  const home = useChat((s) => s.homeDir);
+  const dir = useChat((s) => s.projectDir);
+  const setDir = useChat((s) => s.setProjectDir);
+  const [folders, setFolders] = useState<string[] | null>(null);
+  const [mode, setMode] = useState<"list" | "clone" | "new">("list");
+  const [input, setInput] = useState("");
+  const [working, setWorking] = useState(false);
+
+  useEffect(() => {
+    if (!open || !client || !home) return;
+    setFolders(null);
+    client
+      .listDir(home, home)
+      .then((list) => setFolders(list.filter((e) => e.type === "directory" && !e.path.startsWith(".")).map((e) => e.path.replace(/\/$/, ""))))
+      .catch(() => setFolders([]));
+  }, [open, client, home]);
+
+  const current = dir ?? home;
+
+  async function runInHome(cmd: string, target: string) {
+    if (!client || !home) return;
+    setWorking(true);
+    try {
+      const r = await client.runShell(cmd, home);
+      const id = r.data.id;
+      for (let i = 0; i < 240; i++) {
+        const info = await client.shellInfo(id);
+        if (info.status !== "running") {
+          if (info.status !== "exited" || (info.exit ?? 0) !== 0) throw new Error("Command failed. Check the URL and access.");
+          break;
+        }
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+      setDir(`${home.replace(/\/$/, "")}/${target}`);
+      setOpen(false);
+      setMode("list");
+      setInput("");
+      toast({ tone: "ok", title: `Ready: ${target}` });
+    } catch (e) {
+      toast({ tone: "error", title: "Couldn't set up the folder", body: (e as Error).message });
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  return (
+    <>
+      <button
+        ref={anchor}
+        disabled={disabled}
+        onClick={() => setOpen((v) => !v)}
+        className="flex h-7 max-w-[220px] items-center gap-1.5 rounded-full px-2.5 text-[13px] text-muted transition-colors hover:text-ink disabled:pointer-events-none"
+      >
+        <Folder size={13} className="shrink-0" />
+        <span className="truncate">{current ? (current === home ? "projects" : basename(current)) : "projects"}</span>
+        {!disabled && <ChevronDown size={12} className="shrink-0 opacity-60" />}
+      </button>
+      <Popover
+        open={open}
+        onClose={() => {
+          setOpen(false);
+          setMode("list");
+        }}
+        anchor={anchor.current}
+        placement="bottom-start"
+        width={300}
+      >
+        {mode === "list" ? (
+          <div className="p-1.5">
+            <div className="px-2.5 pt-1.5 pb-1 text-[12px] font-semibold text-faint ">Work in</div>
+            <MenuItem icon={<Folder size={14} />} label="projects" hint={prettyPath(home ?? "", home)} active={!dir || dir === home} onClick={() => (setDir(null), setOpen(false))} />
+            {folders === null ? (
+              <div className="flex justify-center py-3 text-muted">
+                <Spinner />
+              </div>
+            ) : (
+              folders.map((f) => {
+                const full = `${home?.replace(/\/$/, "")}/${f}`;
+                return <MenuItem key={f} icon={<FolderGit2 size={14} />} label={f} active={dir === full} onClick={() => (setDir(full), setOpen(false))} />;
+              })
+            )}
+            <div className="my-1 h-px bg-line" />
+            <MenuItem icon={<GitBranchPlus size={14} />} label="Clone a repository…" onClick={() => setMode("clone")} />
+            <MenuItem icon={<FolderPlus size={14} />} label="New folder…" onClick={() => setMode("new")} />
+          </div>
+        ) : (
+          <form
+            className="p-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const v = input.trim();
+              if (!v) return;
+              if (mode === "clone") {
+                const name = basename(v).replace(/\.git$/, "") || "repo";
+                void runInHome(`git clone --depth 50 ${JSON.stringify(v)} ${JSON.stringify(name)}`, name);
+              } else {
+                const name = v.replace(/[^\w.-]+/g, "-");
+                void runInHome(`mkdir -p ${JSON.stringify(name)} && cd ${JSON.stringify(name)} && git init -q`, name);
+              }
+            }}
+          >
+            <div className="mb-2 text-[13px] font-medium">{mode === "clone" ? "Clone a repository" : "New folder"}</div>
+            <input
+              data-autofocus
+              autoFocus
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder={mode === "clone" ? "https://github.com/user/repo" : "my-app"}
+              className="field h-9 w-full rounded-lg px-3 text-[13px] outline-none"
+            />
+            {mode === "clone" && <p className="mt-1.5 text-[12px] text-muted">Private repos need git credentials on the sandbox.</p>}
+            <div className="mt-3 flex justify-end gap-2">
+              <button type="button" className="rounded-lg px-2.5 py-1 text-[12.5px] text-muted hover:bg-hover" onClick={() => setMode("list")}>
+                Back
+              </button>
+              <button type="submit" disabled={working || !input.trim()} className="flex items-center gap-1.5 rounded-lg bg-ink px-3 py-1 text-[12.5px] font-medium text-bg disabled:opacity-50">
+                {working && <Spinner size={12} />}
+                {mode === "clone" ? "Clone" : "Create"}
+              </button>
+            </div>
+          </form>
+        )}
+      </Popover>
+    </>
+  );
+}
+
+function cap(s: string) {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function shortName(s: string) {
+  return s.length > 18 ? s.slice(0, 17) + "…" : s;
+}
