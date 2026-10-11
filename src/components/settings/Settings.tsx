@@ -14,6 +14,7 @@ import { McpTab } from "./McpTab";
 import { SkillsTab } from "./SkillsTab";
 import { CommandsTab } from "./CommandsTab";
 import { Empty } from "./common";
+import { openExternal } from "../../lib/platform";
 
 const GROUPS: { label: string; items: { id: SettingsTab; label: string; icon: ReactNode; server?: boolean }[] }[] = [
   {
@@ -113,6 +114,12 @@ function About() {
           OpenCode {info.version}
         </div>
       )}
+      <p className="mt-8 text-[12px] text-muted">
+        Background painting by{" "}
+        <button type="button" onClick={() => void openExternal("https://wallhaven.cc/w/yqkl97")} className="underline decoration-current/30 underline-offset-2 hover:text-ink">
+          Bou Nin
+        </button>
+      </p>
     </div>
   );
 }
