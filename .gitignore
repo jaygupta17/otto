@@ -13,3 +13,6 @@ src-tauri/gen/android/
 src-tauri/gen/apple/
 .env
 .env.*
+
+# Marketing masters (kept locally; README uses assets/readme)
+marketing/

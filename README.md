@@ -6,6 +6,10 @@
 
 <p align="center">Run coding agents on a cloud machine and steer them from your laptop or phone.</p>
 
+<p align="center">
+  <img src="assets/readme/hero.webp" alt="An agent adds link expiry to a small URL shortener, writes tests and gets them passing" />
+</p>
+
 ---
 
 Otto is a desktop and mobile app for [OpenCode v2](https://opencode.ai). Paste a sandbox API key and Otto starts a Linux machine, installs OpenCode, keeps it running as a service and connects to it over HTTPS. Your agents keep working when your laptop sleeps, and you can check in from your phone.
@@ -21,6 +25,19 @@ It runs on macOS, Windows, Linux, iOS and Android, built with [Tauri 2](https://
 - **Add tools.** Manage MCP servers, skills and slash commands from the app.
 - **Schedule work.** Have an agent run your tests every night or summarize changes every morning. Schedules run on the agent machine, so they fire even when Otto is closed.
 - **Browse files.** Open the project tree and read files with syntax highlighting.
+
+<img src="assets/readme/02-session.webp" alt="A finished task: the agent's summary of what changed and the tests it ran" />
+
+<table>
+  <tr>
+    <td width="50%"><img src="assets/readme/03-parallel-agents.webp" alt="Three agents working at once" /><br /><sub>Several agents at once, each in its own session.</sub></td>
+    <td width="50%"><img src="assets/readme/05-editor.webp" alt="The file editor next to the conversation" /><br /><sub>Read the code the agent wrote, next to the conversation.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="assets/readme/10-providers.webp" alt="Choosing a cloud provider: Boat, boxd, E2B, Daytona or your own server" /><br /><sub>Pick a cloud, paste a key.</sub></td>
+    <td width="50%"><img src="assets/readme/15-mobile.webp" alt="Otto on a phone: the sessions list and a conversation" /><br /><sub>Check in from your phone.</sub></td>
+  </tr>
+</table>
 
 ## How it works
 
