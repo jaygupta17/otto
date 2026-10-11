@@ -94,11 +94,12 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-      - uses: android-actions/setup-android@v3
+      # The runner image already ships the Android SDK and NDK.
       - name: NDK
         run: |
-          sdkmanager --install "ndk;27.0.12077973"
-          echo "NDK_HOME=$ANDROID_SDK_ROOT/ndk/27.0.12077973" >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
+          echo "NDK_HOME=$ANDROID_NDK_LATEST_HOME" >> "$GITHUB_ENV"
+          ls "$ANDROID_NDK_LATEST_HOME" >/dev/null
       - uses: oven-sh/setup-bun@v2
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -121,21 +122,21 @@ jobs:
           SRC=$(find src-tauri/gen/android/app/build/outputs/apk -name '*universal*release*.apk' | head -1)
           [ -n "$SRC" ] || { echo "::error::No APK found"; exit 1; }
           if [ -n "$KEYSTORE_B64" ]; then
-            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.p12"
           else
             # No signing secrets yet: sign with a throwaway key so the APK still installs.
             # Each build gets a new key, so updating means uninstalling first.
             echo "::warning::ANDROID_KEYSTORE_BASE64 is not set; signing with a temporary key."
             KEY_ALIAS=otto KEY_PASSWORD=$(openssl rand -hex 16)
-            keytool -genkeypair -keystore "$RUNNER_TEMP/release.jks" -alias "$KEY_ALIAS" -keyalg RSA -keysize 2048 -validity 10000 \
+            keytool -genkeypair -keystore "$RUNNER_TEMP/release.p12" -alias "$KEY_ALIAS" -storetype PKCS12 -keyalg RSA -keysize 2048 -validity 10000 \
               -storepass "$KEY_PASSWORD" -keypass "$KEY_PASSWORD" -dname "CN=Otto" >/dev/null
           fi
           "$BT/zipalign" -f -p 4 "$SRC" "$RUNNER_TEMP/aligned.apk"
           OUT="Otto_${TAG#v}_android.apk"
-          "$BT/apksigner" sign --ks "$RUNNER_TEMP/release.jks" --ks-key-alias "$KEY_ALIAS" \
+          "$BT/apksigner" sign --ks "$RUNNER_TEMP/release.p12" --ks-type PKCS12 --ks-key-alias "$KEY_ALIAS" \
             --ks-pass "pass:$KEY_PASSWORD" --key-pass "pass:$KEY_PASSWORD" --out "$OUT" "$RUNNER_TEMP/aligned.apk"
           "$BT/apksigner" verify "$OUT"
-          rm -f "$RUNNER_TEMP/release.jks"
+          rm -f "$RUNNER_TEMP/release.p12"
           echo "APK=$OUT" >> "$GITHUB_ENV"
       - name: Upload APK
         env:
