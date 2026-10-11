@@ -463,7 +463,12 @@ input[type="range"] {
 }
 
 [data-backdrop] {
+  /* 0 = background suits the theme, 1 = it fights it (set from JS). Every
+     material adds tint as it rises, so text keeps its contrast. */
+  --mismatch: 0;
   --tint: 14 14 16;
+  --overlay: 26 26 29;
+  --pill: rgb(255 255 255 / 0.14);
   --edge: rgb(255 255 255 / 0.09);
   --edge-top: rgb(255 255 255 / 0.1);
   --border: rgb(255 255 255 / 0.08);
@@ -475,11 +480,13 @@ input[type="range"] {
   --code-bg: rgb(0 0 0 / 0.25);
   --faint: #8a8a8e;
   --photo-text-shadow: 0 1px 2px rgb(0 0 0 / 0.25), 0 2px 18px rgb(0 0 0 / 0.35);
-  --scrim: rgb(0 0 0 / 0.38);
+  --scrim: rgb(0 0 0 / calc(0.38 + var(--mismatch) * 0.3));
 }
 [data-theme="light"] [data-backdrop],
 [data-theme="light"][data-backdrop] {
   --tint: 250 250 249;
+  --overlay: 252 252 251;
+  --pill: #fff;
   --edge: rgb(0 0 0 / 0.07);
   --edge-top: rgb(255 255 255 / 0.85);
   --border: rgb(0 0 0 / 0.07);
@@ -491,21 +498,38 @@ input[type="range"] {
   --code-bg: rgb(255 255 255 / 0.45);
   --faint: #77777a;
   --photo-text-shadow: 0 1px 14px rgb(255 255 255 / 0.55);
-  --scrim: rgb(255 255 255 / 0.42);
+  --scrim: rgb(255 255 255 / calc(0.42 + var(--mismatch) * 0.3));
 }
 
-[data-backdrop] .surface-sidebar {
-  background: rgb(var(--tint) / calc(0.6 - var(--glass) * 0.5));
+/* Panel frost lives on a layer *behind* the content (::before), not on the
+   panel itself. A backdrop-filter on an ancestor turns it into a "backdrop
+   root", and any glass nested inside (composer, floating buttons) then has
+   nothing to blur and shows sharp text through it. */
+[data-backdrop] .surface-sidebar,
+[data-backdrop] .surface-panel {
+  background: transparent;
+  isolation: isolate;
+}
+[data-backdrop] .surface-sidebar::before,
+[data-backdrop] .surface-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+[data-backdrop] .surface-sidebar::before {
+  background: rgb(var(--tint) / min(0.88, calc(0.6 - var(--glass) * 0.5 * (1 - var(--mismatch)) + var(--mismatch) * 0.35)));
   -webkit-backdrop-filter: blur(40px) saturate(1.5);
   backdrop-filter: blur(40px) saturate(1.5);
 }
-[data-backdrop] .surface-panel {
-  background: rgb(var(--tint) / calc(0.9 - var(--glass) * 0.4));
+[data-backdrop] .surface-panel::before {
+  background: rgb(var(--tint) / min(0.9, calc(0.9 - var(--glass) * 0.4 * (1 - var(--mismatch)) + var(--mismatch) * 0.1)));
   -webkit-backdrop-filter: blur(50px) saturate(1.3);
   backdrop-filter: blur(50px) saturate(1.3);
 }
 [data-backdrop] .surface-float {
-  background: rgb(var(--tint) / calc(0.8 - var(--glass) * 0.35));
+  background: rgb(var(--tint) / min(0.96, calc(0.8 - var(--glass) * 0.35 * (1 - var(--mismatch)) + var(--mismatch) * 0.15)));
   -webkit-backdrop-filter: blur(32px) saturate(1.35);
   backdrop-filter: blur(32px) saturate(1.35);
   border-color: var(--edge);
@@ -524,7 +548,7 @@ input[type="range"] {
   background: var(--hover);
 }
 [data-backdrop] .surface-thin {
-  background: rgb(var(--tint) / calc(0.6 - var(--glass) * 0.3));
+  background: rgb(var(--tint) / min(0.94, calc(0.6 - var(--glass) * 0.3 * (1 - var(--mismatch)) + var(--mismatch) * 0.3)));
   -webkit-backdrop-filter: blur(28px) saturate(1.3);
   backdrop-filter: blur(28px) saturate(1.3);
   box-shadow:
@@ -532,16 +556,56 @@ input[type="range"] {
     inset 0 0 0 1px var(--edge);
 }
 [data-backdrop] .surface-thin:hover {
-  background: rgb(var(--tint) / calc(0.72 - var(--glass) * 0.3));
+  background: rgb(var(--tint) / min(0.97, calc(0.72 - var(--glass) * 0.3 * (1 - var(--mismatch)) + var(--mismatch) * 0.25)));
+}
+
+/* Overlays: menus, settings, palette, toasts. They hold dense controls, so
+   they stay nearly opaque whatever the "see-through" setting says: the photo
+   only tints them. Readability over effect. */
+[data-backdrop] .surface-overlay {
+  background: rgb(var(--overlay) / min(0.97, calc(0.84 + var(--mismatch) * 0.12)));
+  -webkit-backdrop-filter: blur(40px) saturate(1.6);
+  backdrop-filter: blur(40px) saturate(1.6);
+  border-color: var(--edge);
+  box-shadow:
+    inset 0 1px 0 var(--edge-top),
+    0 24px 64px -20px rgb(0 0 0 / 0.55),
+    0 2px 10px rgb(0 0 0 / 0.14);
+}
+/* Selected segment / tab pill: must stand out from a translucent track. */
+.seg-pill {
+  background: var(--surface-raised);
+}
+[data-backdrop] .seg-pill {
+  background: var(--pill);
+}
+
+/* Phone session list over the photo: a light vertical shade, top and
+   bottom heavier, rising with --mismatch. No blur, so the photo stays sharp. */
+[data-backdrop] .list-scrim {
+  background: linear-gradient(
+    180deg,
+    rgb(var(--tint) / calc(0.3 + var(--mismatch) * 0.35)) 0%,
+    rgb(var(--tint) / calc(0.12 + var(--mismatch) * 0.4)) 40%,
+    rgb(var(--tint) / calc(0.35 + var(--mismatch) * 0.35)) 100%
+  );
 }
 
 /* Text set directly on the photo. */
 [data-backdrop] .on-photo {
   text-shadow: var(--photo-text-shadow);
+  /* Grey text disappears on a busy photo; use translucent white (black in light) instead. */
+  --muted: rgb(255 255 255 / 0.74);
+  --faint: rgb(255 255 255 / 0.58);
 }
-/* A soft pool of shade behind the home content so text never fights the photo. */
+[data-theme="light"][data-backdrop] .on-photo {
+  --muted: rgb(0 0 0 / 0.62);
+  --faint: rgb(0 0 0 / 0.48);
+}
+/* A soft pool of shade behind the home content so text never fights the photo.
+   `--scrim-y` follows the layout: the centred home keeps the pool on the prompt. */
 .home-scrim {
-  background: radial-gradient(60% 55% at 50% 42%, var(--scrim), transparent 100%);
+  background: radial-gradient(60% 55% at 50% var(--scrim-y, 42%), var(--scrim), transparent 100%);
 }
 
 /* The fade behind the session composer follows the panel's own fill. */

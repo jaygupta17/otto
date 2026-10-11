@@ -1,12 +1,14 @@
-import { ImagePlus } from "lucide-react";
+import { ImagePlus, Palette, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { useUI, toast } from "../../state/ui";
+import { useUI, toast, backdropSettings, BACKDROP_PRESETS } from "../../state/ui";
+import { asImage } from "../ui/Backdrop";
+import { uid } from "../../lib/id";
 import { useChat } from "../../state/chat";
 import { useExtensions } from "../../state/extensions";
 import { modelRefToString, modelStringToRef } from "../../lib/opencode/config";
 import { parseRules, serializeRules, type PermissionModel } from "../../lib/permissions";
 import { requestNotifyPermission } from "../../lib/notify";
-import { Button, IconButton } from "../ui/Button";
+import { Button } from "../ui/Button";
 import { Select } from "../ui/Select";
 import { AgentDot } from "../shell/CommandPalette";
 import { agentColor } from "../../lib/agentColor";
@@ -178,18 +180,10 @@ function AppearanceSection() {
   const setTheme = useUI((s) => s.setTheme);
   const backdrop = useUI((s) => s.backdrop);
   const setBackdrop = useUI((s) => s.setBackdrop);
-  const fileInput = useRef<HTMLInputElement>(null);
-
-  async function onPick(file: File) {
-    try {
-      const url = await downscale(file, 2400);
-      setBackdrop({ kind: "image", image: url });
-    } catch {
-      toast({ tone: "error", title: "Couldn't use that image" });
-    }
-  }
-
-  const img = backdrop.kind === "image" && backdrop.image;
+  const homeCompact = useUI((s) => s.homeCompact);
+  const setHomeCompact = useUI((s) => s.setHomeCompact);
+  const img = backdropSettings(backdrop).on;
+  const isPhoto = backdrop.kind === "image";
   return (
     <Section title="Appearance">
       <Rows>
@@ -206,52 +200,153 @@ function AppearanceSection() {
             ]}
           />
         </Row>
-        <Row label="Background">
-          <BackdropTile active={backdrop.kind === "none"} label="None" onClick={() => setBackdrop({ kind: "none" })}>
-            <div className="h-full w-full bg-bg" />
-          </BackdropTile>
-          <BackdropTile active={backdrop.kind === "image"} label={backdrop.image ? "Photo" : "Add photo"} onClick={() => (backdrop.image ? setBackdrop({ kind: "image" }) : fileInput.current?.click())}>
-            {backdrop.image ? (
-              <div className="h-full w-full bg-cover bg-center" style={{ backgroundImage: `url(${backdrop.image})` }} />
-            ) : (
-              <div className="grid h-full w-full place-items-center bg-sunken text-muted">
-                <ImagePlus size={15} />
-              </div>
-            )}
-          </BackdropTile>
-          {backdrop.image && (
-            <IconButton label="Choose another photo" onClick={() => fileInput.current?.click()}>
-              <ImagePlus size={15} />
-            </IconButton>
-          )}
-          <input ref={fileInput} type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && void onPick(e.target.files[0])} />
-        </Row>
+        <div className="px-4 py-3">
+          <div className="mb-2.5 text-[13.5px] text-ink">Background</div>
+          <BackgroundPicker />
+        </div>
         {img && (
           <>
-            <Row label="Photo visibility">
-              <Slider label="Photo visibility" value={backdrop.intensity} min={0.1} max={1} format={pct} onChange={(v) => setBackdrop({ intensity: v })} />
+            <Row label={isPhoto ? "Photo visibility" : "Visibility"}>
+              <Slider label="Visibility" value={backdrop.intensity} min={0.1} max={1} format={pct} onChange={(v) => setBackdrop({ intensity: v })} />
             </Row>
             <Row label="Fade at the bottom">
               <Slider label="Fade at the bottom" value={backdrop.fade ?? 0.35} min={0} max={1} format={pct} onChange={(v) => setBackdrop({ fade: v })} />
             </Row>
-            <Row label="Blur">
-              <Slider label="Blur" value={backdrop.blur ?? 0} min={0} max={30} step={1} format={(v) => `${v}px`} onChange={(v) => setBackdrop({ blur: v })} />
-            </Row>
+            {isPhoto && (
+              <Row label="Blur">
+                <Slider label="Blur" value={backdrop.blur ?? 0} min={0} max={30} step={1} format={(v) => `${v}px`} onChange={(v) => setBackdrop({ blur: v })} />
+              </Row>
+            )}
             <Row label="See-through panels">
               <Slider label="See-through panels" value={backdrop.glass ?? 0.3} min={0} max={0.85} format={pct} onChange={(v) => setBackdrop({ glass: v })} />
             </Row>
           </>
         )}
+        <Row label="Compact home" hint="Prompt centred on an empty screen, without the recent list">
+          <Toggle on={homeCompact} onChange={setHomeCompact} label="Compact home" />
+        </Row>
       </Rows>
     </Section>
   );
 }
 
-function BackdropTile({ active, label, onClick, children }: { active: boolean; label: string; onClick: () => void; children: ReactNode }) {
+/** Saved photos and fills, the built-in fills, and buttons to add more. */
+function BackgroundPicker() {
+  const backdrop = useUI((s) => s.backdrop);
+  const saved = useUI((s) => s.backdrops);
+  const apply = useUI((s) => s.applyBackdrop);
+  const remove = useUI((s) => s.removeBackdrop);
+  const setBackdrop = useUI((s) => s.setBackdrop);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [making, setMaking] = useState(false);
+  const activeId = backdrop.kind === "none" ? "none" : backdrop.activeId;
+
+  async function onPick(files: FileList) {
+    for (const file of Array.from(files).slice(0, 6)) {
+      try {
+        await apply({ id: uid("bg_"), kind: "image", image: await downscale(file, 2400), name: file.name });
+      } catch {
+        toast({ tone: "error", title: `Couldn't use ${file.name}` });
+      }
+    }
+  }
+
   return (
-    <button onClick={onClick} title={label} aria-label={label} aria-pressed={active} className={`h-9 w-14 overflow-hidden rounded-lg transition-shadow ${active ? "shadow-[0_0_0_2px_var(--text)]" : "hairline hover:shadow-[0_0_0_1px_var(--border-strong)]"}`}>
-      {children}
-    </button>
+    <div>
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(76px,1fr))] gap-2">
+        <Tile label="None" active={activeId === "none"} onClick={() => setBackdrop({ kind: "none", activeId: null })}>
+          <div className="grid h-full w-full place-items-center bg-bg text-[11px] text-faint">None</div>
+        </Tile>
+        {saved.map((b) => (
+          <Tile key={b.id} label={b.name ?? (b.kind === "image" ? "Photo" : "Custom")} active={activeId === b.id} onClick={() => void apply(b)} onRemove={() => void remove(b.id)}>
+            <div className="h-full w-full bg-cover bg-center" style={{ backgroundImage: b.kind === "image" ? `url(${b.image})` : asImage(b.css ?? "") }} />
+          </Tile>
+        ))}
+        {BACKDROP_PRESETS.map((b) => (
+          <Tile key={b.id} label={b.name ?? ""} active={activeId === b.id} onClick={() => void apply(b)}>
+            <div className="h-full w-full" style={{ background: b.css }} />
+          </Tile>
+        ))}
+        <button onClick={() => fileInput.current?.click()} className="flex aspect-[16/10] flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-line-strong text-[11px] text-muted transition-colors hover:bg-hover hover:text-ink">
+          <ImagePlus size={15} /> Photo
+        </button>
+        <button onClick={() => setMaking((v) => !v)} aria-expanded={making} className={`flex aspect-[16/10] flex-col items-center justify-center gap-1 rounded-lg border border-dashed text-[11px] transition-colors hover:bg-hover hover:text-ink ${making ? "border-ink text-ink" : "border-line-strong text-muted"}`}>
+          <Palette size={15} /> Colour
+        </button>
+      </div>
+      <input ref={fileInput} type="file" accept="image/*" multiple className="hidden" onChange={(e) => e.target.files?.length && void onPick(e.target.files).finally(() => (e.target.value = ""))} />
+      {making && (
+        <FillMaker
+          onSave={(css) => {
+            void apply({ id: uid("bg_"), kind: "fill", css });
+            setMaking(false);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function Tile({ label, active, onClick, onRemove, children }: { label: string; active: boolean; onClick: () => void; onRemove?: () => void; children: ReactNode }) {
+  return (
+    <div className="group relative">
+      <button onClick={onClick} title={label} aria-label={label} aria-pressed={active} className={`block aspect-[16/10] w-full overflow-hidden rounded-lg transition-shadow ${active ? "shadow-[0_0_0_2px_var(--text)]" : "hairline hover:shadow-[0_0_0_1px_var(--border-strong)]"}`}>
+        {children}
+      </button>
+      {onRemove && (
+        <button
+          onClick={onRemove}
+          aria-label={`Remove ${label}`}
+          title="Remove"
+          className="absolute -top-1.5 -right-1.5 grid h-5 w-5 place-items-center rounded-full border border-line bg-raised text-muted opacity-0 shadow-soft transition-opacity group-hover:opacity-100 hover:text-ink focus-visible:opacity-100"
+        >
+          <X size={11} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+type FillKind = "linear" | "radial" | "solid";
+
+/** Two colours, a style and a direction → a CSS background, previewed live. */
+function FillMaker({ onSave }: { onSave: (css: string) => void }) {
+  const [kind, setKind] = useState<FillKind>("linear");
+  const [a, setA] = useState("#2a3a8c");
+  const [b, setB] = useState("#e0845e");
+  const [angle, setAngle] = useState(160);
+  const css = kind === "solid" ? a : kind === "radial" ? `radial-gradient(120% 120% at 30% 20%, ${a} 0%, ${b} 100%)` : `linear-gradient(${angle}deg, ${a} 0%, ${b} 100%)`;
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-line p-3">
+      <div className="aspect-[16/10] w-24 shrink-0 rounded-lg hairline" style={{ background: css }} />
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
+        <Segmented
+          id="fill-kind"
+          size="sm"
+          value={kind}
+          onChange={setKind}
+          options={[
+            { id: "linear", label: "Linear" },
+            { id: "radial", label: "Radial" },
+            { id: "solid", label: "Solid" },
+          ]}
+        />
+        <ColorSwatch label="First colour" value={a} onChange={setA} />
+        {kind !== "solid" && <ColorSwatch label="Second colour" value={b} onChange={setB} />}
+        {kind === "linear" && <Slider label="Angle" value={angle} min={0} max={360} step={5} format={(v) => `${v}°`} onChange={setAngle} />}
+      </div>
+      <Button size="sm" variant="primary" onClick={() => onSave(css)}>
+        Use
+      </Button>
+    </div>
+  );
+}
+
+function ColorSwatch({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <label title={label} className="relative block h-7 w-7 cursor-pointer overflow-hidden rounded-full shadow-[0_0_0_1px_var(--border-strong)] transition-transform hover:scale-105" style={{ background: value }}>
+      <input type="color" aria-label={label} value={value} onChange={(e) => onChange(e.target.value)} className="absolute inset-0 cursor-pointer opacity-0" />
+    </label>
   );
 }
 

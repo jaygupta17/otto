@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "motion/react";
-import { useCallback, useRef, type CSSProperties } from "react";
+import { useCallback, useRef } from "react";
 import { useChat } from "../../state/chat";
 import { useUI, backdropSettings } from "../../state/ui";
 import { Sidebar } from "./Sidebar";
@@ -22,13 +22,14 @@ const ease = { type: "tween", duration: 0.22, ease: [0.22, 1, 0.36, 1] } as cons
  * photo (if any) spans the window; each region frosts over it with its own
  * material (styles.css → Materials).
  */
-export function AppShell() {
+export function AppShell({ compact = false }: { compact?: boolean }) {
   const sidebarOpen = useUI((s) => s.sidebarOpen);
   const filesOpen = useUI((s) => s.filesOpen);
   const toggleFiles = useUI((s) => s.toggleFiles);
   const activeFile = useUI((s) => s.activeFile);
   const chatWidth = useUI((s) => s.chatWidth);
   const bd = backdropSettings(useUI((s) => s.backdrop));
+  const homeCompact = useUI((s) => s.homeCompact);
   const activeId = useChat((s) => s.activeId);
   const view = useUI((s) => s.view);
   const root = useChat((s) => (s.activeId ? s.sessions[s.activeId]?.location.directory : null) ?? s.projectDir ?? s.homeDir);
@@ -42,8 +43,6 @@ export function AppShell() {
 
   return (
     <div
-      data-backdrop={bd.on ? "on" : undefined}
-      style={{ "--glass": bd.glass } as CSSProperties}
       className="relative flex h-full w-full overflow-hidden bg-bg"
     >
       {bd.on && <Backdrop />}
@@ -68,7 +67,8 @@ export function AppShell() {
               transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }}
               className="h-full"
             >
-              {view === "schedules" ? <SchedulesView /> : activeId ? <SessionView sessionId={activeId} /> : <Home />}
+              {/* `compact` = the pane is narrow; `homeCompact` = the user's preference. */}
+              {view === "schedules" ? <SchedulesView /> : activeId ? <SessionView sessionId={activeId} /> : <Home compact={compact || homeCompact} />}
             </motion.div>
           </AnimatePresence>
         </main>
@@ -90,7 +90,7 @@ export function AppShell() {
             >
               <span className="absolute inset-y-0 -left-1.5 -right-1.5 transition-colors group-hover:bg-line group-focus-visible:bg-line-strong" />
             </div>
-            <section aria-label="Editor" className="surface-panel h-full min-w-0 flex-1 overflow-hidden">
+            <section aria-label="Editor" className="surface-panel relative h-full min-w-0 flex-1 overflow-hidden">
               <Editor root={root!} />
             </section>
           </>
@@ -103,7 +103,7 @@ export function AppShell() {
           transition={ease}
           className="h-full shrink-0 overflow-hidden"
         >
-          <div className="surface-panel h-full overflow-hidden border-l border-line" style={{ width: TREE_W }}>
+          <div className="surface-panel relative h-full overflow-hidden border-l border-line" style={{ width: TREE_W }}>
             {root && <FilesPanel root={root} onClose={() => toggleFiles(false)} />}
           </div>
         </motion.aside>

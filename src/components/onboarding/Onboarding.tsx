@@ -6,7 +6,8 @@ import { Button } from "../ui/Button";
 import { TextField } from "../ui/Field";
 import { AgentClock, Spinner } from "../ui/AgentClock";
 import { Backdrop } from "../ui/Backdrop";
-import { SETUP_STEPS, newCheckpoint, provisionBoat, type ProvisionCheckpoint, type SetupStepId } from "../../lib/providers/provision";
+import { SETUP_STEPS, newCheckpoint, provisionBoat, type ProvisionCheckpoint, type SetupStepId, type StepUpdate } from "../../lib/providers/provision";
+import { BOXD_BILLING_URL, BOXD_SIZES, BOXD_SLEEP, BoxdError, provisionBoxd, verifyBoxdKey } from "../../lib/providers/boxd";
 import { BoatClient, BOAT_BILLING_URL, isBillingError } from "../../lib/providers/boat";
 import { OpenCode } from "../../lib/opencode/client";
 import { uid } from "../../lib/id";
@@ -17,7 +18,8 @@ import { clock, duration } from "../../lib/format";
 import { useNow } from "../../hooks/useNow";
 import { secretKeys, useWorkspaces } from "../../state/workspaces";
 
-type Screen = "providers" | "boat" | "custom" | "setup" | "done";
+type Screen = "providers" | "sandbox" | "custom" | "setup" | "done";
+type Cloud = "boat" | "boxd";
 
 interface ProviderCard {
   id: "boat" | "custom" | string;
@@ -37,10 +39,43 @@ const PROVIDERS: ProviderCard[] = [
     badge: "Recommended",
     logo: <BoatLogo />,
   },
+  {
+    id: "boxd",
+    name: "boxd",
+    blurb: "Isolated microVMs that hibernate when idle and wake in milliseconds.",
+    available: true,
+    logo: <BoxdLogo />,
+  },
   { id: "e2b", name: "E2B", blurb: "Firecracker sandboxes.", available: false, logo: <LetterLogo letter="E" /> },
   { id: "daytona", name: "Daytona", blurb: "Dev environments on demand.", available: false, logo: <LetterLogo letter="D" /> },
   { id: "custom", name: "Your own server", blurb: "Any reachable OpenCode v2 server.", available: true, logo: <div className="grid h-full w-full place-items-center rounded-lg border border-line bg-panel text-ink-2"><Server size={16} /></div> },
 ];
+
+/** Per-cloud copy and options for the shared setup form. */
+const CLOUD: Record<Cloud, { name: string; keyPlaceholder: string; keyHelp: string; sizes: { id: string; label: string; spec: string }[]; sleep: { id: number; label: string }[]; defaultSize: string; defaultSleep: number; sleepHint: string; billingUrl: string }> = {
+  boat: {
+    name: "Boat",
+    keyPlaceholder: "sandbox_…",
+    keyHelp: "https://docs.boat.dev/api-keys",
+    sizes: [],
+    sleep: [],
+    defaultSize: "default",
+    defaultSleep: 3600,
+    sleepHint: "Sleeping machines cost nothing and wake automatically when you open Otto.",
+    billingUrl: BOAT_BILLING_URL,
+  },
+  boxd: {
+    name: "boxd",
+    keyPlaceholder: "bxd_…",
+    keyHelp: "https://docs.boxd.sh/cli/authentication#api-keys",
+    sizes: BOXD_SIZES,
+    sleep: BOXD_SLEEP,
+    defaultSize: "2",
+    defaultSleep: 14400,
+    sleepHint: "A hibernated machine costs only its disk and wakes on the next request.",
+    billingUrl: BOXD_BILLING_URL,
+  },
+};
 
 const SIZES = [
   { id: "small", label: "Small", spec: "2 vCPU · 4 GB" },
@@ -65,17 +100,23 @@ export function Onboarding({ embedded = false, onDone, onCancel }: { embedded?: 
     setScreen(s);
   };
 
+  const [cloud, setCloud] = useState<Cloud>("boat");
+  const spec = CLOUD[cloud];
   const [apiKey, setApiKey] = useState("");
   const [size, setSize] = useState("default");
   const [sleepAfter, setSleepAfter] = useState(3600);
   const [name, setName] = useState("");
   const [keyError, setKeyError] = useState<string | null>(null);
   const [checkingKey, setCheckingKey] = useState(false);
-  const hasBoatKey = useWorkspaces((s) => s.hasBoatKey);
-
-  useEffect(() => {
-    if (hasBoatKey) void secrets.get(secretKeys.boat).then((k) => k && setApiKey(k));
-  }, [hasBoatKey]);
+  function pickCloud(c: Cloud) {
+    setCloud(c);
+    setSize(CLOUD[c].defaultSize);
+    setSleepAfter(CLOUD[c].defaultSleep);
+    setKeyError(null);
+    setApiKey("");
+    void secrets.get(c === "boxd" ? secretKeys.boxd : secretKeys.boat).then((k) => k && setApiKey(k));
+    go("sandbox");
+  }
 
   // ---- setup run ----
   const [steps, setSteps] = useState<Record<SetupStepId, { state: "idle" | "active" | "done" | "error"; detail?: string }>>(() => initialSteps());
@@ -90,12 +131,17 @@ export function Onboarding({ embedded = false, onDone, onCancel }: { embedded?: 
 
   async function verifyKeyAndStart() {
     const key = apiKey.trim();
-    if (!key) return setKeyError("Paste your Boat API key to continue.");
+    if (!key) return setKeyError(`Paste your ${spec.name} API key to continue.`);
     setCheckingKey(true);
     setKeyError(null);
     try {
-      await new BoatClient(key).me();
-      await useWorkspaces.getState().setBoatKey(key);
+      if (cloud === "boxd") {
+        await verifyBoxdKey(key);
+        await useWorkspaces.getState().setBoxdKey(key);
+      } else {
+        await new BoatClient(key).me();
+        await useWorkspaces.getState().setBoatKey(key);
+      }
       setCheckingKey(false);
       void runSetup(key);
     } catch (e) {
@@ -114,24 +160,23 @@ export function Onboarding({ embedded = false, onDone, onCancel }: { embedded?: 
       for (const s of SETUP_STEPS) if (next[s.id].state !== "done") next[s.id] = { state: "idle" };
       return next;
     });
-    if (!checkpointRef.current) checkpointRef.current = (await kv.get<ProvisionCheckpoint>("setup.checkpoint")) ?? newCheckpoint();
+    const ckKey = cloud === "boxd" ? "setup.checkpoint.boxd" : "setup.checkpoint";
+    if (!checkpointRef.current) checkpointRef.current = (await kv.get<ProvisionCheckpoint>(ckKey)) ?? newCheckpoint();
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     try {
-      const result = await provisionBoat(
-        key,
-        checkpointRef.current,
-        { ttlSeconds: sleepAfter < 0 ? null : sleepAfter, type: size, name: name.trim() || "Otto" },
-        (u) => setSteps((prev) => ({ ...prev, [u.step]: { state: u.state, detail: u.detail } })),
-        ctrl.signal,
-        (c) => void kv.set("setup.checkpoint", c),
-      );
+      const onStep = (u: StepUpdate) => setSteps((prev) => ({ ...prev, [u.step]: { state: u.state, detail: u.detail } }));
+      const onCheckpoint = (c: ProvisionCheckpoint) => void kv.set(ckKey, c);
+      const result =
+        cloud === "boxd"
+          ? await provisionBoxd(key, checkpointRef.current, { vcpu: Number(size) || 2, hibernateAfter: sleepAfter, name: name.trim() || "otto" }, onStep, ctrl.signal, onCheckpoint)
+          : await provisionBoat(key, checkpointRef.current, { ttlSeconds: sleepAfter < 0 ? null : sleepAfter, type: size, name: name.trim() || "Otto" }, onStep, ctrl.signal, onCheckpoint);
       const wsId = uid("ws_");
       await useWorkspaces.getState().add(
         {
           id: wsId,
-          name: name.trim() || `Boat · ${result.sandboxId.slice(3)}`,
-          provider: "boat",
+          name: name.trim() || (cloud === "boxd" ? `boxd · ${result.endpoint.baseUrl.replace(/^https:\/\/(otto\.)?/, "").split(".")[0]}` : `Boat · ${result.sandboxId.slice(3)}`),
+          provider: cloud,
           sandboxId: result.sandboxId,
           baseUrl: result.endpoint.baseUrl,
           createdAt: Date.now(),
@@ -140,20 +185,20 @@ export function Onboarding({ embedded = false, onDone, onCancel }: { embedded?: 
         },
         { password: result.endpoint.password, gateToken: result.endpoint.gateToken },
       );
-      await kv.delete("setup.checkpoint");
+      await kv.delete(ckKey);
       checkpointRef.current = null;
       resultRef.current = { wsId };
       setFinishedAt(Date.now());
       go("done");
     } catch (e) {
       if ((e as Error).name === "AbortError") return;
-      setSetupError({ message: (e as Error).message || "Something went wrong.", billing: isBillingError(e) });
+      setSetupError({ message: (e as Error).message || "Something went wrong.", billing: isBillingError(e) || (e instanceof BoxdError && e.billing) });
     }
   }
 
   function cancelSetup() {
     abortRef.current?.abort();
-    go("boat", -1);
+    go("sandbox", -1);
   }
 
   const content = (
@@ -170,11 +215,12 @@ export function Onboarding({ embedded = false, onDone, onCancel }: { embedded?: 
         {screen === "providers" && (
           <Providers
             embedded={embedded}
-            onPick={(id) => go(id === "boat" ? "boat" : "custom")}
+            onPick={(id) => (id === "boat" || id === "boxd" ? pickCloud(id) : go("custom"))}
           />
         )}
-        {screen === "boat" && (
+        {screen === "sandbox" && (
           <BoatForm
+            cloud={cloud}
             apiKey={apiKey}
             setApiKey={(v) => {
               setApiKey(v);
@@ -194,7 +240,7 @@ export function Onboarding({ embedded = false, onDone, onCancel }: { embedded?: 
         )}
         {screen === "custom" && <CustomForm onBack={() => go("providers", -1)} onConnected={(wsId) => { resultRef.current = { wsId }; setStartedAt(0); go("done"); }} />}
         {screen === "setup" && (
-          <SetupProgress steps={steps} error={setupError} startedAt={startedAt} onRetry={() => runSetup(apiKey.trim())} onCancel={cancelSetup} />
+          <SetupProgress cloud={cloud} steps={steps} error={setupError} startedAt={startedAt} onRetry={() => runSetup(apiKey.trim())} onCancel={cancelSetup} />
         )}
         {screen === "done" && <Done elapsed={startedAt ? finishedAt - startedAt : 0} onEnter={() => onDone?.()} />}
       </motion.div>
@@ -264,6 +310,7 @@ function Providers({ onPick, embedded }: { onPick: (id: string) => void; embedde
 }
 
 function BoatForm(props: {
+  cloud: Cloud;
   apiKey: string;
   setApiKey: (v: string) => void;
   keyError: string | null;
@@ -279,6 +326,9 @@ function BoatForm(props: {
 }) {
   const [show, setShow] = useState(false);
   const [advanced, setAdvanced] = useState(false);
+  const c = CLOUD[props.cloud];
+  const sizes = c.sizes.length ? c.sizes : SIZES;
+  const sleeps = c.sleep.length ? c.sleep : SLEEP;
   return (
     <form
       onSubmit={(e) => {
@@ -287,13 +337,13 @@ function BoatForm(props: {
       }}
     >
       <BackLink onClick={props.onBack} />
-      <h2 className="text-[24px] leading-tight font-semibold">Connect Boat</h2>
+      <h2 className="text-[24px] leading-tight font-semibold">Connect {c.name}</h2>
       <p className="mt-2 mb-6 text-[15px] leading-relaxed text-muted">Paste an API key. Otto starts the machine, installs OpenCode and connects to it.</p>
 
       <TextField
         label="API key"
         autoFocus
-        placeholder="sandbox_…"
+        placeholder={c.keyPlaceholder}
         type={show ? "text" : "password"}
         autoComplete="off"
         spellCheck={false}
@@ -306,7 +356,7 @@ function BoatForm(props: {
           </button>
         }
         hint={
-          <button type="button" className="inline-flex items-center gap-1 text-ink hover:underline" onClick={() => openExternal("https://docs.boat.dev/api-keys")}>
+          <button type="button" className="inline-flex items-center gap-1 text-ink hover:underline" onClick={() => openExternal(c.keyHelp)}>
             Where do I get one? <ExternalLink size={12} />
           </button>
         }
@@ -322,12 +372,12 @@ function BoatForm(props: {
               <TextField label="Name" placeholder="Otto" value={props.name} onChange={(e) => props.setName(e.target.value)} />
               <div>
                 <div className="mb-1.5 text-[13px] font-medium text-ink">Size</div>
-                <Segmented options={SIZES.map((s) => ({ id: s.id, label: s.label, sub: s.spec }))} value={props.size} onChange={props.setSize} />
+                <Segmented options={sizes.map((s) => ({ id: s.id, label: s.label, sub: s.spec }))} value={props.size} onChange={props.setSize} />
               </div>
               <div>
                 <div className="mb-1.5 text-[13px] font-medium text-ink">Sleep after</div>
-                <Segmented options={SLEEP.map((s) => ({ id: String(s.id), label: s.label }))} value={String(props.sleepAfter)} onChange={(v) => props.setSleepAfter(Number(v))} />
-                <p className="mt-1.5 text-[12px] text-muted">Sleeping machines cost nothing and wake automatically when you open Otto.</p>
+                <Segmented options={sleeps.map((s) => ({ id: String(s.id), label: s.label }))} value={String(props.sleepAfter)} onChange={(v) => props.setSleepAfter(Number(v))} />
+                <p className="mt-1.5 text-[12px] text-muted">{c.sleepHint}</p>
               </div>
             </div>
           </motion.div>
@@ -404,12 +454,14 @@ function CustomForm({ onBack, onConnected }: { onBack: () => void; onConnected: 
 }
 
 function SetupProgress({
+  cloud,
   steps,
   error,
   startedAt,
   onRetry,
   onCancel,
 }: {
+  cloud: Cloud;
   steps: Record<SetupStepId, { state: string; detail?: string; at?: number }>;
   error: { message: string; billing: boolean } | null;
   startedAt: number;
@@ -419,10 +471,10 @@ function SetupProgress({
   const now = useNow(!error);
   return (
     <div>
-      <h2 className="text-[24px] leading-tight font-semibold">{error?.billing ? "Boat can't start a machine yet" : error ? "Setup paused" : "Setting up your workspace"}</h2>
+      <h2 className="text-[24px] leading-tight font-semibold">{error?.billing ? `${CLOUD[cloud].name} can't start a machine yet` : error ? "Setup paused" : "Setting up your workspace"}</h2>
       <p className="mt-2 text-[15px] leading-relaxed text-muted">
         {error?.billing
-          ? "Your Boat account can't start a machine right now. Add a payment method or plan in Boat, then retry. Nothing here is lost."
+          ? `Your ${CLOUD[cloud].name} account can't start a machine right now. Add credits or a plan there, then retry. Nothing here is lost.`
           : error
             ? "Nothing is lost. Retry picks up where it stopped."
             : "Usually under a minute. You can leave this window in the background."}
@@ -456,8 +508,8 @@ function SetupProgress({
           </Button>
         )}
         {error?.billing && (
-          <Button variant="secondary" trailing={<ExternalLink size={13} />} onClick={() => openExternal(BOAT_BILLING_URL)}>
-            Open Boat billing
+          <Button variant="secondary" trailing={<ExternalLink size={13} />} onClick={() => openExternal(CLOUD[cloud].billingUrl)}>
+            Open {CLOUD[cloud].name} billing
           </Button>
         )}
         <Button variant="ghost" onClick={onCancel}>
@@ -515,7 +567,7 @@ function Segmented({ options, value, onChange }: { options: { id: string; label:
           onClick={() => onChange(o.id)}
           className={`relative flex-1 rounded-xl px-2 py-1.5 text-center transition-colors ${value === o.id ? "text-ink" : "text-muted hover:text-ink"}`}
         >
-          {value === o.id && <motion.span layoutId={`seg-${options.map((x) => x.id).join("")}`} className="absolute inset-0 rounded-xl bg-raised shadow-soft" transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }} />}
+          {value === o.id && <motion.span layoutId={`seg-${options.map((x) => x.id).join("")}`} className="seg-pill absolute inset-0 rounded-xl shadow-soft" transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }} />}
           <span className="relative block text-[13px] font-medium">{o.label}</span>
           {o.sub && <span className="relative block text-[12px] text-muted">{o.sub}</span>}
         </button>
@@ -538,6 +590,17 @@ function BoatLogo() {
       <svg viewBox="0 0 24 24" width="58%" height="58%" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M3 15l2.5 4h13L21 15H3z" fill="currentColor" fillOpacity="0.25" />
         <path d="M12 3v12M12 4l6 8h-6" />
+      </svg>
+    </div>
+  );
+}
+
+function BoxdLogo() {
+  return (
+    <div className="grid h-full w-full place-items-center rounded-lg bg-[#111] text-white">
+      <svg viewBox="0 0 24 24" width="56%" height="56%" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
+        <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z" />
+        <path d="M4 7.5l8 4.5 8-4.5M12 12v9" />
       </svg>
     </div>
   );

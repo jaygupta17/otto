@@ -6,6 +6,7 @@ import { create } from "zustand";
 import { OpenCode, OpenCodeError, type ServerInfo } from "../lib/opencode/client";
 import { startEventStream, type StreamStatus } from "../lib/opencode/events";
 import { reviveBoat } from "../lib/providers/provision";
+import { BoxdError, reviveBoxd } from "../lib/providers/boxd";
 import { BoatError, isBillingError } from "../lib/providers/boat";
 import { secrets } from "../lib/secrets";
 import { secretKeys, useWorkspaces, type Workspace } from "./workspaces";
@@ -63,10 +64,12 @@ export const useConnection = create<State>((set, get) => ({
         });
       }
 
-      if (!info && ws.provider === "boat" && ws.sandboxId) {
-        const apiKey = await secrets.get(secretKeys.boat);
-        if (!apiKey) throw new Error("Add your Boat API key in Settings to wake this sandbox.");
-        const endpoint = await reviveBoat(apiKey, ws.sandboxId, password, (phase, detail) => !stale() && set({ status: phase, detail }), signal);
+      if (!info && (ws.provider === "boat" || ws.provider === "boxd") && ws.sandboxId) {
+        const boxd = ws.provider === "boxd";
+        const apiKey = await secrets.get(boxd ? secretKeys.boxd : secretKeys.boat);
+        if (!apiKey) throw new Error(`Add your ${boxd ? "boxd" : "Boat"} API key in Settings to wake this ${boxd ? "machine" : "sandbox"}.`);
+        const progress = (phase: "waking" | "repairing", detail?: string) => !stale() && set({ status: phase, detail });
+        const endpoint = boxd ? await reviveBoxd(apiKey, ws.sandboxId, password, progress, signal) : await reviveBoat(apiKey, ws.sandboxId, password, progress, signal);
         if (stale()) return;
         if (endpoint.baseUrl !== ws.baseUrl || endpoint.gateToken !== gateToken) {
           await useWorkspaces.getState().update(ws.id, { baseUrl: endpoint.baseUrl }, { gateToken: endpoint.gateToken ?? null });
@@ -99,7 +102,7 @@ export const useConnection = create<State>((set, get) => ({
     } catch (e) {
       if (stale() || (e as Error)?.name === "AbortError") return;
       const msg = e instanceof BoatError || e instanceof Error ? e.message : String(e);
-      set({ status: "error", error: msg, billing: isBillingError(e), detail: undefined });
+      set({ status: "error", error: msg, billing: isBillingError(e) || (e instanceof BoxdError && e.billing), detail: undefined });
     }
   },
 

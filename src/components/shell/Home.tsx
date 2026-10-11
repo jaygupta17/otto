@@ -1,6 +1,6 @@
 import { motion } from "motion/react";
 import { Cloud, PanelLeft, RotateCw, Server } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, type CSSProperties } from "react";
 import { Composer } from "../chat/Composer";
 import { ProjectPicker } from "../chat/Pickers";
 import { AgentClock, Spinner } from "../ui/AgentClock";
@@ -13,6 +13,8 @@ import { useActiveWorkspace } from "../../state/workspaces";
 import { basename, timeAgo } from "../../lib/format";
 import { openExternal } from "../../lib/platform";
 import { BOAT_BILLING_URL } from "../../lib/providers/boat";
+import { BOXD_BILLING_URL } from "../../lib/providers/boxd";
+import { useWorkspaces } from "../../state/workspaces";
 
 /**
  * New-session screen. With a background photo there is no panel here at all:
@@ -24,16 +26,20 @@ export function Home({ compact = false }: { compact?: boolean }) {
   const sessions = useChat((s) => s.sessions);
   const busy = useChat((s) => s.busy);
   const open = useChat((s) => s.open);
-  const photo = backdropSettings(useUI((s) => s.backdrop)).on && !compact;
+  const photo = backdropSettings(useUI((s) => s.backdrop)).on;
   const recent = useMemo(() => sortedSessions(sessions).slice(0, photo ? 4 : 6), [sessions, photo]);
   const sidebarOpen = useUI((s) => s.sidebarOpen);
   const toggleSidebar = useUI((s) => s.toggleSidebar);
   const mac = useTrafficLights();
+  // Compact home drops its header — except while the sidebar is collapsed,
+  // where that strip is the window's drag surface and the only visible way back
+  // to the sidebar.
+  const header = !compact || !sidebarOpen;
 
   return (
     <div className="relative flex h-full flex-col overflow-hidden">
-      {photo && <div aria-hidden className="home-scrim pointer-events-none absolute inset-0" />}
-      {!compact && (
+      {photo && <div aria-hidden className="home-scrim pointer-events-none absolute inset-0" style={compact ? ({ "--scrim-y": "50%" } as CSSProperties) : undefined} />}
+      {header && (
         <header className={`drag relative z-10 flex h-[52px] shrink-0 items-center gap-2 pr-3 ${!sidebarOpen && mac ? "pl-[84px]" : "pl-3"}`} data-tauri-drag-region>
           {!sidebarOpen && (
             <IconButton label="Show sidebar (⌘B)" className="no-drag" onClick={() => toggleSidebar(true)}>
@@ -43,7 +49,10 @@ export function Home({ compact = false }: { compact?: boolean }) {
         </header>
       )}
       <div className="scroll-quiet relative min-h-0 flex-1 overflow-y-auto px-5">
-        <div className={`mx-auto w-full max-w-[660px] ${compact ? "pt-10" : "pt-[14vh]"} pb-16`}>
+        {/* Compact home has no header and no recent list, so the prompt block can
+            sit in the middle of the pane; min-h-full keeps it centred only when
+            there is room, and the pane still scrolls once it grows past it. */}
+        <div className={`mx-auto w-full max-w-[660px] ${compact ? "flex min-h-full flex-col justify-center py-10" : "pt-[14vh] pb-16"}`}>
           <h1 className={`on-photo mb-5 font-semibold tracking-[-0.01em] text-ink ${compact ? "text-[20px]" : "text-[26px]"}`}>What should the agent work on?</h1>
 
           <ConnectionBanner />
@@ -55,7 +64,7 @@ export function Home({ compact = false }: { compact?: boolean }) {
               <ProjectPicker />
             </span>
             <span className="surface-thin inline-flex h-7 items-center gap-1.5 rounded-full px-2.5 text-muted">
-              {ws?.provider === "boat" ? <Cloud size={13} /> : <Server size={13} />}
+              {ws?.provider !== "custom" ? <Cloud size={13} /> : <Server size={13} />}
               {ws?.name}
             </span>
           </div>
@@ -103,7 +112,7 @@ export function ConnectionBanner() {
         <div className={`selectable truncate ${status === "error" ? "text-ink-2" : "text-muted"}`}>{status === "error" ? error : (detail ?? "This usually takes a few seconds.")}</div>
       </div>
       {status === "error" && billing && (
-        <Button size="sm" variant="secondary" onClick={() => openExternal(BOAT_BILLING_URL)}>
+        <Button size="sm" variant="secondary" onClick={() => openExternal(billingUrl())}>
           Billing
         </Button>
       )}
@@ -114,4 +123,9 @@ export function ConnectionBanner() {
       )}
     </motion.div>
   );
+}
+
+function billingUrl() {
+  const st = useWorkspaces.getState();
+  return st.workspaces.find((w) => w.id === st.activeId)?.provider === "boxd" ? BOXD_BILLING_URL : BOAT_BILLING_URL;
 }

@@ -12,6 +12,7 @@ import { Spinner } from "../ui/AgentClock";
 import { WorkspaceAvatar, statusText } from "../shell/Sidebar";
 import { Section } from "./common";
 import { Popover, MenuItem } from "../ui/Popover";
+import { boxdHibernate, boxdMachine, boxdWake, humanizeBoxd, verifyBoxdKey } from "../../lib/providers/boxd";
 
 export function WorkspacesTab() {
   const workspaces = useWorkspaces((s) => s.workspaces);
@@ -20,7 +21,20 @@ export function WorkspacesTab() {
   const addWs = useUI((s) => s.setAddWorkspace);
   const close = useUI((s) => s.closeSettings);
   const hasBoatKey = useWorkspaces((s) => s.hasBoatKey);
+  const hasBoxdKey = useWorkspaces((s) => s.hasBoxdKey);
   const [sandboxes, setSandboxes] = useState<Record<string, BoatSandbox>>({});
+  const [machines, setMachines] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    void (async () => {
+      const key = await secrets.get(secretKeys.boxd);
+      const ids = workspaces.filter((w) => w.provider === "boxd" && w.sandboxId).map((w) => w.sandboxId!);
+      if (!key || !ids.length) return;
+      const out: Record<string, string> = {};
+      await Promise.all(ids.map((id) => boxdMachine(key, id).then((m) => (out[id] = m.status)).catch(() => {})));
+      setMachines(out);
+    })();
+  }, [workspaces]);
 
   useEffect(() => {
     void (async () => {
@@ -51,18 +65,50 @@ export function WorkspacesTab() {
       >
         <div className="divide-y divide-[var(--border)] overflow-hidden rounded-2xl bg-raised hairline">
           {workspaces.map((w) => (
-            <WorkspaceCard key={w.id} w={w} active={w.id === activeId} sandbox={w.sandboxId ? sandboxes[w.sandboxId] : undefined} onSelect={() => void setActive(w.id)} onSandbox={(sb) => setSandboxes((p) => ({ ...p, [sb.id]: sb }))} />
+            <WorkspaceCard
+              key={w.id}
+              w={w}
+              active={w.id === activeId}
+              sandbox={w.sandboxId ? sandboxes[w.sandboxId] : undefined}
+              machine={w.sandboxId ? machines[w.sandboxId] : undefined}
+              onSelect={() => void setActive(w.id)}
+              onSandbox={(sb) => setSandboxes((p) => ({ ...p, [sb.id]: sb }))}
+              onMachine={(id, st) => setMachines((p) => ({ ...p, [id]: st }))}
+            />
           ))}
         </div>
       </Section>
-      <Section title="Boat API key" desc={hasBoatKey ? "Saved in your keychain." : undefined}>
-        <BoatKeyForm />
-      </Section>
+      {(hasBoatKey || workspaces.some((w) => w.provider === "boat")) && (
+        <Section title="Boat API key" desc={hasBoatKey ? "Saved in your keychain." : undefined}>
+          <BoatKeyForm />
+        </Section>
+      )}
+      {(hasBoxdKey || workspaces.some((w) => w.provider === "boxd")) && (
+        <Section title="boxd API key" desc={hasBoxdKey ? "Saved in your keychain." : undefined}>
+          <BoxdKeyForm />
+        </Section>
+      )}
     </>
   );
 }
 
-function WorkspaceCard({ w, active, sandbox, onSelect, onSandbox }: { w: Workspace; active: boolean; sandbox?: BoatSandbox; onSelect: () => void; onSandbox: (s: BoatSandbox) => void }) {
+function WorkspaceCard({
+  w,
+  active,
+  sandbox,
+  machine,
+  onSelect,
+  onSandbox,
+  onMachine,
+}: {
+  w: Workspace;
+  active: boolean;
+  sandbox?: BoatSandbox;
+  machine?: string;
+  onSelect: () => void;
+  onSandbox: (s: BoatSandbox) => void;
+  onMachine: (id: string, status: string) => void;
+}) {
   const status = useConnection((s) => (s.workspaceId === w.id ? s.status : "idle"));
   const remove = useWorkspaces((s) => s.remove);
   const [busy, setBusy] = useState<string | null>(null);
@@ -71,6 +117,7 @@ function WorkspaceCard({ w, active, sandbox, onSelect, onSandbox }: { w: Workspa
   const more = useRef<HTMLButtonElement>(null);
 
   async function boatAction(kind: "stop" | "resume") {
+    if (w.provider === "boxd") return boxdAction(kind);
     const key = await secrets.get(secretKeys.boat);
     if (!key || !w.sandboxId) return;
     setBusy(kind);
@@ -92,8 +139,29 @@ function WorkspaceCard({ w, active, sandbox, onSelect, onSandbox }: { w: Workspa
     }
   }
 
-  const sbState = sandbox?.state;
-  const asleep = sbState === "archived" || sbState === "archiving";
+  async function boxdAction(kind: "stop" | "resume") {
+    const key = await secrets.get(secretKeys.boxd);
+    if (!key || !w.sandboxId) return;
+    setBusy(kind);
+    try {
+      if (kind === "stop") {
+        if (active) useConnection.getState().disconnect();
+        await boxdHibernate(key, w.sandboxId);
+        toast({ tone: "ok", title: "Machine is hibernating", body: "You only pay for its disk while it sleeps." });
+      } else {
+        await boxdWake(key, w.sandboxId);
+      }
+      onMachine(w.sandboxId, (await boxdMachine(key, w.sandboxId)).status);
+      if (kind === "resume" && active) useConnection.getState().retry();
+    } catch (e) {
+      toast({ tone: "error", title: "Action failed", body: humanizeBoxd(e).message });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const sbState = w.provider === "boxd" ? machine : sandbox?.state;
+  const asleep = w.provider === "boxd" ? machine === "hibernated" || machine === "suspended" || machine === "stopped" : sbState === "archived" || sbState === "archiving";
 
   const host = w.provider === "boat" ? (w.sandboxId ?? "Boat") : new URL(w.baseUrl).host;
   const state = active ? statusText(status) : asleep ? "Asleep" : sbState ? cap(sbState) : null;
@@ -114,7 +182,7 @@ function WorkspaceCard({ w, active, sandbox, onSelect, onSandbox }: { w: Workspa
       </div>
       {confirm ? (
         <>
-          <span className="text-[12.5px] text-muted">{w.provider === "boat" ? "Remove from Otto? The sandbox is kept." : "Remove from Otto?"}</span>
+          <span className="text-[12.5px] text-muted">{w.provider === "boat" ? "Remove from Otto? The sandbox is kept." : w.provider === "boxd" ? "Remove from Otto? The machine is kept." : "Remove from Otto?"}</span>
           <Button size="sm" variant="ghost" onClick={() => setConfirm(false)}>
             Cancel
           </Button>
@@ -124,7 +192,7 @@ function WorkspaceCard({ w, active, sandbox, onSelect, onSandbox }: { w: Workspa
         </>
       ) : (
         <>
-          {w.provider === "boat" &&
+          {(w.provider === "boat" || w.provider === "boxd") &&
             (asleep ? (
               <Button size="sm" variant="ghost" icon={busy === "resume" ? <Spinner size={12} /> : <Power size={13} />} disabled={!!busy} onClick={() => boatAction("resume")}>
                 Wake
@@ -145,6 +213,7 @@ function WorkspaceCard({ w, active, sandbox, onSelect, onSandbox }: { w: Workspa
           <Popover open={menu} onClose={() => setMenu(false)} anchor={more.current} placement="bottom-end" width={200}>
             <div className="p-1">
               {w.provider === "boat" && <MenuItem icon={<ExternalLink size={14} />} label="Open Boat dashboard" onClick={() => (setMenu(false), openExternal("https://boat.dev/dashboard"))} />}
+              {w.provider === "boxd" && <MenuItem icon={<ExternalLink size={14} />} label="Open boxd console" onClick={() => (setMenu(false), openExternal("https://app.boxd.sh"))} />}
               <MenuItem icon={<Trash2 size={14} />} label="Remove" danger onClick={() => (setMenu(false), setConfirm(true))} />
             </div>
           </Popover>
@@ -173,6 +242,40 @@ function BoatKeyForm() {
           await useWorkspaces.getState().setBoatKey(key.trim());
           setKey("");
           toast({ tone: "ok", title: "Boat key updated" });
+        } catch (err) {
+          setError((err as Error).message);
+        } finally {
+          setSaving(false);
+        }
+      }}
+    >
+      <div className="flex-1">
+        <TextField type="password" placeholder="Paste a new key" value={key} onChange={(e) => setKey(e.target.value)} error={error} trailing={<KeyRound size={15} className="text-faint" />} />
+      </div>
+      <Button type="submit" className="h-9" disabled={saving || !key.trim()}>
+        {saving ? <Spinner /> : "Save"}
+      </Button>
+    </form>
+  );
+}
+
+function BoxdKeyForm() {
+  const [key, setKey] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <form
+      className="flex items-start gap-2"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        if (!key.trim()) return;
+        setSaving(true);
+        setError(null);
+        try {
+          await verifyBoxdKey(key.trim());
+          await useWorkspaces.getState().setBoxdKey(key.trim());
+          setKey("");
+          toast({ tone: "ok", title: "boxd key updated" });
         } catch (err) {
           setError((err as Error).message);
         } finally {

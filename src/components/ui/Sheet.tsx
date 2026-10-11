@@ -43,7 +43,7 @@ export function Sheet({
           />
           {compact ? (
             <motion.div
-              className="safe-bottom absolute inset-x-0 bottom-0 flex max-h-[92dvh] flex-col rounded-t-3xl border-t border-line bg-surface-solid"
+              className="safe-bottom absolute inset-x-0 bottom-0 flex max-h-[92dvh] flex-col rounded-t-3xl border-t border-line bg-surface-solid surface-overlay"
               initial={{ y: "100%" }}
               animate={{ y: 0 }}
               exit={{ y: "100%" }}
@@ -66,7 +66,7 @@ export function Sheet({
           ) : (
             <div className="pointer-events-none absolute inset-0 grid place-items-center p-6">
               <motion.div
-                className={`pointer-events-auto flex max-h-[86vh] w-full flex-col overflow-hidden rounded-3xl border border-line bg-surface-solid shadow-pop ${wide ? "max-w-[1060px]" : "max-w-[520px]"}`}
+                className={`pointer-events-auto flex max-h-[86vh] w-full flex-col overflow-hidden surface-overlay rounded-3xl border border-line bg-surface-solid shadow-pop ${wide ? "max-w-[1060px]" : "max-w-[520px]"}`}
                 initial={{ opacity: 0, scale: 0.985, y: 4 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.97, y: 4, transition: { duration: 0.12 } }}

@@ -95,7 +95,7 @@ export function Popover({
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.97, transition: { duration: 0.1 } }}
           transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }}
-          className={`fixed z-50 overflow-hidden rounded-2xl border border-line bg-raised shadow-pop ${className}`}
+          className={`surface-overlay fixed z-50 overflow-hidden rounded-2xl border border-line bg-raised shadow-pop ${className}`}
           style={{ left: pos?.left ?? -9999, top: pos?.top, bottom: pos?.bottom, width, transformOrigin: pos?.origin, visibility: pos ? "visible" : "hidden" }}
         >
           {children}

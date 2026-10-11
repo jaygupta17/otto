@@ -9,11 +9,11 @@ import { randomSecret, uid } from "../id";
 export type SetupStepId = "verify" | "machine" | "install" | "server" | "tunnel" | "hello";
 
 export const SETUP_STEPS: { id: SetupStepId; title: string; hint: string }[] = [
-  { id: "verify", title: "Checking your key", hint: "Making sure Boat knows you" },
-  { id: "machine", title: "Launching a cloud machine", hint: "4 vCPU · 8 GB · Linux" },
+  { id: "verify", title: "Checking your key", hint: "Signing in to your cloud account" },
+  { id: "machine", title: "Launching a cloud machine", hint: "Linux microVM" },
   { id: "install", title: "Installing OpenCode", hint: "The agent engine, v2" },
   { id: "server", title: "Starting the agent server", hint: "Runs as a service, survives sleep" },
-  { id: "tunnel", title: "Opening a private tunnel", hint: "HTTPS, token-gated" },
+  { id: "tunnel", title: "Opening a secure URL", hint: "HTTPS, password-protected" },
   { id: "hello", title: "Saying hello", hint: "First handshake with your agent" },
 ];
 

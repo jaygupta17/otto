@@ -321,6 +321,7 @@ function AgentEditor({ id, info, cfg, origin, isNew = false, onDone }: { id?: st
             <div>
               <Label hint={origin === "builtin" ? "Empty keeps the built-in prompt" : undefined}>Instructions</Label>
               <TextArea value={d.system} onChange={(v) => set({ system: v })} rows={8} placeholder="You are a meticulous code reviewer. Focus on correctness and security…" />
+              {d.system.trim() && <p className="mt-1.5 text-[12.5px] text-muted">These replace OpenCode's built-in prompt. OpenCode's free models refuse agents like that, so give this agent a model from a connected provider.</p>}
             </div>
           )}
           <div>

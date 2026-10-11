@@ -5,6 +5,7 @@ import { tokensPerSecond, type Block, type UIMessage } from "../../lib/opencode/
 import { clock, duration } from "../../lib/format";
 import { useNow } from "../../hooks/useNow";
 import { revertIndex, useChat, type FormLite } from "../../state/chat";
+import { useUI } from "../../state/ui";
 import { agentColor } from "../../lib/agentColor";
 import type { PermissionRequestLite } from "../../lib/opencode/client";
 import { Markdown } from "./Markdown";
@@ -145,7 +146,7 @@ export function Thread({ sessionId, bottomInset = 0 }: { sessionId: string; bott
               pinned.current = true;
               scrollToBottom(true);
             }}
-            className="absolute left-1/2 z-10 grid h-8 w-8 -translate-x-1/2 place-items-center rounded-full border border-line bg-raised text-ink-2 shadow-float hover:text-ink"
+            className="surface-float absolute left-1/2 z-10 grid h-8 w-8 -translate-x-1/2 place-items-center rounded-full border border-line bg-raised text-ink-2 shadow-float hover:text-ink"
             style={{ bottom: bottomInset + 12 }}
             aria-label="Jump to latest"
           >
@@ -370,10 +371,24 @@ function TurnFooter({ text, took, model, agent, speed, onFork }: { text: string;
 }
 
 function ErrorCard({ text }: { text: string }) {
+  // OpenCode's free models only accept OpenCode's own system prompt. An agent
+  // with custom instructions replaces it, so Zen refuses that agent.
+  const freeTier = /free tier/i.test(text);
   return (
     <div className="selectable my-3 flex items-start gap-2.5 rounded-2xl border border-danger/25 bg-danger-soft px-3.5 py-2.5 text-[14px] text-ink">
       <AlertCircle size={16} className="mt-0.5 shrink-0 text-danger" />
-      <div className="min-w-0 break-words">{text}</div>
+      <div className="min-w-0 break-words">
+        {text}
+        {freeTier && (
+          <div className="mt-1 text-[13px] text-ink-2">
+            OpenCode's free models only work with agents that keep OpenCode's built-in prompt. This agent has its own instructions, so switch to Build or Plan, pick a model from a provider, or{" "}
+            <button className="underline underline-offset-2 hover:text-ink" onClick={() => useUI.getState().openSettings("providers")}>
+              connect a provider
+            </button>
+            .
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -144,7 +144,7 @@ export function CommandPalette() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -4, transition: { duration: 0.08 } }}
             transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }}
-            className="absolute top-[12vh] left-1/2 flex max-h-[60vh] w-[min(620px,calc(100vw-32px))] -translate-x-1/2 flex-col overflow-hidden rounded-3xl border border-line bg-raised shadow-pop"
+            className="absolute top-[12vh] left-1/2 flex max-h-[60vh] w-[min(620px,calc(100vw-32px))] -translate-x-1/2 flex-col overflow-hidden surface-overlay rounded-3xl border border-line bg-raised shadow-pop"
           >
             <div className="flex items-center gap-2.5 border-b border-line px-4">
               <Search size={16} className="shrink-0 text-muted" />

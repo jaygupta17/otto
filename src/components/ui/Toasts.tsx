@@ -16,7 +16,7 @@ export function Toasts() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -10, scale: 0.97, transition: { duration: 0.15 } }}
             transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-            className="bg-raised pointer-events-auto flex w-full max-w-[420px] items-start gap-3 rounded-2xl border border-line px-3.5 py-2.5 shadow-pop"
+            className="surface-overlay bg-raised pointer-events-auto flex w-full max-w-[420px] items-start gap-3 rounded-2xl border border-line px-3.5 py-2.5 shadow-pop"
           >
             <span className={`mt-0.5 ${t.tone === "error" ? "text-danger" : t.tone === "ok" ? "text-ok" : "text-muted"}`}>
               {t.tone === "error" ? <AlertCircle size={17} /> : t.tone === "ok" ? <CheckCircle2 size={17} /> : <Info size={17} />}

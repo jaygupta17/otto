@@ -5,7 +5,7 @@ import type { SessionInfo } from "@opencode/client";
 import { sortedSessions, useChat } from "../../state/chat";
 import { useConnection } from "../../state/connection";
 import { useActiveWorkspace, useWorkspaces } from "../../state/workspaces";
-import { useUI } from "../../state/ui";
+import { useUI, backdropSettings } from "../../state/ui";
 import { basename, timeAgo } from "../../lib/format";
 import { useNow } from "../../hooks/useNow";
 import { Thread } from "../chat/Thread";
@@ -30,13 +30,17 @@ export function MobileApp() {
   const setView = useUI((s) => s.setView);
   const [newOpen, setNewOpen] = useState(false);
   const pushed = !!activeId || view === "schedules";
+  const bd = backdropSettings(useUI((s) => s.backdrop));
 
+  // Same materials as desktop (styles.css → Materials): the photo sits behind
+  // every screen and each screen frosts over it instead of painting a solid fill.
   return (
     <div className="relative h-full w-full overflow-hidden bg-bg">
+      {bd.on && <Backdrop />}
       <SessionsScreen onNew={() => setNewOpen(true)} dimmed={pushed} />
       <AnimatePresence>
         {view === "schedules" ? (
-          <motion.div key="schedules" initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }} transition={{ type: "spring", stiffness: 380, damping: 40 }} className="absolute inset-0 z-10 bg-panel shadow-pop">
+          <motion.div key="schedules" initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }} transition={{ type: "spring", stiffness: 380, damping: 40 }} className="surface-panel absolute inset-0 z-10 shadow-pop">
             <SchedulesView compact onBack={() => setView("chat")} />
           </motion.div>
         ) : (
@@ -63,18 +67,18 @@ function SessionsScreen({ onNew, dimmed }: { onNew: () => void; dimmed: boolean 
   }, [sessions, busy, q]);
 
   return (
-    <motion.div animate={{ x: dimmed ? "-28%" : 0, opacity: dimmed ? 0.6 : 1 }} transition={{ type: "spring", stiffness: 380, damping: 40 }} className="absolute inset-0 flex flex-col">
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <Backdrop />
-      </div>
-      <div className="scroll-quiet relative min-h-0 flex-1 overflow-y-auto pb-36">
+    <motion.div animate={{ x: dimmed ? "-28%" : 0, opacity: dimmed ? 0 : 1 }} transition={{ type: "spring", stiffness: 380, damping: 40 }} className="absolute inset-0 flex flex-col">
+      {/* The list is the whole screen, like the desktop home: the photo stays crisp
+          and a soft shade (stronger when the photo fights the theme) keeps text legible. */}
+      <div aria-hidden className="list-scrim pointer-events-none absolute inset-0" />
+      <div className="on-photo scroll-quiet relative min-h-0 flex-1 overflow-y-auto pb-36">
         <div className="safe-top px-5">
           <div className="flex h-14 items-center justify-end pt-2">
             <MobileMenu />
           </div>
           <h1 className="mt-1 text-[34px] font-bold">Sessions</h1>
           <WorkspacePill />
-          <div className="mt-4 flex h-10 items-center gap-2 rounded-2xl bg-sunken px-3.5 hairline">
+          <div className="field mt-4 flex h-10 items-center gap-2 rounded-2xl px-3.5">
             <Search size={16} className="text-faint" />
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search" className="min-w-0 flex-1 bg-transparent text-[16px] outline-none placeholder:text-faint" />
           </div>
@@ -98,7 +102,7 @@ function SessionsScreen({ onNew, dimmed }: { onNew: () => void; dimmed: boolean 
         <motion.button
           whileTap={{ scale: 0.97 }}
           onClick={onNew}
-          className="bg-raised pointer-events-auto flex h-[60px] w-full items-center gap-3 rounded-full border border-line pr-5 pl-2 shadow-pop"
+          className="surface-float bg-raised pointer-events-auto flex h-[60px] w-full items-center gap-3 rounded-full border border-line pr-5 pl-2 shadow-pop"
         >
           <span className="grid h-11 w-11 place-items-center rounded-full bg-ink text-bg shadow-soft">
             <Plus size={22} />
@@ -136,7 +140,7 @@ function MobileMenu() {
   const addWs = useUI((s) => s.setAddWorkspace);
   return (
     <>
-      <button ref={anchor} onClick={() => setOpen(true)} className="bg-raised grid h-11 w-11 place-items-center rounded-full border border-line" aria-label="Menu">
+      <button ref={anchor} onClick={() => setOpen(true)} className="surface-float bg-raised grid h-11 w-11 place-items-center rounded-full border border-line" aria-label="Menu">
         <MoreHorizontal size={20} />
       </button>
       <Popover open={open} onClose={() => setOpen(false)} anchor={anchor.current} placement="bottom-end" width={260}>
@@ -231,12 +235,12 @@ function SessionScreen({ sessionId }: { sessionId: string }) {
       onDragEnd={(_, info) => {
         if (info.offset.x > 110 || info.velocity.x > 500) open(null);
       }}
-      className="absolute inset-0 z-10 flex flex-col bg-panel shadow-pop"
+      className="surface-panel absolute inset-0 z-10 flex flex-col shadow-pop"
     >
       <div className="absolute inset-y-0 left-0 z-30 w-5 touch-none" onPointerDown={(e) => drag.start(e)} />
       <header className="safe-top relative z-20 shrink-0">
-        <div className="bg-raised flex h-[60px] items-center gap-2 px-3 hairline">
-          <button onClick={() => open(null)} className="grid h-11 w-11 place-items-center rounded-full bg-sunken" aria-label="Back">
+        <div className="flex h-[60px] items-center gap-2 border-b border-line px-3">
+          <button onClick={() => open(null)} className="grid h-11 w-11 place-items-center rounded-full bg-hover" aria-label="Back">
             <ChevronLeft size={22} />
           </button>
           <div className="min-w-0 flex-1 text-center">
@@ -246,7 +250,7 @@ function SessionScreen({ sessionId }: { sessionId: string }) {
               {status !== "ready" && ` · ${statusText(status).toLowerCase()}`}
             </div>
           </div>
-          <button ref={moreRef} onClick={() => setMenu(true)} className="grid h-11 w-11 place-items-center rounded-full bg-sunken" aria-label="More">
+          <button ref={moreRef} onClick={() => setMenu(true)} className="grid h-11 w-11 place-items-center rounded-full bg-hover" aria-label="More">
             <MoreHorizontal size={20} />
           </button>
         </div>
@@ -273,8 +277,8 @@ function SessionScreen({ sessionId }: { sessionId: string }) {
         ref={composerRef}
         className="safe-bottom pointer-events-none absolute inset-x-0 bottom-0 z-10 px-3"
       >
-        <div className="h-6 bg-gradient-to-b from-transparent to-[var(--bg-panel)]" />
-        <div className="pointer-events-auto bg-panel pb-2">
+        <div className="panel-fade h-6 bg-gradient-to-b from-transparent to-[var(--bg-panel)]" />
+        <div className="panel-fill pointer-events-auto pb-2">
           <InboxTray sessionId={sessionId} />
           <Composer sessionId={sessionId} compact placeholder="Message your agent" />
         </div>

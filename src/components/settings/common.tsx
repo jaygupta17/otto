@@ -96,7 +96,7 @@ export function Segmented<T extends string>({ options, value, onChange, size = "
           onClick={() => onChange(o.id)}
           className={`relative rounded-lg font-medium transition-colors ${size === "sm" ? "px-2.5 py-1 text-[12px]" : "px-3 py-1.5 text-[13px]"} ${value === o.id ? "text-ink" : "text-muted hover:text-ink"}`}
         >
-          {value === o.id && <motion.span layoutId={`seg-${id}`} className="absolute inset-0 rounded-lg bg-raised shadow-soft" transition={{ type: "spring", stiffness: 520, damping: 38 }} />}
+          {value === o.id && <motion.span layoutId={`seg-${id}`} className="seg-pill absolute inset-0 rounded-lg shadow-soft" transition={{ type: "spring", stiffness: 520, damping: 38 }} />}
           <span className="relative">{o.label}</span>
         </button>
       ))}
@@ -128,7 +128,7 @@ export function EffectPicker({ value, inherited, onChange, allowInherit = true }
             type="button"
             onClick={() => onChange(o)}
             title={o === null ? `Automatic. Currently “${inherited ?? "ask"}” from the defaults.` : o}
-            className={`rounded-lg px-2 py-[3px] text-[12px] font-medium capitalize transition-colors ${active ? (o ? EFFECT_STYLE[o] : "bg-raised text-ink shadow-soft") : "text-muted hover:text-ink"}`}
+            className={`rounded-lg px-2 py-[3px] text-[12px] font-medium capitalize transition-colors ${active ? (o ? EFFECT_STYLE[o] : "seg-pill text-ink shadow-soft") : "text-muted hover:text-ink"}`}
           >
             {o === null ? (
               <span className="inline-flex items-center gap-1">

@@ -49,7 +49,7 @@ export default function App() {
 
   return (
     <MotionConfig reducedMotion="user">
-      {workspaces.length === 0 ? <Onboarding /> : compact ? <MobileApp /> : <AppShell />}
+      {workspaces.length === 0 ? <Onboarding /> : compact ? <MobileApp /> : <AppShell compact={compact} />}
       {workspaces.length > 0 && <Settings compact={compact} />}
       {workspaces.length > 0 && <CommandPalette />}
       {workspaces.length > 0 && <ShortcutsSheet compact={compact} />}

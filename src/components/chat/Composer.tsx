@@ -206,7 +206,7 @@ export function Composer({ sessionId, placeholder = "Do anything…", autoFocus 
             initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 4, transition: { duration: 0.1 } }}
-            className="absolute inset-x-2 bottom-full z-20 mb-2 overflow-hidden rounded-2xl border border-line bg-raised p-1 shadow-pop"
+            className="surface-overlay absolute inset-x-2 bottom-full z-20 mb-2 overflow-hidden rounded-2xl border border-line bg-raised p-1 shadow-pop"
           >
             {suggest.items.length === 0 ? (
               <div className="px-3 py-2 text-[12.5px] text-muted">{suggest.query ? "No matching files" : "Type to search files"}</div>

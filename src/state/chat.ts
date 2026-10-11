@@ -838,4 +838,3 @@ function modelKey(m: { providerID: string; id: string }) {
 // Stores hold live connections; a hot swap would orphan them. Reload instead.
 if (import.meta.hot) import.meta.hot.accept(() => window.location.reload());
 
-if (import.meta.env.DEV) (window as unknown as { __chat: typeof useChat }).__chat = useChat;

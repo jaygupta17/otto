@@ -6,13 +6,13 @@ import { create } from "zustand";
 import { kv } from "../lib/kv";
 import { secrets } from "../lib/secrets";
 
-export type ProviderId = "boat" | "custom";
+export type ProviderId = "boat" | "boxd" | "custom";
 
 export interface Workspace {
   id: string;
   name: string;
   provider: ProviderId;
-  /** Boat sandbox id (bx_…) */
+  /** Boat sandbox id (bx_…) or boxd machine id */
   sandboxId?: string;
   baseUrl: string;
   createdAt: number;
@@ -25,18 +25,21 @@ interface State {
   workspaces: Workspace[];
   activeId: string | null;
   hasBoatKey: boolean;
+  hasBoxdKey: boolean;
   hydrate(): Promise<void>;
   add(ws: Workspace, creds: { password: string; gateToken?: string }): Promise<void>;
   update(id: string, patch: Partial<Workspace>, creds?: { password?: string; gateToken?: string | null }): Promise<void>;
   remove(id: string): Promise<void>;
   setActive(id: string | null): Promise<void>;
   setBoatKey(key: string | null): Promise<void>;
+  setBoxdKey(key: string | null): Promise<void>;
 }
 
 const KEY = "workspaces.v1";
 
 export const secretKeys = {
   boat: "provider.boat.apiKey",
+  boxd: "provider.boxd.apiKey",
   password: (id: string) => `ws.${id}.password`,
   gate: (id: string) => `ws.${id}.gate`,
 };
@@ -50,13 +53,15 @@ export const useWorkspaces = create<State>((set, get) => ({
   workspaces: [],
   activeId: null,
   hasBoatKey: false,
+  hasBoxdKey: false,
 
   async hydrate() {
     const saved = await kv.get<{ workspaces: Workspace[]; activeId: string | null }>(KEY);
     const hasBoatKey = !!(await secrets.get(secretKeys.boat));
+    const hasBoxdKey = !!(await secrets.get(secretKeys.boxd));
     const workspaces = saved?.workspaces ?? [];
     const activeId = saved?.activeId && workspaces.some((w) => w.id === saved.activeId) ? saved.activeId : (workspaces[0]?.id ?? null);
-    set({ hydrated: true, workspaces, activeId, hasBoatKey });
+    set({ hydrated: true, workspaces, activeId, hasBoatKey, hasBoxdKey });
   },
 
   async add(ws, creds) {
@@ -98,6 +103,12 @@ export const useWorkspaces = create<State>((set, get) => ({
     if (key) await secrets.set(secretKeys.boat, key);
     else await secrets.delete(secretKeys.boat);
     set({ hasBoatKey: !!key });
+  },
+
+  async setBoxdKey(key) {
+    if (key) await secrets.set(secretKeys.boxd, key);
+    else await secrets.delete(secretKeys.boxd);
+    set({ hasBoxdKey: !!key });
   },
 }));
 

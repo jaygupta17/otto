@@ -109,7 +109,7 @@ function WorkspaceSwitcher() {
           {all.map((w) => (
             <MenuItem
               key={w.id}
-              icon={w.provider === "boat" ? <Cloud size={14} /> : <Server size={14} />}
+              icon={w.provider !== "custom" ? <Cloud size={14} /> : <Server size={14} />}
               label={w.name}
               hint={w.sandboxId ?? new URL(w.baseUrl).host}
               active={w.id === ws?.id}
@@ -147,7 +147,7 @@ function WorkspaceSwitcher() {
 export function WorkspaceAvatar({ provider, size = 28 }: { provider: string; status?: string; size?: number }) {
   return (
     <div className="grid shrink-0 place-items-center rounded-lg border border-line bg-raised text-ink-2" style={{ width: size, height: size }}>
-      {provider === "boat" ? <Cloud size={Math.round(size * 0.5)} /> : <Server size={Math.round(size * 0.5)} />}
+      {provider !== "custom" ? <Cloud size={Math.round(size * 0.5)} /> : <Server size={Math.round(size * 0.5)} />}
     </div>
   );
 }
