@@ -12,6 +12,7 @@ export function Sheet({
   children,
   title,
   wide = false,
+  narrow = false,
   compact,
 }: {
   open: boolean;
@@ -19,6 +20,8 @@ export function Sheet({
   children: ReactNode;
   title?: ReactNode;
   wide?: boolean;
+  /** A small dialog (confirmations, one-field prompts). */
+  narrow?: boolean;
   compact: boolean;
 }) {
   const drag = useDragControls();
@@ -32,7 +35,7 @@ export function Sheet({
   return createPortal(
     <AnimatePresence>
       {open && (
-        <div className="fixed inset-0 z-40">
+        <div className="fixed inset-x-0 top-0 z-40 h-[var(--app-h,100dvh)]">
           <motion.div
             className="absolute inset-0 bg-black/30"
             initial={{ opacity: 0 }}
@@ -43,7 +46,7 @@ export function Sheet({
           />
           {compact ? (
             <motion.div
-              className="safe-bottom absolute inset-x-0 bottom-0 flex max-h-[92dvh] flex-col rounded-t-3xl border-t border-line bg-surface-solid surface-overlay"
+              className="safe-bottom absolute inset-x-0 bottom-0 flex max-h-[calc(100%-var(--safe-t)-12px)] flex-col rounded-t-3xl border-t border-line bg-surface-solid surface-overlay"
               initial={{ y: "100%" }}
               animate={{ y: 0 }}
               exit={{ y: "100%" }}
@@ -66,7 +69,7 @@ export function Sheet({
           ) : (
             <div className="pointer-events-none absolute inset-0 grid place-items-center p-6">
               <motion.div
-                className={`pointer-events-auto flex max-h-[86vh] w-full flex-col overflow-hidden surface-overlay rounded-3xl border border-line bg-surface-solid shadow-pop ${wide ? "max-w-[1060px]" : "max-w-[520px]"}`}
+                className={`pointer-events-auto flex max-h-[86vh] w-full flex-col overflow-hidden surface-overlay rounded-3xl border border-line bg-surface-solid shadow-pop ${wide ? "max-w-[1060px]" : narrow ? "max-w-[400px]" : "max-w-[520px]"}`}
                 initial={{ opacity: 0, scale: 0.985, y: 4 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.97, y: 4, transition: { duration: 0.12 } }}

@@ -78,13 +78,19 @@ export function McpTab() {
 
   async function add(name: string, cfg: McpServerConfig) {
     if (!client) return false;
-    const ok = await update((c) => ({ ...c, mcp: { ...(c.mcp ?? {}), servers: { ...(c.mcp?.servers ?? {}), [name]: cfg } } }), { success: `Added ${name}` });
-    if (ok) {
-      // Connect now instead of waiting for the file watcher.
-      await client.mcpPut(name, cfg as never).catch(() => {});
-      await loadMcp();
+    setBusy(name);
+    try {
+      const ok = await update((c) => ({ ...c, mcp: { ...(c.mcp ?? {}), servers: { ...(c.mcp?.servers ?? {}), [name]: cfg } } }), { success: `Added ${name}` });
+      if (ok) {
+        // Connect now instead of waiting for the file watcher. A local server
+        // may install itself first (npx), so this can take a while.
+        await client.mcpPut(name, cfg as never).catch(() => {});
+        await loadMcp();
+      }
+      return ok;
+    } finally {
+      setBusy(null);
     }
-    return ok;
   }
 
   return (
@@ -136,8 +142,16 @@ export function McpTab() {
                   <span className="block truncate text-[14px] font-medium">{p.label}</span>
                   <span className="block truncate text-[13px] text-muted">{p.desc}</span>
                 </span>
-                <Button size="sm" variant={installed ? "ghost" : "secondary"} disabled={installed} onClick={() => void add(p.name, p.config)}>
-                  {installed ? "Added" : "Add"}
+                <Button size="sm" variant={installed && busy !== p.name ? "ghost" : "secondary"} disabled={installed || !!busy} onClick={() => void add(p.name, p.config)}>
+                  {busy === p.name ? (
+                    <span className="flex items-center gap-1.5">
+                      <Spinner size={12} /> Adding
+                    </span>
+                  ) : installed ? (
+                    "Added"
+                  ) : (
+                    "Add"
+                  )}
                 </Button>
               </div>
             );

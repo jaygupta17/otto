@@ -2,7 +2,7 @@ import { memo } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { CodeBlock } from "./CodeBlock";
-import { openExternal } from "../../lib/platform";
+import { openLink } from "../../lib/preview";
 
 const plugins = [remarkGfm];
 
@@ -20,7 +20,7 @@ function makeComponents(streaming: boolean): Components {
         href={href}
         onClick={(e) => {
           e.preventDefault();
-          if (href) void openExternal(href);
+          if (href) openLink(href);
         }}
       >
         {children}

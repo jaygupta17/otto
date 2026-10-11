@@ -14,31 +14,41 @@ function resolvePath(root: string, p: string) {
   return `${root.replace(/\/$/, "")}/${p.replace(/^\.\//, "")}`;
 }
 
-/** File tree. Clicking a file opens it in the editor panel (or the viewer sheet on phones). */
-export function FilesPanel({ root, onClose }: { root: string; onClose?: () => void }) {
+/**
+ * File tree. Clicking a file opens it in the editor panel (or the viewer sheet on phones).
+ * `bare` drops the header, for when the tree sits inside the right panel.
+ */
+export function FilesPanel({ root, onClose, bare = false }: { root: string; onClose?: () => void; bare?: boolean }) {
   const [filter, setFilter] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
 
   return (
     <div className="flex h-full min-w-0 flex-col">
-      <div className="drag flex h-[52px] shrink-0 items-center gap-1 px-3" data-tauri-drag-region>
-        <div className="min-w-0 flex-1 truncate text-[13px] font-semibold" data-tauri-drag-region>
-          {basename(root)}
-        </div>
-        <IconButton label="Refresh" className="no-drag" onClick={() => setRefreshKey((k) => k + 1)}>
-          <RefreshCw size={14} />
-        </IconButton>
-        {onClose && (
-          <IconButton label="Close files" className="no-drag" onClick={onClose}>
-            <X size={16} />
+      {!bare && (
+        <div className="drag flex h-[52px] shrink-0 items-center gap-1 px-3" data-tauri-drag-region>
+          <div className="min-w-0 flex-1 truncate text-[13px] font-semibold" data-tauri-drag-region>
+            {basename(root)}
+          </div>
+          <IconButton label="Refresh" className="no-drag" onClick={() => setRefreshKey((k) => k + 1)}>
+            <RefreshCw size={14} />
           </IconButton>
-        )}
-      </div>
-      <div className="px-2 pb-2">
-        <div className="field flex h-8 items-center gap-2 rounded-lg px-2.5">
+          {onClose && (
+            <IconButton label="Close files" className="no-drag" onClick={onClose}>
+              <X size={16} />
+            </IconButton>
+          )}
+        </div>
+      )}
+      <div className={`flex items-center gap-1 px-2 pb-2 ${bare ? "pt-2" : ""}`}>
+        <div className="field flex h-8 min-w-0 flex-1 items-center gap-2 rounded-lg px-2.5">
           <Search size={13} className="text-faint" />
           <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Find files" className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-faint" />
         </div>
+        {bare && (
+          <IconButton label="Refresh" size={28} onClick={() => setRefreshKey((k) => k + 1)}>
+            <RefreshCw size={13} />
+          </IconButton>
+        )}
       </div>
       <div className="scroll-quiet min-h-0 flex-1 overflow-auto px-1.5 pb-4">
         {filter.trim() ? <FindResults root={root} query={filter.trim()} /> : <Dir key={`${root}-${refreshKey}`} root={root} path={root} depth={0} initiallyOpen />}

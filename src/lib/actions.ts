@@ -1,6 +1,34 @@
 /** Small app-level actions shared by keyboard shortcuts and the command palette. */
 import { useChat } from "../state/chat";
 import { toast } from "../state/ui";
+import { confirmDialog, promptDialog } from "../components/ui/Dialogs";
+
+/** The directory the user is working in: the open session's, else the picked project, else home. */
+export function currentDir(): string | null {
+  const st = useChat.getState();
+  return (st.activeId ? st.sessions[st.activeId]?.location.directory : undefined) ?? st.projectDir ?? st.homeDir;
+}
+
+/** Delete a session after the user confirms. Resolves true if it was deleted. */
+export async function deleteSession(id: string) {
+  const st = useChat.getState();
+  const title = st.sessions[id]?.title || "this session";
+  const ok = await confirmDialog({
+    title: "Delete session?",
+    body: `"${title}" and its history will be removed from the server. Files the agent changed stay as they are.`,
+    confirm: "Delete",
+    danger: true,
+  });
+  if (ok) await useChat.getState().remove(id);
+  return ok;
+}
+
+/** Ask for a new session title. */
+export async function renameSession(id: string) {
+  const current = useChat.getState().sessions[id]?.title ?? "";
+  const t = await promptDialog({ title: "Rename session", value: current, placeholder: "Session title" });
+  if (t && t !== current) await useChat.getState().rename(id, t);
+}
 
 /** Primary agents the user can pick, in menu order. */
 export function primaryAgents() {

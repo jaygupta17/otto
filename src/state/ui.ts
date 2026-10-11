@@ -54,13 +54,36 @@ export interface Toast {
   tone: "info" | "error" | "ok";
   title: string;
   body?: string;
+  /** A button on the toast, e.g. "Open" for a session that needs you. */
+  action?: { label: string; run(): void };
 }
+
+/** Tools in the right-hand panel, opened from the rail at the window's edge. */
+export type PanelSurface = "files" | "terminal" | "browser" | "context" | "project";
+
+/** Width each surface opens at until the user drags it (px). */
+export const PANEL_DEFAULT_WIDTH: Record<PanelSurface, number> = { files: 640, terminal: 600, browser: 620, context: 360, project: 540 };
 
 interface UIState {
   theme: ThemePref;
   resolvedTheme: "light" | "dark";
   sidebarOpen: boolean;
-  filesOpen: boolean;
+  /** The open right-panel surface, or null when the panel is closed. */
+  panel: PanelSurface | null;
+  panelWidths: Partial<Record<PanelSurface, number>>;
+  /** The panel covers the chat. */
+  panelExpanded: boolean;
+  /** The file tree column inside the Files surface. */
+  treeOpen: boolean;
+  openPanel(s: PanelSurface): void;
+  togglePanel(s: PanelSurface): void;
+  closePanel(): void;
+  setPanelWidth(s: PanelSurface, w: number): void;
+  setPanelExpanded(v: boolean): void;
+  toggleTree(v?: boolean): void;
+  /** A URL to show in the Browser surface; `n` changes on every request so the same URL can reload. */
+  browserRequest: { url: string; n: number } | null;
+  openInBrowser(url: string): void;
   settingsOpen: boolean;
   settingsTab: SettingsTab;
   addWorkspaceOpen: boolean;
@@ -68,11 +91,8 @@ interface UIState {
   /** Files open in the editor panel (absolute paths), in tab order. */
   editorFiles: string[];
   activeFile: string | null;
-  /** Width of the chat column while the editor is open (px). */
-  chatWidth: number;
   openInEditor(path: string): void;
   closeEditorFile(path: string): void;
-  setChatWidth(w: number): void;
   paletteOpen: boolean;
   setPalette(v: boolean): void;
   shortcutsOpen: boolean;
@@ -87,15 +107,11 @@ interface UIState {
   /** Save (if new) and switch to a background. */
   applyBackdrop(item: BackdropItem): Promise<void>;
   removeBackdrop(id: string): Promise<void>;
-  /** Desktop/mobile notifications when a session finishes in the background. */
-  notify: boolean;
-  setNotify(v: boolean): void;
   /** Home keeps the prompt centred and drops its header and recent list. */
   homeCompact: boolean;
   setHomeCompact(v: boolean): void;
   setTheme(t: ThemePref): void;
   toggleSidebar(v?: boolean): void;
-  toggleFiles(v?: boolean): void;
   openSettings(tab?: UIState["settingsTab"]): void;
   closeSettings(): void;
   setAddWorkspace(v: boolean): void;
@@ -129,14 +145,38 @@ export const useUI = create<UIState>((set, get) => ({
   theme: readTheme(),
   resolvedTheme: resolve(readTheme()),
   sidebarOpen: true,
-  filesOpen: false,
+  panel: null,
+  panelWidths: {},
+  panelExpanded: false,
+  treeOpen: true,
+  openPanel(panel) {
+    set({ panel });
+  },
+  togglePanel(panel) {
+    set({ panel: get().panel === panel ? null : panel });
+  },
+  closePanel() {
+    set({ panel: null, panelExpanded: false });
+  },
+  setPanelWidth(surface, w) {
+    set({ panelWidths: { ...get().panelWidths, [surface]: Math.round(w) } });
+  },
+  setPanelExpanded(v) {
+    set({ panelExpanded: v });
+  },
+  toggleTree(v) {
+    set({ treeOpen: v ?? !get().treeOpen });
+  },
+  browserRequest: null,
+  openInBrowser(url) {
+    set({ browserRequest: { url, n: (get().browserRequest?.n ?? 0) + 1 }, panel: "browser" });
+  },
   settingsOpen: false,
   settingsTab: "general",
   addWorkspaceOpen: false,
   toasts: [],
   editorFiles: [],
   activeFile: null,
-  chatWidth: 460,
   paletteOpen: false,
   shortcutsOpen: false,
   setPalette(v) {
@@ -147,7 +187,7 @@ export const useUI = create<UIState>((set, get) => ({
   },
   openInEditor(path) {
     const files = get().editorFiles;
-    set({ editorFiles: files.includes(path) ? files : [...files, path].slice(-12), activeFile: path });
+    set({ editorFiles: files.includes(path) ? files : [...files, path].slice(-12), activeFile: path, panel: "files" });
   },
   closeEditorFile(path) {
     const files = get().editorFiles;
@@ -156,20 +196,11 @@ export const useUI = create<UIState>((set, get) => ({
     const active = get().activeFile === path ? (next[Math.min(i, next.length - 1)] ?? null) : get().activeFile;
     set({ editorFiles: next, activeFile: active });
   },
-  setChatWidth(w) {
-    set({ chatWidth: Math.round(w) });
-    void kv.set("ui.chatWidth", Math.round(w));
-  },
   view: "chat",
   setView(v) {
     set({ view: v });
   },
   backdrop: { kind: "none", intensity: BACKDROP_DEFAULTS.intensity, image: null },
-  notify: false,
-  setNotify(v) {
-    set({ notify: v });
-    void kv.set("ui.notify", v);
-  },
   homeCompact: true,
   setHomeCompact(v) {
     set({ homeCompact: v });
@@ -216,9 +247,6 @@ export const useUI = create<UIState>((set, get) => ({
   toggleSidebar(v) {
     set({ sidebarOpen: v ?? !get().sidebarOpen });
   },
-  toggleFiles(v) {
-    set({ filesOpen: v ?? !get().filesOpen });
-  },
   openSettings(tab) {
     set({ settingsOpen: true, settingsTab: tab ?? get().settingsTab });
   },
@@ -231,7 +259,7 @@ export const useUI = create<UIState>((set, get) => ({
   pushToast(t) {
     const id = uid("t_");
     set({ toasts: [...get().toasts.slice(-3), { ...t, id }] });
-    setTimeout(() => get().dismissToast(id), t.tone === "error" ? 6500 : 3500);
+    setTimeout(() => get().dismissToast(id), t.action ? 8000 : t.tone === "error" ? 6500 : 3500);
   },
   dismissToast(id) {
     set({ toasts: get().toasts.filter((t) => t.id !== id) });
@@ -271,14 +299,12 @@ export async function initUI() {
     useUI.setState({ backdrop: known ? backdrop : { ...backdrop, kind: "none" } });
   }
   useUI.setState({ backdrops });
-  if ((await kv.get<boolean>("ui.notify")) === true) useUI.setState({ notify: true });
   if ((await kv.get<boolean>("ui.homeCompact")) === false) useUI.setState({ homeCompact: false });
-  const chatWidth = await kv.get<number>("ui.chatWidth");
-  if (chatWidth) useUI.setState({ chatWidth });
-  const layout = await kv.get<{ sidebarOpen?: boolean }>("ui.layout");
-  if (layout?.sidebarOpen === false) useUI.setState({ sidebarOpen: false });
+  const layout = await kv.get<{ sidebarOpen?: boolean; panel?: PanelSurface | null; panelWidths?: UIState["panelWidths"]; treeOpen?: boolean }>("ui.layout");
+  if (layout) useUI.setState({ sidebarOpen: layout.sidebarOpen !== false, panel: layout.panel ?? null, panelWidths: layout.panelWidths ?? {}, treeOpen: layout.treeOpen !== false });
   useUI.subscribe((s, prev) => {
-    if (s.sidebarOpen !== prev.sidebarOpen) void kv.set("ui.layout", { sidebarOpen: s.sidebarOpen });
+    if (s.sidebarOpen !== prev.sidebarOpen || s.panel !== prev.panel || s.panelWidths !== prev.panelWidths || s.treeOpen !== prev.treeOpen)
+      void kv.set("ui.layout", { sidebarOpen: s.sidebarOpen, panel: s.panel, panelWidths: s.panelWidths, treeOpen: s.treeOpen });
   });
 }
 

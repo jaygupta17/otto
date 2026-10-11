@@ -260,6 +260,9 @@ EnvironmentFile=/etc/otto/opencode.env
 ExecStart=$OC serve --hostname 0.0.0.0 --port ${port}
 Restart=always
 RestartSec=2
+# When the agent installs something heavy (a browser, a big npm tree) and the
+# machine runs out of memory, the kernel should kill that, not the agent server.
+OOMScoreAdjust=-900
 
 [Install]
 WantedBy=multi-user.target
@@ -291,6 +294,9 @@ cat > "$D/serve.sh" <<'SERVE'
 set -a; . "$HOME/.otto/opencode.env"; set +a
 export PATH="$HOME/.opencode/bin:$PATH" TERM=xterm-256color
 cd "$HOME/projects"
+# Out of memory (say, the agent installing a browser), the kernel should kill
+# that and not the agent server. Inherited by the server; needs passwordless sudo.
+sudo -n sh -c "echo -900 > /proc/$$/oom_score_adj" 2>/dev/null || true
 while true; do
   "$HOME/.opencode/bin/opencode" serve --hostname 0.0.0.0 --port ${port} >> "$HOME/.otto/opencode.log" 2>&1
   sleep 2

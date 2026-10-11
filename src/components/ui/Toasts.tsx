@@ -25,6 +25,17 @@ export function Toasts() {
               <div className="text-[13px] font-medium">{t.title}</div>
               {t.body && <div className="selectable mt-0.5 line-clamp-3 text-[12.5px] text-muted">{t.body}</div>}
             </div>
+            {t.action && (
+              <button
+                className="-my-0.5 shrink-0 self-center rounded-lg bg-hover px-2.5 py-1 text-[12.5px] font-medium text-ink transition-colors hover:bg-active"
+                onClick={() => {
+                  t.action!.run();
+                  dismiss(t.id);
+                }}
+              >
+                {t.action.label}
+              </button>
+            )}
             <button className="text-faint hover:text-ink" onClick={() => dismiss(t.id)} aria-label="Dismiss">
               <X size={15} />
             </button>

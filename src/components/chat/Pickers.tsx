@@ -4,6 +4,8 @@ import type { ModelInfo } from "@opencode/client";
 import { useChat } from "../../state/chat";
 import { agentColor } from "../../lib/agentColor";
 import { Popover, MenuItem } from "../ui/Popover";
+import { Sheet } from "../ui/Sheet";
+import { kv } from "../../lib/kv";
 import { Spinner } from "../ui/AgentClock";
 import { basename, compactNumber, prettyPath } from "../../lib/format";
 import type { ModelRef } from "../../lib/opencode/client";
@@ -43,36 +45,24 @@ function useCurrentModel(sessionId: string | null): { ref: ModelRef | null; info
   return { ref, info };
 }
 
+/** "Exo Free", "Big Pickle (free)", "foo-free" → the name without the free tag. */
+function cleanName(m: ModelInfo) {
+  return m.name.replace(/\s*[·(\-–:]?\s*free\)?$/i, "").trim() || m.name;
+}
+
+const RECENT_KEY = "models.recent";
+const keyOf = (m: { providerID: string; id: string }) => `${m.providerID}/${m.id}`;
+
+/**
+ * The model menu: what's in use (with its effort levels) on top, then the
+ * models used lately, then every provider's catalog. A popover on desktop,
+ * a bottom sheet on phones.
+ */
 export function ModelPicker({ sessionId, compact = false }: { sessionId: string | null; compact?: boolean }) {
   const anchor = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
-  const [q, setQ] = useState("");
-  const models = useChat((s) => s.models);
-  const broken = useChat((s) => s.brokenModels);
-  const setModel = useChat((s) => s.setModel);
-  const refreshCatalog = useChat((s) => s.refreshCatalog);
   const { ref, info } = useCurrentModel(sessionId);
-
-  useEffect(() => {
-    if (open && models.length === 0) void refreshCatalog();
-  }, [open, models.length, refreshCatalog]);
-
-  const groups = useMemo(() => {
-    const term = q.trim().toLowerCase();
-    const list = models.filter((m) => m.status !== "deprecated" && m.enabled !== false && !broken.includes(`${m.providerID}/${m.id}`) && (!term || `${m.name} ${m.id} ${m.providerID}`.toLowerCase().includes(term)));
-    const by = new Map<string, ModelInfo[]>();
-    for (const m of list) {
-      const arr = by.get(m.providerID) ?? [];
-      arr.push(m);
-      by.set(m.providerID, arr);
-    }
-    const order = (p: string) => (p === "opencode" ? 0 : p === "anthropic" ? 1 : p === "openai" ? 2 : 3);
-    return [...by.entries()]
-      .sort((a, b) => order(a[0]) - order(b[0]) || a[0].localeCompare(b[0]))
-      .map(([p, ms]) => [p, ms.sort((a, b) => b.time.released - a.time.released).slice(0, term ? 50 : 14)] as const);
-  }, [models, q, broken]);
-
-  const label = info?.name ?? ref?.id ?? "Choose model";
+  const label = info ? cleanName(info) : (ref?.id ?? "Choose model");
   const variant = ref?.variant && ref.variant !== "default" ? ref.variant : null;
 
   return (
@@ -82,63 +72,160 @@ export function ModelPicker({ sessionId, compact = false }: { sessionId: string 
         onClick={() => setOpen((v) => !v)}
         className="flex h-8 min-w-0 items-center gap-1 rounded-md px-2 text-[13px] text-ink-2 transition-colors hover:bg-hover hover:text-ink"
       >
-        <span className="truncate">{compact ? shortName(label) : label}</span>
-        {variant && <span className="text-muted">{cap(variant)}</span>}
+        <span className={`truncate ${compact ? "max-w-[118px]" : "max-w-[220px]"}`}>{label}</span>
+        {variant && <span className="shrink-0 text-muted">{cap(variant)}</span>}
         <ChevronDown size={13} className="shrink-0 text-faint" />
       </button>
-      <Popover open={open} onClose={() => setOpen(false)} anchor={anchor.current} placement="top-end" width={340}>
-        <div className="border-b border-line p-2">
-          <div className="field flex h-8 items-center gap-2 rounded-lg px-2.5">
-            <Search size={14} className="text-faint" />
-            <input data-autofocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search models" className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-faint" />
+      {compact ? (
+        <Sheet open={open} onClose={() => setOpen(false)} compact title="Model">
+          <ModelMenu sessionId={sessionId} touch onDone={() => setOpen(false)} />
+        </Sheet>
+      ) : (
+        <Popover open={open} onClose={() => setOpen(false)} anchor={anchor.current} placement="top-end" width={360}>
+          <ModelMenu sessionId={sessionId} onDone={() => setOpen(false)} />
+        </Popover>
+      )}
+    </>
+  );
+}
+
+function ModelMenu({ sessionId, touch = false, onDone }: { sessionId: string | null; touch?: boolean; onDone: () => void }) {
+  const [q, setQ] = useState("");
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [recent, setRecent] = useState<string[]>([]);
+  const models = useChat((s) => s.models);
+  const broken = useChat((s) => s.brokenModels);
+  const setModel = useChat((s) => s.setModel);
+  const refreshCatalog = useChat((s) => s.refreshCatalog);
+  const { ref, info } = useCurrentModel(sessionId);
+
+  useEffect(() => {
+    if (models.length === 0) void refreshCatalog();
+    void kv.get<string[]>(RECENT_KEY).then((r) => setRecent(r ?? []));
+  }, [models.length, refreshCatalog]);
+
+  const usable = useMemo(() => models.filter((m) => m.status !== "deprecated" && m.enabled !== false && !broken.includes(keyOf(m))), [models, broken]);
+  const term = q.trim().toLowerCase();
+
+  const groups = useMemo(() => {
+    const list = usable.filter((m) => !term || `${m.name} ${m.id} ${m.providerID} ${providerName(m.providerID)}`.toLowerCase().includes(term));
+    const by = new Map<string, ModelInfo[]>();
+    for (const m of list) by.set(m.providerID, [...(by.get(m.providerID) ?? []), m]);
+    const order = (p: string) => (p === "opencode" ? 0 : p === "anthropic" ? 1 : p === "openai" ? 2 : 3);
+    return [...by.entries()].sort((a, b) => order(a[0]) - order(b[0]) || providerName(a[0]).localeCompare(providerName(b[0]))).map(([p, ms]) => [p, ms.sort((a, b) => b.time.released - a.time.released)] as const);
+  }, [usable, term]);
+
+  const recentModels = useMemo(() => {
+    if (term) return [];
+    const current = ref ? keyOf(ref) : null;
+    return recent
+      .filter((k) => k !== current)
+      .map((k) => usable.find((m) => keyOf(m) === k))
+      .filter((m): m is ModelInfo => !!m)
+      .slice(0, 4);
+  }, [recent, usable, ref, term]);
+
+  const pick = (m: ModelInfo) => {
+    void setModel({ providerID: m.providerID, id: m.id }, sessionId);
+    const next = [keyOf(m), ...recent.filter((k) => k !== keyOf(m))].slice(0, 8);
+    setRecent(next);
+    void kv.set(RECENT_KEY, next);
+    // Stay open when there's an effort level to choose next.
+    if (!m.variants?.length) onDone();
+  };
+
+  const row = (m: ModelInfo, showProvider = false, freeTag = true) => {
+    const active = ref?.providerID === m.providerID && ref?.id === m.id;
+    return (
+      <button
+        key={keyOf(m)}
+        onClick={() => pick(m)}
+        className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 text-left transition-colors hover:bg-hover ${touch ? "py-2.5" : "py-1.5"} ${active ? "bg-active" : ""}`}
+      >
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-1.5">
+            <span className={`truncate ${touch ? "text-[15px]" : "text-[13px]"} text-ink`}>{cleanName(m)}</span>
+            {freeTag && isFree(m) && <span className="shrink-0 rounded-full bg-ok-soft px-1.5 py-px text-[10.5px] font-medium text-ok">Free</span>}
+          </span>
+          {showProvider && <span className="block truncate text-[12px] text-muted">{providerName(m.providerID)}</span>}
+        </span>
+        <span className="shrink-0 text-[11.5px] text-faint tabular-nums" title={`${m.limit.context.toLocaleString()} token context`}>
+          {compactNumber(m.limit.context)}
+        </span>
+        <Check size={14} className={`shrink-0 text-ink-2 ${active ? "" : "invisible"}`} />
+      </button>
+    );
+  };
+
+  const LIMIT = 6;
+  return (
+    <div className="flex max-h-[inherit] flex-col">
+      {info && info.variants?.length > 0 && !term && (
+        <div className="border-b border-line px-3 py-2.5">
+          <div className="mb-1.5 flex items-center justify-between text-[12px] text-muted">
+            <span className="truncate">
+              Effort for <span className="text-ink-2">{cleanName(info)}</span>
+            </span>
           </div>
-        </div>
-        <div className="scroll-quiet max-h-[min(420px,55vh)] overflow-y-auto p-1.5">
-          {models.length === 0 && <div className="p-6 text-center text-[13px] text-muted">No models yet. Connect a provider in Settings.</div>}
-          {groups.map(([provider, ms]) => (
-            <div key={provider} className="mb-1">
-              <div className="px-2 pt-2 pb-1 text-[12px] font-medium text-muted">{providerName(provider)}</div>
-              {ms.map((m) => {
-                const active = ref?.providerID === m.providerID && ref?.id === m.id;
-                return (
-                  <MenuItem
-                    key={`${m.providerID}/${m.id}`}
-                    active={active}
-                    label={/\bfree\b/i.test(m.name) || !isFree(m) ? m.name : `${m.name} · Free`}
-                    right={
-                      <span className="flex items-center gap-2">
-                        <span className="text-[12px] text-faint tabular-nums" title={`${m.limit.context.toLocaleString()} token context`}>
-                          {compactNumber(m.limit.context)}
-                        </span>
-                        <Check size={14} className={`text-ink-2 ${active ? "" : "invisible"}`} />
-                      </span>
-                    }
-                    onClick={() => {
-                      void setModel({ providerID: m.providerID, id: m.id }, sessionId);
-                      if (!m.variants?.length) setOpen(false);
-                    }}
-                  />
-                );
-              })}
-            </div>
-          ))}
-        </div>
-        {info && info.variants?.length > 0 && (
-          <div className="flex items-center gap-1 border-t border-line p-2">
-            <span className="px-1.5 text-[12px] text-muted">Effort</span>
+          <div className="flex gap-1 rounded-lg bg-hover p-0.5">
             {info.variants.map((v) => (
               <button
                 key={v.id}
                 onClick={() => void setModel({ providerID: info.providerID, id: info.id, variant: v.id }, sessionId)}
-                className={`rounded-md px-2 py-1 text-[12.5px] transition-colors ${(ref?.variant ?? "default") === v.id ? "bg-active font-medium text-ink" : "text-muted hover:bg-hover hover:text-ink"}`}
+                className={`flex-1 rounded-md px-2 text-[12.5px] transition-colors ${touch ? "py-2" : "py-1"} ${(ref?.variant ?? "default") === v.id ? "bg-raised font-medium text-ink shadow-soft" : "text-muted hover:text-ink"}`}
               >
                 {cap(v.id)}
               </button>
             ))}
           </div>
+        </div>
+      )}
+      <div className="border-b border-line p-2">
+        <div className={`field flex items-center gap-2 rounded-lg px-2.5 ${touch ? "h-10" : "h-8"}`}>
+          <Search size={14} className="text-faint" />
+          <input
+            // No keyboard popping up over the list on phones; tap to search.
+            data-autofocus={touch ? undefined : true}
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search models"
+            className={`min-w-0 flex-1 bg-transparent outline-none placeholder:text-faint ${touch ? "text-[16px]" : "text-[13px]"}`}
+          />
+        </div>
+      </div>
+      <div className={`scroll-quiet overflow-y-auto p-1.5 ${touch ? "" : "max-h-[min(420px,55vh)]"}`}>
+        {models.length === 0 && <div className="p-6 text-center text-[13px] text-muted">No models yet. Connect a provider in Settings.</div>}
+        {models.length > 0 && groups.length === 0 && <div className="p-6 text-center text-[13px] text-muted">No models match "{q}".</div>}
+        {recentModels.length > 0 && (
+          <div className="mb-1">
+            <div className="px-2.5 pt-2 pb-1 text-[12px] font-medium text-muted">Recent</div>
+            {recentModels.map((m) => row(m, true))}
+          </div>
         )}
-      </Popover>
-    </>
+        {groups.map(([provider, ms]) => {
+          const all = term || expanded[provider];
+          const shown = all ? ms : ms.slice(0, LIMIT);
+          // Keep the model in use visible even when its group is folded.
+          const current = !all && ref ? ms.find((m) => m.providerID === ref.providerID && m.id === ref.id && !shown.includes(m)) : undefined;
+          const allFree = ms.every(isFree);
+          return (
+            <div key={provider} className="mb-1">
+              <div className="flex items-center gap-1.5 px-2.5 pt-2 pb-1 text-[12px] font-medium text-muted">
+                {providerName(provider)}
+                {allFree && <span className="font-normal text-ok">· all free</span>}
+              </div>
+              {shown.map((m) => row(m, false, !allFree))}
+              {current && row(current, false, !allFree)}
+              {!all && ms.length > LIMIT && (
+                <button onClick={() => setExpanded((e) => ({ ...e, [provider]: true }))} className="w-full rounded-lg px-2.5 py-1.5 text-left text-[12.5px] text-muted hover:bg-hover hover:text-ink">
+                  Show {ms.length - shown.length - (current ? 1 : 0)} more
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -329,6 +416,4 @@ function cap(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-function shortName(s: string) {
-  return s.length > 18 ? s.slice(0, 17) + "…" : s;
-}
+

@@ -1,11 +1,12 @@
 import { AnimatePresence, motion } from "motion/react";
-import { AlarmClock, Bot, Cloud, CornerDownLeft, FolderTree, Keyboard, MessageSquare, Moon, PanelLeft, Plus, Search, Settings, Square, SquarePen, Sun, Monitor, Gauge, Undo2, Redo2, GitFork, Layers } from "lucide-react";
+import { AlarmClock, Bot, Cloud, CornerDownLeft, FolderTree, Keyboard, MessageSquare, Moon, PanelLeft, Plus, Search, Settings, Square, SquarePen, Sun, Monitor, Gauge, Undo2, Redo2, GitFork, Layers, SquareTerminal, Globe, BookOpen } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { sortedSessions, useChat } from "../../state/chat";
 import { useUI, type SettingsTab } from "../../state/ui";
 import { useWorkspaces } from "../../state/workspaces";
-import { cycleEffort, primaryAgents } from "../../lib/actions";
+import { currentDir, cycleEffort, primaryAgents } from "../../lib/actions";
+import { useTerminals } from "../../state/terminals";
 import { agentColor } from "../../lib/agentColor";
 import { basename, timeAgo } from "../../lib/format";
 import { SHORTCUTS } from "../../hooks/useShortcuts";
@@ -13,7 +14,7 @@ import { Sheet } from "../ui/Sheet";
 
 interface Item {
   id: string;
-  group: "Sessions" | "Actions" | "Agents" | "Settings" | "Workspaces";
+  group: "Sessions" | "Actions" | "Panels" | "Agents" | "Settings" | "Workspaces";
   label: string;
   hint?: string;
   keys?: string;
@@ -79,7 +80,12 @@ export function CommandPalette() {
       { id: "new", group: "Actions", label: "New session", keys: "⌘N", icon: <SquarePen size={15} />, run: close(() => chat.open(null)) },
       { id: "scheduled", group: "Actions", label: "Scheduled tasks", icon: <AlarmClock size={15} />, run: close(() => ui.setView("schedules")) },
       { id: "sidebar", group: "Actions", label: "Toggle sidebar", keys: "⌘B", icon: <PanelLeft size={15} />, run: close(() => ui.toggleSidebar()) },
-      { id: "tree", group: "Actions", label: "Toggle file tree", keys: "⌘⇧E", icon: <FolderTree size={15} />, run: close(() => ui.toggleFiles()) },
+      { id: "p-files", group: "Panels", label: "Files", keys: "⌘⇧E", icon: <FolderTree size={15} />, run: close(() => ui.togglePanel("files")) },
+      { id: "p-term", group: "Panels", label: "Terminal", keys: "⌃`", icon: <SquareTerminal size={15} />, run: close(() => ui.togglePanel("terminal")) },
+      { id: "p-term-new", group: "Panels", label: "New terminal", icon: <SquareTerminal size={15} />, run: close(() => { ui.openPanel("terminal"); void useTerminals.getState().create(currentDir() ?? undefined); }) },
+      { id: "p-browser", group: "Panels", label: "Browser", keys: "⌘⇧B", icon: <Globe size={15} />, run: close(() => ui.togglePanel("browser")) },
+      { id: "p-context", group: "Panels", label: "Context and changes", keys: "⌘⇧I", icon: <Gauge size={15} />, run: close(() => ui.togglePanel("context")) },
+      { id: "p-project", group: "Panels", label: "Project instructions", keys: "⌘⇧J", icon: <BookOpen size={15} />, run: close(() => ui.togglePanel("project")) },
       { id: "effort", group: "Actions", label: "Cycle thinking effort", keys: "⌃T", icon: <Gauge size={15} />, run: close(cycleEffort) },
       { id: "shortcuts", group: "Actions", label: "Keyboard shortcuts", keys: "⌘/", icon: <Keyboard size={15} />, run: close(() => ui.setShortcuts(true)) },
       { id: "theme-light", group: "Actions", label: "Theme: Light", icon: <Sun size={15} />, run: close(() => ui.setTheme("light")) },
@@ -118,7 +124,7 @@ export function CommandPalette() {
     const t = q.trim();
     if (!t) {
       // Empty query: recent sessions first, then the main actions.
-      return [...items.filter((i) => i.group === "Sessions").slice(0, 6), ...items.filter((i) => i.group === "Actions")];
+      return [...items.filter((i) => i.group === "Sessions").slice(0, 6), ...items.filter((i) => i.group === "Actions" || i.group === "Panels")];
     }
     return items
       .map((i) => ({ i, s: score(t, `${i.label} ${i.hint ?? ""}`) }))

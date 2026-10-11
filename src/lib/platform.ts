@@ -13,7 +13,7 @@ export type OsName = "macos" | "windows" | "linux" | "ios" | "android" | "web";
 
 let cachedOs: OsName | null = null;
 
-function osName(): OsName {
+export function osName(): OsName {
   if (cachedOs) return cachedOs;
   let os: OsName = "web";
   if (isTauri) {

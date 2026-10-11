@@ -1,4 +1,4 @@
-import { FolderTree, PanelLeft, SquarePen } from "lucide-react";
+import { PanelLeft, SquarePen } from "lucide-react";
 import { useLayoutEffect, useRef, useState } from "react";
 import { useChat } from "../../state/chat";
 import { useUI } from "../../state/ui";
@@ -9,15 +9,13 @@ import { basename, money } from "../../lib/format";
 import { useTrafficLights } from "../../hooks/useChrome";
 import { ConnectionBanner } from "./Home";
 import { ChatScrim } from "../ui/ChatScrim";
-import { InboxTray, SessionInfoButton } from "../chat/SessionExtras";
+import { InboxTray } from "../chat/SessionExtras";
 
 /** Desktop session pane: header, thread, floating composer. */
 export function SessionView({ sessionId }: { sessionId: string }) {
   const session = useChat((s) => s.sessions[sessionId]);
   const sidebarOpen = useUI((s) => s.sidebarOpen);
   const toggleSidebar = useUI((s) => s.toggleSidebar);
-  const filesOpen = useUI((s) => s.filesOpen);
-  const toggleFiles = useUI((s) => s.toggleFiles);
   const open = useChat((s) => s.open);
   const composerRef = useRef<HTMLDivElement>(null);
   const [inset, setInset] = useState(140);
@@ -58,10 +56,6 @@ export function SessionView({ sessionId }: { sessionId: string }) {
             )}
           </div>
         </div>
-        <SessionInfoButton sessionId={sessionId} />
-        <IconButton label="Files" className="no-drag" active={filesOpen} onClick={() => toggleFiles()}>
-          <FolderTree size={16} />
-        </IconButton>
       </header>
 
       <Thread sessionId={sessionId} bottomInset={inset} />

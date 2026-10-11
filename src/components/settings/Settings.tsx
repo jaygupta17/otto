@@ -64,7 +64,7 @@ export function Settings({ compact }: { compact: boolean }) {
 
   return (
     <Sheet open={open} onClose={close} compact={compact} wide>
-      <div className={`flex ${compact ? "h-[86dvh] flex-col" : "h-[min(760px,86vh)]"}`}>
+      <div className={`flex ${compact ? "h-sheet flex-col" : "h-[min(760px,86vh)]"}`}>
         <nav className={compact ? "flex shrink-0 gap-1 overflow-x-auto px-4 pb-2" : "scroll-quiet w-[208px] shrink-0 overflow-y-auto border-r border-line p-3"}>
           {!compact && (
             <div className="flex items-center justify-between pt-0.5 pb-3 pl-2.5">

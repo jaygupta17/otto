@@ -7,7 +7,8 @@ import { useChat } from "../../state/chat";
 import { useExtensions } from "../../state/extensions";
 import { modelRefToString, modelStringToRef } from "../../lib/opencode/config";
 import { parseRules, serializeRules, type PermissionModel } from "../../lib/permissions";
-import { requestNotifyPermission } from "../../lib/notify";
+import { notifyPermission, requestNotifyPermission, type Permission } from "../../lib/notify";
+import { dispatchAlerts, useNotifications, type AlertKind } from "../../state/notifications";
 import { Button } from "../ui/Button";
 import { Select } from "../ui/Select";
 import { AgentDot } from "../shell/CommandPalette";
@@ -29,23 +30,58 @@ export function GeneralTab() {
 }
 
 function NotificationsSection() {
-  const notify = useUI((s) => s.notify);
-  const setNotify = useUI((s) => s.setNotify);
+  const prefs = useNotifications((s) => s.prefs);
+  const setPrefs = useNotifications((s) => s.setPrefs);
+  const [perm, setPerm] = useState<Permission | null>(null);
+  useEffect(() => {
+    void notifyPermission().then(setPerm);
+  }, []);
+  const kind = (k: AlertKind, label: string, hint?: string) => (
+    <Row label={label} hint={hint}>
+      <Toggle on={prefs.kinds[k]} onChange={(v) => setPrefs({ kinds: { ...prefs.kinds, [k]: v } })} label={label} />
+    </Row>
+  );
   return (
-    <Section title="Notifications">
+    <Section
+      title="Notifications"
+      desc="While Otto is open on another session you get a banner; in the background, a system notification. Phones get them while Otto is running or recently closed."
+    >
       <Rows>
-        <Row label="When an agent finishes or needs you" hint="Only while Otto is in the background">
+        <Row
+          label="System notifications"
+          hint={perm === "denied" ? "Blocked. Allow notifications for Otto in your system settings." : "When Otto is in the background"}
+        >
           <Toggle
-            on={notify}
+            on={prefs.system && perm !== "denied"}
             onChange={async (v) => {
               if (v && !(await requestNotifyPermission())) {
+                setPerm("denied");
                 toast({ tone: "error", title: "Notifications are blocked", body: "Allow them for Otto in your system settings." });
                 return;
               }
-              setNotify(v);
+              if (v) setPerm("granted");
+              setPrefs({ system: v });
             }}
-            label="Notifications"
+            label="System notifications"
           />
+        </Row>
+        <Row label="Banners inside Otto" hint="For sessions you aren't looking at">
+          <Toggle on={prefs.toasts} onChange={(v) => setPrefs({ toasts: v })} label="Banners inside Otto" />
+        </Row>
+        {kind("finished", "Agent finished")}
+        {kind("failed", "Agent hit a problem")}
+        {kind("permission", "Needs your approval")}
+        {kind("question", "Has a question")}
+        <Row label="Test" hint="Sends one in 4 seconds, so you can switch away">
+          <Button
+            size="sm"
+            onClick={() => {
+              toast({ tone: "info", title: "Switch to another app to see a system notification" });
+              setTimeout(() => dispatchAlerts([{ kind: "finished", title: "Agent finished", body: "This is a test notification" }]), 4000);
+            }}
+          >
+            Send test
+          </Button>
         </Row>
       </Rows>
     </Section>

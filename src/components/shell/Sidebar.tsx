@@ -7,8 +7,10 @@ import { useConnection } from "../../state/connection";
 import { useActiveWorkspace, useWorkspaces } from "../../state/workspaces";
 import { useUI } from "../../state/ui";
 import { timeAgo, basename } from "../../lib/format";
+import { deleteSession } from "../../lib/actions";
 import { useNow } from "../../hooks/useNow";
 import { IconButton } from "../ui/Button";
+import { InboxButton } from "./Inbox";
 import { Popover, MenuItem } from "../ui/Popover";
 import { AgentClock } from "../ui/AgentClock";
 import { useTrafficLights } from "../../hooks/useChrome";
@@ -24,6 +26,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           <PanelLeft size={17} />
         </IconButton>
         <div className="flex-1" data-tauri-drag-region />
+        <InboxButton className="no-drag" />
       </div>
 
       <div className="px-2">
@@ -248,7 +251,6 @@ const SessionRow = memo(function SessionRow({ s, now, onNavigate }: { s: Session
   const unread = useChat((st) => !!st.unread[s.id]);
   const asking = useChat((st) => Object.values(st.permissions).some((p) => p.sessionID === s.id) || Object.values(st.forms).some((f) => f.sessionID === s.id));
   const open = useChat((st) => st.open);
-  const remove = useChat((st) => st.remove);
   const rename = useChat((st) => st.rename);
   const isPinned = useChat((st) => st.pinned.includes(s.id));
   const togglePin = useChat((st) => st.togglePin);
@@ -340,7 +342,7 @@ const SessionRow = memo(function SessionRow({ s, now, onNavigate }: { s: Session
             danger
             onClick={() => {
               setMenu(false);
-              void remove(s.id);
+              void deleteSession(s.id);
             }}
           />
         </div>

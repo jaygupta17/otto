@@ -3,6 +3,8 @@ import { MotionConfig } from "motion/react";
 import { useWorkspaces } from "./state/workspaces";
 import { useConnection } from "./state/connection";
 import { useUI, initUI } from "./state/ui";
+import { initNotificationCenter } from "./state/notifications";
+import { initViewport } from "./lib/viewport";
 import { useCompact } from "./hooks/useMedia";
 import { Onboarding } from "./components/onboarding/Onboarding";
 import { AppShell } from "./components/shell/AppShell";
@@ -10,6 +12,7 @@ import { MobileApp } from "./components/mobile/MobileApp";
 import { Settings } from "./components/settings/Settings";
 import { Sheet } from "./components/ui/Sheet";
 import { Toasts } from "./components/ui/Toasts";
+import { DialogHost } from "./components/ui/Dialogs";
 import { CommandPalette, ShortcutsSheet } from "./components/shell/CommandPalette";
 import { AppGlyph } from "./components/ui/Mark";
 
@@ -23,7 +26,8 @@ export default function App() {
   const [booted, setBooted] = useState(false);
 
   useEffect(() => {
-    void Promise.all([initUI(), useWorkspaces.getState().hydrate()]).then(() => setBooted(true));
+    initViewport();
+    void Promise.all([initUI(), useWorkspaces.getState().hydrate(), initNotificationCenter()]).then(() => setBooted(true));
   }, []);
 
   // (Re)connect whenever the active workspace changes.
@@ -56,6 +60,7 @@ export default function App() {
       <Sheet open={addOpen} onClose={() => setAdd(false)} compact={compact}>
         <Onboarding embedded onDone={() => setAdd(false)} onCancel={() => setAdd(false)} />
       </Sheet>
+      <DialogHost />
       <Toasts />
     </MotionConfig>
   );

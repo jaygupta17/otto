@@ -12,6 +12,7 @@
     "store:default",
     "os:default",
     "notification:default",
+    "websocket:default",
     "opener:default",
     {
       "identifier": "http:default",

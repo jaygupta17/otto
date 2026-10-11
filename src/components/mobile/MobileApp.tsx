@@ -1,17 +1,20 @@
 import { AnimatePresence, motion, useDragControls } from "motion/react";
-import { ChevronLeft, FolderTree, MoreHorizontal, Plus, Search, Settings, Trash2, Pencil, Cloud, Check, AlarmClock, Bot } from "lucide-react";
-import { memo, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { ChevronDown, ChevronLeft, FolderTree, MoreHorizontal, Plus, Search, Settings, Trash2, Pencil, Cloud, Check, AlarmClock, Bot } from "lucide-react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { SessionInfo } from "@opencode/client";
 import { sortedSessions, useChat } from "../../state/chat";
 import { useConnection } from "../../state/connection";
 import { useActiveWorkspace, useWorkspaces } from "../../state/workspaces";
-import { useUI, backdropSettings } from "../../state/ui";
+import { useUI, backdropSettings, type PanelSurface } from "../../state/ui";
 import { basename, timeAgo } from "../../lib/format";
+import { deleteSession, renameSession } from "../../lib/actions";
 import { useNow } from "../../hooks/useNow";
 import { Thread } from "../chat/Thread";
 import { Composer } from "../chat/Composer";
 import { ProjectPicker } from "../chat/Pickers";
 import { Sheet } from "../ui/Sheet";
+import { InboxButton } from "../shell/Inbox";
+import { PanelChrome, SURFACES, SurfaceBody } from "../panel/SidePanel";
 import { Popover, MenuItem } from "../ui/Popover";
 import { AgentClock } from "../ui/AgentClock";
 import { Backdrop } from "../ui/Backdrop";
@@ -74,11 +77,17 @@ function SessionsScreen({ onNew, dimmed }: { onNew: () => void; dimmed: boolean 
       <div aria-hidden className="list-scrim pointer-events-none absolute inset-0" />
       <div className="on-photo scroll-quiet relative min-h-0 flex-1 overflow-y-auto pb-36">
         <div className="safe-top px-5">
-          <div className="flex h-14 items-center justify-end pt-2">
-            <MobileMenu />
+          <div className="flex h-14 items-center justify-end gap-2 pt-2">
+            <RoundButton label="Scheduled" onClick={() => useUI.getState().setView("schedules")}>
+              <AlarmClock size={19} />
+            </RoundButton>
+            <InboxButton size={44} buttonClassName="surface-float bg-raised rounded-full! border border-line text-ink!" />
+            <RoundButton label="Settings" onClick={() => useUI.getState().openSettings()}>
+              <Settings size={19} />
+            </RoundButton>
           </div>
           <h1 className="mt-1 text-[34px] font-bold">Sessions</h1>
-          <WorkspacePill />
+          <WorkspaceSwitcher />
           <div className="field mt-4 flex h-10 items-center gap-2 rounded-2xl px-3.5">
             <Search size={16} className="text-faint" />
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search" className="min-w-0 flex-1 bg-transparent text-[16px] outline-none placeholder:text-faint" />
@@ -99,7 +108,7 @@ function SessionsScreen({ onNew, dimmed }: { onNew: () => void; dimmed: boolean 
         {recent.length > 0 && <Group label="Recent" count={recent.length} list={recent} now={now} />}
       </div>
 
-      <div className="safe-bottom pointer-events-none absolute inset-x-0 bottom-0 px-4 pt-10 pb-3" style={{ background: "linear-gradient(to bottom, transparent, var(--bg) 45%)" }}>
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 px-4 pt-10 pb-[calc(var(--safe-b)+12px)]" style={{ background: "linear-gradient(to bottom, transparent, var(--bg) 45%)" }}>
         <motion.button
           whileTap={{ scale: 0.97 }}
           onClick={onNew}
@@ -120,40 +129,43 @@ function SessionsScreen({ onNew, dimmed }: { onNew: () => void; dimmed: boolean 
   );
 }
 
-function WorkspacePill() {
-  const ws = useActiveWorkspace();
-  const status = useConnection((s) => s.status);
+function RoundButton({ label, onClick, children }: { label: string; onClick: () => void; children: React.ReactNode }) {
   return (
-    <div className="mt-2 flex items-center gap-2 text-[13.5px] text-muted">
-      <span className={`h-2 w-2 rounded-full ${status === "ready" ? "bg-ok" : status === "error" ? "bg-danger" : "animate-pulse bg-warn"}`} />
-      {ws?.name} · {statusText(status)}
-    </div>
+    <button onClick={onClick} aria-label={label} title={label} className="surface-float bg-raised grid h-11 w-11 place-items-center rounded-full border border-line">
+      {children}
+    </button>
   );
 }
 
-function MobileMenu() {
+/** Which workspace this is and how it's doing; tap to switch or add one. */
+function WorkspaceSwitcher() {
+  const ws = useActiveWorkspace();
+  const status = useConnection((s) => s.status);
   const anchor = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
   const workspaces = useWorkspaces((s) => s.workspaces);
   const activeId = useWorkspaces((s) => s.activeId);
   const setActive = useWorkspaces((s) => s.setActive);
-  const openSettings = useUI((s) => s.openSettings);
   const addWs = useUI((s) => s.setAddWorkspace);
+  const openSettings = useUI((s) => s.openSettings);
   return (
     <>
-      <button ref={anchor} onClick={() => setOpen(true)} className="surface-float bg-raised grid h-11 w-11 place-items-center rounded-full border border-line" aria-label="Menu">
-        <MoreHorizontal size={20} />
+      <button ref={anchor} onClick={() => setOpen(true)} className="-mx-1 mt-1 flex max-w-full items-center gap-2 rounded-lg px-1 py-1 text-[13.5px] text-muted active:bg-hover">
+        <span className={`h-2 w-2 shrink-0 rounded-full ${status === "ready" ? "bg-ok" : status === "error" ? "bg-danger" : "animate-pulse bg-warn"}`} />
+        <span className="truncate">
+          {ws?.name} · {statusText(status)}
+        </span>
+        <ChevronDown size={14} className="shrink-0 opacity-70" />
       </button>
-      <Popover open={open} onClose={() => setOpen(false)} anchor={anchor.current} placement="bottom-end" width={260}>
+      <Popover open={open} onClose={() => setOpen(false)} anchor={anchor.current} placement="bottom-start" width={270}>
         <div className="p-1.5">
+          <div className="px-2.5 pt-1.5 pb-1 text-[12px] font-semibold text-faint">Workspaces</div>
           {workspaces.map((w) => (
             <MenuItem key={w.id} icon={<Cloud size={15} />} label={w.name} active={w.id === activeId} right={w.id === activeId ? <Check size={15} className="text-muted" /> : undefined} onClick={() => (void setActive(w.id), setOpen(false))} />
           ))}
           <MenuItem icon={<Plus size={15} />} label="Add workspace" onClick={() => (setOpen(false), addWs(true))} />
           <div className="my-1 h-px bg-line" />
-          <MenuItem icon={<AlarmClock size={15} />} label="Scheduled" onClick={() => (setOpen(false), useUI.getState().setView("schedules"))} />
           <MenuItem icon={<Bot size={15} />} label="Agents & tools" onClick={() => (setOpen(false), openSettings("agents"))} />
-          <MenuItem icon={<Settings size={15} />} label="Settings" onClick={() => (setOpen(false), openSettings())} />
         </div>
       </Popover>
     </>
@@ -202,13 +214,21 @@ const Row = memo(function Row({ s, now }: { s: SessionInfo; now: number }) {
 function SessionScreen({ sessionId }: { sessionId: string }) {
   const session = useChat((s) => s.sessions[sessionId]);
   const open = useChat((s) => s.open);
-  const remove = useChat((s) => s.remove);
-  const rename = useChat((s) => s.rename);
   const ws = useActiveWorkspace();
   const status = useConnection((s) => s.status);
   const drag = useDragControls();
   const [menu, setMenu] = useState(false);
   const [files, setFiles] = useState(false);
+  const [tool, setTool] = useState<PanelSurface | null>(null);
+  // Links tapped in chat or a terminal open in the browser sheet.
+  const browserN = useUI((s) => s.browserRequest?.n);
+  const seenN = useRef(browserN);
+  useEffect(() => {
+    if (browserN !== seenN.current) {
+      seenN.current = browserN;
+      setTool("browser");
+    }
+  }, [browserN]);
   const activeFile = useUI((s) => s.activeFile);
   const moreRef = useRef<HTMLButtonElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
@@ -242,7 +262,7 @@ function SessionScreen({ sessionId }: { sessionId: string }) {
       <div className="absolute inset-y-0 left-0 z-30 w-5 touch-none" onPointerDown={(e) => drag.start(e)} />
       <header className="safe-top relative z-20 shrink-0">
         <div className="flex h-[60px] items-center gap-2 border-b border-line px-3">
-          <button onClick={() => open(null)} className="grid h-11 w-11 place-items-center rounded-full bg-hover" aria-label="Back">
+          <button onClick={() => open(null)} className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-hover" aria-label="Back">
             <ChevronLeft size={22} />
           </button>
           <div className="min-w-0 flex-1 text-center">
@@ -252,24 +272,29 @@ function SessionScreen({ sessionId }: { sessionId: string }) {
               {status !== "ready" && ` · ${statusText(status).toLowerCase()}`}
             </div>
           </div>
-          <button ref={moreRef} onClick={() => setMenu(true)} className="grid h-11 w-11 place-items-center rounded-full bg-hover" aria-label="More">
+          <button onClick={() => setFiles(true)} className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-hover" aria-label="Files">
+            <FolderTree size={19} />
+          </button>
+          <button ref={moreRef} onClick={() => setMenu(true)} className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-hover" aria-label="More">
             <MoreHorizontal size={20} />
           </button>
         </div>
       </header>
       <Popover open={menu} onClose={() => setMenu(false)} anchor={moreRef.current} placement="bottom-end" width={220}>
         <div className="p-1.5">
-          <MenuItem icon={<FolderTree size={15} />} label="Files" onClick={() => (setMenu(false), setFiles(true))} />
+          {SURFACES.filter((x) => x.id !== "files").map((x) => (
+            <MenuItem key={x.id} icon={x.icon(15)} label={x.label} onClick={() => (setMenu(false), setTool(x.id))} />
+          ))}
+          <div className="my-1 h-px bg-line" />
           <MenuItem
             icon={<Pencil size={15} />}
             label="Rename"
             onClick={() => {
               setMenu(false);
-              const t = prompt("Rename session", session?.title ?? "");
-              if (t?.trim()) void rename(sessionId, t.trim());
+              void renameSession(sessionId);
             }}
           />
-          <MenuItem icon={<Trash2 size={15} />} label="Delete" danger onClick={() => (setMenu(false), void remove(sessionId))} />
+          <MenuItem icon={<Trash2 size={15} />} label="Delete" danger onClick={() => (setMenu(false), void deleteSession(sessionId))} />
         </div>
       </Popover>
 
@@ -287,10 +312,17 @@ function SessionScreen({ sessionId }: { sessionId: string }) {
       </div>
 
       <Sheet open={files && !activeFile} onClose={() => setFiles(false)} compact>
-        <div className="h-[80dvh]">{session && <FilesPanel root={session.location.directory} />}</div>
+        <div className="h-sheet">{session && <FilesPanel root={session.location.directory} />}</div>
+      </Sheet>
+      <Sheet open={!!tool} onClose={() => setTool(null)} compact>
+        <div className="flex h-sheet flex-col">
+          <PanelChrome value={{ docked: false, onClose: () => setTool(null) }}>
+            {tool && <SurfaceBody surface={tool} root={session?.location.directory ?? null} sessionId={sessionId} />}
+          </PanelChrome>
+        </div>
       </Sheet>
       <Sheet open={!!activeFile} onClose={() => useUI.getState().closeEditorFile(activeFile!)} compact>
-        <div className="h-[86dvh]">{session && activeFile && <Editor root={session.location.directory} />}</div>
+        <div className="h-sheet">{session && activeFile && <Editor root={session.location.directory} />}</div>
       </Sheet>
     </motion.div>
   );

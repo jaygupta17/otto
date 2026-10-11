@@ -70,14 +70,17 @@ export function Thread({ sessionId, bottomInset = 0 }: { sessionId: string; bott
     el.scrollTo({ top: el.scrollHeight, behavior: smooth ? "smooth" : "auto" });
   }, []);
 
-  // Stay pinned to the bottom while content grows (streaming), unless the user scrolled up.
+  // Stay pinned to the bottom while content grows (streaming) and while the
+  // viewport shrinks (keyboard, a taller composer), unless the user scrolled up.
   useLayoutEffect(() => {
     const el = content.current;
-    if (!el) return;
+    const box = scroller.current;
+    if (!el || !box) return;
     const ro = new ResizeObserver(() => {
       if (pinned.current) scrollToBottom();
     });
     ro.observe(el);
+    ro.observe(box);
     return () => ro.disconnect();
   }, [scrollToBottom]);
 
@@ -86,11 +89,33 @@ export function Thread({ sessionId, bottomInset = 0 }: { sessionId: string; bott
     scrollToBottom();
   }, [sessionId, scrollToBottom]);
 
+  // Sending a message follows it down, even from far up the thread.
+  const lastUser = useMemo(() => {
+    for (let i = items.length - 1; i >= 0; i--) if (items[i].type === "user") return items[i].key;
+    return null;
+  }, [items]);
+  const seenUser = useRef(lastUser);
+  useLayoutEffect(() => {
+    if (lastUser === seenUser.current) return;
+    const first = seenUser.current === null && !timeline?.loaded;
+    seenUser.current = lastUser;
+    if (first) return;
+    pinned.current = true;
+    scrollToBottom(true);
+  }, [lastUser, timeline?.loaded, scrollToBottom]);
+
+  // Only the user's own scrolling unpins; our programmatic (and smooth) scrolls
+  // pass through intermediate positions that must not count as "scrolled up".
+  const touching = useRef(false);
+  const userAt = useRef(0);
+  const markUser = () => (userAt.current = performance.now());
+
   const onScroll = () => {
     const el = scroller.current;
     if (!el) return;
     const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
-    pinned.current = dist < 80;
+    if (dist < 80) pinned.current = true;
+    else if (touching.current || performance.now() - userAt.current < 300) pinned.current = false;
     setShowJump(dist > 400);
     if (el.scrollTop < 200 && timeline?.older && !timeline.loading) void loadOlder(sessionId);
   };
@@ -100,7 +125,16 @@ export function Thread({ sessionId, bottomInset = 0 }: { sessionId: string; bott
 
   return (
     <div className="relative min-h-0 flex-1">
-      <div ref={scroller} onScroll={onScroll} className="scroll-quiet absolute inset-0 overflow-y-auto overscroll-contain">
+      <div
+        ref={scroller}
+        onScroll={onScroll}
+        onWheel={markUser}
+        onTouchStart={() => ((touching.current = true), markUser())}
+        onTouchEnd={() => ((touching.current = false), markUser())}
+        onTouchCancel={() => (touching.current = false)}
+        onPointerDown={markUser}
+        onKeyDown={markUser}
+        className="scroll-quiet absolute inset-0 overflow-y-auto overscroll-contain">
         <div ref={content} className="mx-auto w-full max-w-[760px] px-5 pt-6 sm:px-8" style={{ paddingBottom: bottomInset + 32 }}>
           {timeline?.loading && !timeline.loaded && <ThreadSkeleton />}
           {timeline?.error && !timeline.loaded && (

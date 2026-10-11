@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useChat } from "../state/chat";
-import { useUI } from "../state/ui";
+import { useUI, type PanelSurface } from "../state/ui";
 import { cycleEffort } from "../lib/actions";
 
 export interface Shortcut {
@@ -27,8 +27,15 @@ export const SHORTCUTS: Shortcut[] = [
   { keys: "Enter", label: "While working: steer or queue", group: "Composer" },
   { keys: "Esc", label: "Stop, or leave the composer", group: "Composer" },
   { keys: "⌘B", label: "Toggle sidebar", group: "Panels" },
-  { keys: "⌘⇧E", label: "Toggle file tree", group: "Panels" },
+  { keys: "⌘⇧E", label: "Files", group: "Panels" },
+  { keys: "⌃`", label: "Terminal", group: "Panels" },
+  { keys: "⌘⇧B", label: "Browser", group: "Panels" },
+  { keys: "⌘⇧I", label: "Context and changes", group: "Panels" },
+  { keys: "⌘⇧J", label: "Project instructions", group: "Panels" },
+  { keys: "⌘⇧\\", label: "Close the right panel", group: "Panels" },
 ];
+
+const PANEL_KEYS: Record<string, PanelSurface> = { e: "files", b: "browser", i: "context", j: "project" };
 
 export function useShortcuts() {
   useEffect(() => {
@@ -47,6 +54,12 @@ export function useShortcuts() {
         const i = list.findIndex((s) => s.id === chat.activeId);
         const next = list[Math.max(0, Math.min(list.length - 1, i + (e.key === "ArrowDown" ? 1 : -1)))];
         if (next) chat.open(next.id);
+        return;
+      }
+      // ⌃` toggles the terminal, like most editors.
+      if (e.ctrlKey && !e.metaKey && e.code === "Backquote") {
+        e.preventDefault();
+        ui.togglePanel("terminal");
         return;
       }
       const mod = e.metaKey || e.ctrlKey;
@@ -70,9 +83,12 @@ export function useShortcuts() {
       } else if (k === "." && chat.activeId && chat.busy[chat.activeId]) {
         e.preventDefault();
         void chat.interrupt(chat.activeId);
-      } else if (k === "e" && e.shiftKey) {
+      } else if (e.shiftKey && PANEL_KEYS[k]) {
         e.preventDefault();
-        ui.toggleFiles();
+        ui.togglePanel(PANEL_KEYS[k]);
+      } else if (e.shiftKey && (k === "\\" || e.code === "Backslash")) {
+        e.preventDefault();
+        ui.closePanel();
       }
     };
     window.addEventListener("keydown", onKey);

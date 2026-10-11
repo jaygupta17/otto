@@ -11,7 +11,7 @@ import { uid } from "../lib/id";
 import { kv } from "../lib/kv";
 import { useWorkspaces } from "./workspaces";
 import { toast, useUI } from "./ui";
-import { appInBackground, notify } from "../lib/notify";
+import { dispatchAlerts } from "./notifications";
 
 export interface Timeline {
   messages: UIMessage[];
@@ -613,7 +613,7 @@ function flush() {
   let { sessions, busy, retrying, unread, timelines, permissions, forms } = st;
   const touched = { sessions: false, busy: false, retrying: false, unread: false, timelines: false, permissions: false, forms: false };
   const finished: string[] = [];
-  const alerts: { title: string; body?: string }[] = [];
+  const alerts: Parameters<typeof dispatchAlerts>[0] = [];
   const titleOf = (id?: string) => (id && sessions[id]?.title) || "Your session";
 
   const mut = <K extends keyof typeof touched>(k: K) => {
@@ -730,7 +730,7 @@ function flush() {
               time: { ...sessions[sid].time, updated: e.created ?? Date.now() },
             };
           }
-          if (e.type !== "session.execution.interrupted") alerts.push({ title: e.type === "session.execution.succeeded" ? "Agent finished" : "Agent hit a problem", body: titleOf(sid) });
+          if (e.type !== "session.execution.interrupted") alerts.push(e.type === "session.execution.succeeded" ? { kind: "finished", sessionId: sid, title: "Agent finished", body: titleOf(sid) } : { kind: "failed", sessionId: sid, title: "Agent hit a problem", body: titleOf(sid) });
           if (e.type === "session.execution.failed") {
             const err = d.error as { status?: number; message?: string } | undefined;
             const model = sessions[sid]?.model;
@@ -759,7 +759,7 @@ function flush() {
         }
         break;
       case "permission.asked":
-        alerts.push({ title: "Agent needs your approval", body: `${titleOf(d.sessionID as string)} · ${d.action as string}` });
+        alerts.push({ kind: "permission", sessionId: d.sessionID as string, title: "Agent needs your approval", body: `${titleOf(d.sessionID as string)} · ${d.action as string}` });
         mut("permissions");
         permissions[d.id as string] = d as unknown as PermissionRequestLite;
         break;
@@ -769,7 +769,7 @@ function flush() {
         break;
       case "form.created": {
         const f = d.form as FormLite;
-        alerts.push({ title: "Agent has a question", body: f.title });
+        alerts.push({ kind: "question", sessionId: f.sessionID, title: "Agent has a question", body: f.title });
         mut("forms");
         forms[f.id] = f;
         break;
@@ -806,10 +806,7 @@ function flush() {
   if (touched.forms) patch.forms = forms;
   useChat.setState(patch);
   for (const id of finished) scheduleReconcile(id);
-  if (alerts.length && useUI.getState().notify && appInBackground()) {
-    const a = alerts[alerts.length - 1];
-    void notify(a.title, alerts.length > 1 ? `${a.body ?? ""} (+${alerts.length - 1} more)` : a.body);
-  }
+  if (alerts.length) dispatchAlerts(alerts);
 }
 
 /**

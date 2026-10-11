@@ -52,7 +52,7 @@ export function InboxTray({ sessionId }: { sessionId: string }) {
 // Usage
 // ---------------------------------------------------------------------------
 
-function useUsage(sessionId: string) {
+export function useUsage(sessionId: string) {
   const session = useChat((s) => s.sessions[sessionId]);
   const messages = useChat((s) => s.timelines[sessionId]?.messages);
   const models = useChat((s) => s.models);
@@ -150,7 +150,7 @@ export function SessionInfoButton({ sessionId }: { sessionId: string }) {
   );
 }
 
-function UsageCard({ sessionId, onDone }: { sessionId: string; onDone: () => void }) {
+export function UsageCard({ sessionId, onDone }: { sessionId: string; onDone?: () => void }) {
   const u = useUsage(sessionId);
   const compact = useChat((s) => s.compact);
   const busy = useChat((s) => !!s.busy[sessionId]);
@@ -183,7 +183,7 @@ function UsageCard({ sessionId, onDone }: { sessionId: string; onDone: () => voi
         title="Summarize the conversation so far to free up context"
         onClick={() => {
           void compact(sessionId);
-          onDone();
+          onDone?.();
         }}
       >
         Compact conversation
@@ -201,7 +201,8 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function Changes({ sessionId, onOpen }: { sessionId: string; onOpen: () => void }) {
+/** Files this session changed. `fill` lets the list take the full height (right panel). */
+export function Changes({ sessionId, onOpen, fill = false }: { sessionId: string; onOpen?: () => void; fill?: boolean }) {
   const client = useChat((s) => s.client);
   const root = useChat((s) => s.sessions[sessionId]?.location.directory ?? "");
   const updated = useChat((s) => s.sessions[sessionId]?.time.updated);
@@ -232,13 +233,13 @@ function Changes({ sessionId, onOpen }: { sessionId: string; onOpen: () => void 
       ) : files.length === 0 ? (
         <div className="px-4 pb-4 text-[12.5px] text-faint">No file changes yet.</div>
       ) : (
-        <div className="scroll-quiet max-h-[220px] overflow-y-auto px-1.5 pb-2">
+        <div className={`scroll-quiet overflow-y-auto px-1.5 pb-2 ${fill ? "" : "max-h-[220px]"}`}>
           {files.map((f) => (
             <button
               key={f.file}
               onClick={() => {
                 if (f.status !== "deleted") useUI.getState().openInEditor(f.file.startsWith("/") ? f.file : `${root.replace(/\/$/, "")}/${f.file}`);
-                onOpen();
+                onOpen?.();
               }}
               className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[12.5px] hover:bg-hover"
             >

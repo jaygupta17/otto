@@ -108,13 +108,13 @@ export class OpenCode {
     };
   }
 
-  async request<T>(method: string, path: string, opts: { query?: Query; body?: unknown; signal?: AbortSignal } = {}): Promise<T> {
+  async request<T>(method: string, path: string, opts: { query?: Query; body?: unknown; signal?: AbortSignal; headers?: Record<string, string> } = {}): Promise<T> {
     let res: Response;
     try {
       res = await httpFetch(this.url(path, opts.query), {
         method,
         signal: opts.signal,
-        headers: this.headers(opts.body !== undefined ? { "Content-Type": "application/json" } : undefined),
+        headers: this.headers({ ...(opts.body !== undefined ? { "Content-Type": "application/json" } : {}), ...opts.headers }),
         body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
       });
     } catch (e) {
@@ -355,6 +355,39 @@ export class OpenCode {
     return { exit: typeof info.exit === "number" ? info.exit : info.status === "exited" ? 0 : 1, output: out.data.output };
   }
 
+  // ---- terminals ------------------------------------------------------
+  async ptys(directory?: string): Promise<PtyInfo[]> {
+    return (await this.request<{ data: PtyInfo[] }>("GET", "/api/pty", { query: locQuery(directory) })).data;
+  }
+  async createPty(opts: { cwd?: string; title?: string }, directory?: string): Promise<PtyInfo> {
+    const env = { TERM: "xterm-256color", COLORTERM: "truecolor" };
+    return (await this.request<{ data: PtyInfo }>("POST", "/api/pty", { query: locQuery(directory), body: { ...opts, env } })).data;
+  }
+  resizePty(id: string, size: { rows: number; cols: number }, directory?: string) {
+    return this.request<unknown>("PUT", `/api/pty/${id}`, { query: locQuery(directory), body: { size } });
+  }
+  removePty(id: string, directory?: string) {
+    return this.request<void>("DELETE", `/api/pty/${id}`, { query: locQuery(directory) });
+  }
+  /**
+   * WebSocket URL for a terminal. A WebSocket can't send the Basic auth
+   * header, so the server hands out a one-time ticket for it instead.
+   */
+  async ptySocketUrl(id: string, opts: { cursor?: number; directory?: string } = {}): Promise<string> {
+    const r = await this.request<{ data: { ticket: string } }>("POST", `/api/pty/${id}/connect-token`, {
+      query: locQuery(opts.directory),
+      headers: { "x-opencode-ticket": "1" },
+    });
+    return this.url(`/api/pty/${id}/connect`, { ticket: r.data.ticket, cursor: opts.cursor ?? -1, ...locQuery(opts.directory) }).replace(/^http/, "ws");
+  }
+  /** Headers the provider's proxy needs on the terminal socket (gate token, preview-warning skip). */
+  socketHeaders(): Record<string, string> {
+    return {
+      ...this.endpoint.extraHeaders,
+      ...(this.endpoint.gateToken && this.endpoint.gateHeader ? { [this.endpoint.gateHeader]: this.endpoint.gateToken } : {}),
+    };
+  }
+
   // ---- config / extensions --------------------------------------------
   configEntries() {
     return this.request<Array<{ type: "document"; path?: string; info?: Record<string, unknown> } | { type: "directory"; path: string }>>("GET", "/api/config");
@@ -403,6 +436,15 @@ export class OpenCode {
 function locQuery(directory?: string): Query {
   // OpenCode encodes the `location` struct as deep-object query params.
   return directory ? { "location[directory]": directory } : {};
+}
+
+export interface PtyInfo {
+  id: string;
+  title: string;
+  command: string;
+  cwd: string;
+  status: "running" | "exited";
+  pid?: number;
 }
 
 export interface FsEntry {

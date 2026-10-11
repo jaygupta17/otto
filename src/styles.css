@@ -228,11 +228,35 @@ input[type="range"] {
   -webkit-app-region: no-drag;
 }
 
+/* Safe areas. The bottom one collapses while the keyboard is up (lib/viewport.ts),
+   since the keyboard already covers the home indicator / gesture bar. */
+:root {
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+}
+html[data-kb] {
+  --safe-b: 0px;
+}
 .safe-top {
-  padding-top: env(safe-area-inset-top);
+  padding-top: var(--safe-t);
 }
 .safe-bottom {
-  padding-bottom: env(safe-area-inset-bottom);
+  padding-bottom: var(--safe-b);
+}
+
+/* Touch devices: the app fills the visual viewport and the page never pans. */
+html[data-touch],
+html[data-touch] body {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+html[data-touch] #root {
+  height: var(--app-h, 100%);
+}
+
+/* A tall bottom sheet that still fits above the keyboard. */
+.h-sheet {
+  height: min(86dvh, calc(var(--app-h, 100dvh) - var(--safe-t) - 48px));
 }
 
 /* ------------------------------------------------------------------ */
