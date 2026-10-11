@@ -6,6 +6,8 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-11
+
 ### Added
 
 - Right-hand tools panel with Files, Terminal, Browser, Context and Project surfaces.
@@ -42,5 +44,6 @@ First public release.
 - Scheduled tasks that run on the agent machine.
 - Project file browser with syntax highlighting.
 
-[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/jaygupta17/otto/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/jaygupta17/otto/releases/tag/v0.1.0
