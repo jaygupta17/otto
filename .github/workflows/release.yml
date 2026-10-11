@@ -1,7 +1,7 @@
 name: Release
 
-# Push a tag like v0.1.0 to build every platform into a draft GitHub Release.
-# Review the draft, then publish it.
+# Push a tag like v0.1.0 (cut with `bun run release`, see RELEASING.md) to build
+# every platform into a draft GitHub Release. Review the draft, then publish it.
 
 on:
   push:
@@ -27,16 +27,25 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ env.TAG }}
+      - uses: oven-sh/setup-bun@v2
       - name: Check the tag matches the app version
-        run: |
-          v=$(jq -r .version src-tauri/tauri.conf.json)
-          [ "v$v" = "$TAG" ] || { echo "::error::Tag $TAG doesn't match version $v in tauri.conf.json"; exit 1; }
+        run: bun scripts/release.ts check "$TAG"
       - name: Create draft release
         id: release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --draft --title "Otto $TAG" --generate-notes --verify-tag
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            # Notes come from this version's CHANGELOG.md section.
+            if bun scripts/release.ts notes "$TAG" > "$RUNNER_TEMP/notes.md"; then
+              notes=(--notes-file "$RUNNER_TEMP/notes.md")
+            else
+              echo "::warning::No CHANGELOG.md section for $TAG; using generated notes."
+              notes=(--generate-notes)
+            fi
+            pre=(); [[ "$TAG" == *-* ]] && pre=(--prerelease)
+            gh release create "$TAG" --draft --title "Otto $TAG" --verify-tag "${notes[@]}" "${pre[@]}"
+          fi
           echo "id=$(gh api repos/${{ github.repository }}/releases --jq ".[] | select(.tag_name==\"$TAG\") | .id" | head -1)" >> "$GITHUB_OUTPUT"
 
   desktop:

@@ -1,0 +1,5 @@
+<!-- Android 13+ themed icon: same layout as the foreground, one colour. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-172.5 -172.5 1369 1369">
+  <circle cx="472" cy="560" r="208" fill="none" stroke="#fff" stroke-width="64"/>
+  <circle cx="742" cy="282" r="72" fill="#fff"/>
+</svg>

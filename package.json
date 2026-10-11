@@ -15,7 +15,9 @@
     "app:build": "tauri build",
     "ios:dev": "tauri ios dev",
     "android:dev": "tauri android dev",
-    "oc:local": "bash scripts/dev-server.sh"
+    "oc:local": "bash scripts/dev-server.sh",
+    "release": "bun scripts/release.ts",
+    "icons": "bash scripts/icons.sh"
   },
   "dependencies": {
     "@boxd-sh/sdk": "0.2.11",

@@ -1,0 +1,6 @@
+<!-- Android adaptive icon foreground: the mark only, shrunk so its farthest
+     point (the dot) sits inside the 66dp safe circle of the 108dp layer. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-172.5 -172.5 1369 1369">
+  <circle cx="472" cy="560" r="208" fill="none" stroke="#f4f4f2" stroke-width="64"/>
+  <circle cx="742" cy="282" r="72" fill="#f0a020"/>
+</svg>

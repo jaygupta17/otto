@@ -1,0 +1,6 @@
+<!-- iOS: full bleed and opaque; iOS applies its own corner mask. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="80 80 864 864">
+  <rect x="80" y="80" width="864" height="864" fill="#161616"/>
+  <circle cx="472" cy="560" r="208" fill="none" stroke="#f4f4f2" stroke-width="64"/>
+  <circle cx="742" cy="282" r="72" fill="#f0a020"/>
+</svg>
