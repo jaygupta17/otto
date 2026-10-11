@@ -60,7 +60,28 @@ It runs on macOS, Windows, Linux, iOS and Android, built with [Tauri 2](https://
    - **The OS keychain:** secrets (API keys, server passwords).
    - **The agent machine:** everything shared (sessions, agents, config, schedules), so every device sees the same state.
 
+## Download
+
+Get the latest build from [Releases](https://github.com/jaygupta17/otto/releases/latest).
+
+| Platform | File |
+| --- | --- |
+| macOS (Apple silicon) | `Otto_<version>_aarch64.dmg` |
+| macOS (Intel) | `Otto_<version>_x64.dmg` |
+| Windows | `Otto_<version>_x64-setup.exe` or `.msi` |
+| Linux | `.AppImage`, `.deb` or `.rpm` |
+| Android | `Otto_<version>_android.apk` |
+
+The builds aren't code-signed yet, so your OS will warn you the first time:
+
+- **macOS:** if it says Otto "is damaged" or can't be opened, move it to Applications and run `xattr -dr com.apple.quarantine /Applications/Otto.app`, or right-click the app and choose **Open**.
+- **Windows:** on the SmartScreen prompt, choose **More info**, then **Run anyway**.
+- **Android:** open the APK from your phone's browser or Files app and allow **Install unknown apps** for it when asked.
+- **iOS:** Apple doesn't allow installing apps from a download. Build it yourself with Xcode (see [Mobile](#mobile)).
+
 ## Getting started
+
+To build from source.
 
 ### Prerequisites
 
@@ -99,6 +120,16 @@ bun run android:dev
 ```bash
 bun run app:build
 ```
+
+### Release
+
+Bump `version` in `package.json`, `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml`, then push a matching tag:
+
+```bash
+git tag v0.1.0 && git push origin v0.1.0
+```
+
+The [Release workflow](.github/workflows/release.yml) builds macOS, Windows, Linux and Android into a draft release. Check it, then publish. To sign the Android APK with a stable key, set the repository secrets `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD`; without them each build is signed with a throwaway key.
 
 ## Project layout
 

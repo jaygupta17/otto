@@ -1,0 +1,143 @@
+name: Release
+
+# Push a tag like v0.1.0 to build every platform into a draft GitHub Release.
+# Review the draft, then publish it.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build (must already exist), e.g. v0.1.0"
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  TAG: ${{ github.event.inputs.tag || github.ref_name }}
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    outputs:
+      id: ${{ steps.release.outputs.id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - name: Check the tag matches the app version
+        run: |
+          v=$(jq -r .version src-tauri/tauri.conf.json)
+          [ "v$v" = "$TAG" ] || { echo "::error::Tag $TAG doesn't match version $v in tauri.conf.json"; exit 1; }
+      - name: Create draft release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --draft --title "Otto $TAG" --generate-notes --verify-tag
+          echo "id=$(gh api repos/${{ github.repository }}/releases --jq ".[] | select(.tag_name==\"$TAG\") | .id" | head -1)" >> "$GITHUB_OUTPUT"
+
+  desktop:
+    needs: create-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            args: --target aarch64-apple-darwin
+            targets: aarch64-apple-darwin
+          - platform: macos-latest
+            args: --target x86_64-apple-darwin
+            targets: x86_64-apple-darwin
+          - platform: ubuntu-22.04
+            args: ""
+            targets: ""
+          - platform: windows-latest
+            args: ""
+            targets: ""
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - name: Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - uses: oven-sh/setup-bun@v2
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.targets }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: bun install --frozen-lockfile
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          releaseId: ${{ needs.create-release.outputs.id }}
+          tauriScript: bunx tauri
+          args: ${{ matrix.args }}
+
+  android:
+    needs: create-release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - name: NDK
+        run: |
+          sdkmanager --install "ndk;27.0.12077973"
+          echo "NDK_HOME=$ANDROID_SDK_ROOT/ndk/27.0.12077973" >> "$GITHUB_ENV"
+      - uses: oven-sh/setup-bun@v2
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: bun install --frozen-lockfile
+      - name: Build APK
+        run: |
+          bunx tauri android init --ci
+          bunx tauri android build --apk --ci
+      - name: Sign APK
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          BT=$(ls -d "$ANDROID_SDK_ROOT"/build-tools/* | sort -V | tail -1)
+          SRC=$(find src-tauri/gen/android/app/build/outputs/apk -name '*universal*release*.apk' | head -1)
+          [ -n "$SRC" ] || { echo "::error::No APK found"; exit 1; }
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          else
+            # No signing secrets yet: sign with a throwaway key so the APK still installs.
+            # Each build gets a new key, so updating means uninstalling first.
+            echo "::warning::ANDROID_KEYSTORE_BASE64 is not set; signing with a temporary key."
+            KEY_ALIAS=otto KEY_PASSWORD=$(openssl rand -hex 16)
+            keytool -genkeypair -keystore "$RUNNER_TEMP/release.jks" -alias "$KEY_ALIAS" -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass "$KEY_PASSWORD" -keypass "$KEY_PASSWORD" -dname "CN=Otto" >/dev/null
+          fi
+          "$BT/zipalign" -f -p 4 "$SRC" "$RUNNER_TEMP/aligned.apk"
+          OUT="Otto_${TAG#v}_android.apk"
+          "$BT/apksigner" sign --ks "$RUNNER_TEMP/release.jks" --ks-key-alias "$KEY_ALIAS" \
+            --ks-pass "pass:$KEY_PASSWORD" --key-pass "pass:$KEY_PASSWORD" --out "$OUT" "$RUNNER_TEMP/aligned.apk"
+          "$BT/apksigner" verify "$OUT"
+          rm -f "$RUNNER_TEMP/release.jks"
+          echo "APK=$OUT" >> "$GITHUB_ENV"
+      - name: Upload APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" "$APK" --clobber
