@@ -14,7 +14,7 @@ It runs on macOS, Windows, Linux, iOS and Android, built with [Tauri 2](https://
 
 ## What you can do
 
-- **Start a workspace in one step.** Choose [Boat](https://boat.dev), paste a key, and Otto sets up the machine. Or connect any OpenCode v2 server you already run.
+- **Start a workspace in one step.** Choose [Boat](https://boat.dev), [boxd](https://boxd.sh), [E2B](https://e2b.dev) or [Daytona](https://daytona.io), paste a key, and Otto sets up the machine. Or connect any OpenCode v2 server you already run.
 - **Work with agents in a live conversation.** Replies stream as they are written, and every file read, edit and command the agent runs is listed step by step. Stop or steer a run at any time.
 - **Approve risky steps.** When an agent asks for permission or has a question, it shows up inline and in a system notification.
 - **Manage agents and their permissions.** Create agents, set their model and instructions, and decide per tool, per skill and per MCP server what each agent may do: allow, ask or deny, with path and command patterns.
@@ -108,7 +108,6 @@ Found a vulnerability? Please open a private security advisory on GitHub instead
 
 ## Roadmap
 
-- More sandbox providers (E2B, Daytona)
 - Terminal (PTY) panel
 - Diff review and one-click commits
 - Push notifications for mobile

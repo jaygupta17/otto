@@ -19,17 +19,8 @@ export interface BackdropItem {
   name?: string;
 }
 
-/** Built-in fills, always offered next to the user's own. */
-export const BACKDROP_PRESETS: BackdropItem[] = [
-  { id: "p-dusk", kind: "fill", name: "Dusk", css: "linear-gradient(160deg, #1f2a5a 0%, #6b3a6e 48%, #e48a6a 100%)" },
-  { id: "p-aurora", kind: "fill", name: "Aurora", css: "radial-gradient(120% 90% at 15% 10%, #2bd4a4 0%, transparent 55%), radial-gradient(100% 80% at 90% 30%, #6a5cff 0%, transparent 60%), linear-gradient(180deg, #0b1020, #101a2e)" },
-  { id: "p-ocean", kind: "fill", name: "Ocean", css: "linear-gradient(200deg, #0a3d62 0%, #0c6e8a 50%, #3fb5c4 100%)" },
-  { id: "p-forest", kind: "fill", name: "Forest", css: "linear-gradient(170deg, #0f2a1f 0%, #1f5a3d 55%, #8fbf6a 100%)" },
-  { id: "p-ember", kind: "fill", name: "Ember", css: "radial-gradient(110% 80% at 80% 100%, #ff7a3d 0%, transparent 60%), linear-gradient(180deg, #1a0f12, #3a1520)" },
-  { id: "p-sand", kind: "fill", name: "Sand", css: "linear-gradient(165deg, #f3e7d3 0%, #e2c9a6 55%, #c99b78 100%)" },
-  { id: "p-graphite", kind: "fill", name: "Graphite", css: "linear-gradient(180deg, #2b2d33 0%, #15161a 100%)" },
-  { id: "p-lilac", kind: "fill", name: "Lilac", css: "linear-gradient(150deg, #c9b8ff 0%, #f1c4e0 60%, #ffe3c7 100%)" },
-];
+/** Defaults for a freshly chosen background (Settings → General sliders). */
+export const BACKDROP_DEFAULTS = { intensity: 0.74, chatFade: 1, fade: 1, blur: 0, glass: 0.6 };
 
 export interface Backdrop {
   kind: BackdropKind;
@@ -47,11 +38,13 @@ export interface Backdrop {
   blur?: number;
   /** 0–1, how see-through panels are over the photo (0 = solid) */
   glass?: number;
+  /** 0–1, how strongly the chat fades into the app colour toward the composer */
+  chatFade?: number;
 }
 
 /** Resolved backdrop settings with defaults applied. */
 export function backdropSettings(b: Backdrop) {
-  return { on: (b.kind === "image" && !!b.image) || (b.kind === "fill" && !!b.css), intensity: b.intensity, fade: b.fade ?? 0.35, blur: b.blur ?? 0, glass: b.glass ?? 0.3 };
+  return { on: (b.kind === "image" && !!b.image) || (b.kind === "fill" && !!b.css), intensity: b.intensity ?? BACKDROP_DEFAULTS.intensity, fade: b.fade ?? BACKDROP_DEFAULTS.fade, blur: b.blur ?? BACKDROP_DEFAULTS.blur, glass: b.glass ?? BACKDROP_DEFAULTS.glass, chatFade: b.chatFade ?? BACKDROP_DEFAULTS.chatFade };
 }
 
 export type SettingsTab = "general" | "workspaces" | "agents" | "providers" | "mcp" | "skills" | "commands" | "about";
@@ -171,7 +164,7 @@ export const useUI = create<UIState>((set, get) => ({
   setView(v) {
     set({ view: v });
   },
-  backdrop: { kind: "none", intensity: 0.85, image: null },
+  backdrop: { kind: "none", intensity: BACKDROP_DEFAULTS.intensity, image: null },
   notify: false,
   setNotify(v) {
     set({ notify: v });
@@ -185,7 +178,7 @@ export const useUI = create<UIState>((set, get) => ({
 
   backdrops: [],
   async applyBackdrop(item) {
-    const saved = item.id.startsWith("p-") || get().backdrops.some((x) => x.id === item.id);
+    const saved = get().backdrops.some((x) => x.id === item.id);
     if (!saved) {
       const backdrops = [item, ...get().backdrops].slice(0, MAX_BACKDROPS);
       try {

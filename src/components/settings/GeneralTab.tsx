@@ -1,6 +1,6 @@
 import { ImagePlus, Palette, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { useUI, toast, backdropSettings, BACKDROP_PRESETS } from "../../state/ui";
+import { useUI, toast, backdropSettings, BACKDROP_DEFAULTS } from "../../state/ui";
 import { asImage } from "../ui/Backdrop";
 import { uid } from "../../lib/id";
 import { useChat } from "../../state/chat";
@@ -207,18 +207,21 @@ function AppearanceSection() {
         {img && (
           <>
             <Row label={isPhoto ? "Photo visibility" : "Visibility"}>
-              <Slider label="Visibility" value={backdrop.intensity} min={0.1} max={1} format={pct} onChange={(v) => setBackdrop({ intensity: v })} />
+              <Slider label="Visibility" value={backdrop.intensity ?? BACKDROP_DEFAULTS.intensity} min={0.1} max={1} format={pct} onChange={(v) => setBackdrop({ intensity: v })} />
+            </Row>
+            <Row label="Chat fade" hint="Toward the composer">
+              <Slider label="Chat fade" value={backdrop.chatFade ?? BACKDROP_DEFAULTS.chatFade} min={0} max={1} format={pct} onChange={(v) => setBackdrop({ chatFade: v })} />
             </Row>
             <Row label="Fade at the bottom">
-              <Slider label="Fade at the bottom" value={backdrop.fade ?? 0.35} min={0} max={1} format={pct} onChange={(v) => setBackdrop({ fade: v })} />
+              <Slider label="Fade at the bottom" value={backdrop.fade ?? BACKDROP_DEFAULTS.fade} min={0} max={1} format={pct} onChange={(v) => setBackdrop({ fade: v })} />
             </Row>
             {isPhoto && (
               <Row label="Blur">
-                <Slider label="Blur" value={backdrop.blur ?? 0} min={0} max={30} step={1} format={(v) => `${v}px`} onChange={(v) => setBackdrop({ blur: v })} />
+                <Slider label="Blur" value={backdrop.blur ?? BACKDROP_DEFAULTS.blur} min={0} max={30} step={1} format={(v) => `${v}px`} onChange={(v) => setBackdrop({ blur: v })} />
               </Row>
             )}
             <Row label="See-through panels">
-              <Slider label="See-through panels" value={backdrop.glass ?? 0.3} min={0} max={0.85} format={pct} onChange={(v) => setBackdrop({ glass: v })} />
+              <Slider label="See-through panels" value={backdrop.glass ?? BACKDROP_DEFAULTS.glass} min={0} max={0.85} format={pct} onChange={(v) => setBackdrop({ glass: v })} />
             </Row>
           </>
         )}
@@ -253,7 +256,7 @@ function BackgroundPicker() {
 
   return (
     <div>
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(76px,1fr))] gap-2">
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(88px,1fr))] gap-2">
         <Tile label="None" active={activeId === "none"} onClick={() => setBackdrop({ kind: "none", activeId: null })}>
           <div className="grid h-full w-full place-items-center bg-bg text-[11px] text-faint">None</div>
         </Tile>
@@ -262,16 +265,11 @@ function BackgroundPicker() {
             <div className="h-full w-full bg-cover bg-center" style={{ backgroundImage: b.kind === "image" ? `url(${b.image})` : asImage(b.css ?? "") }} />
           </Tile>
         ))}
-        {BACKDROP_PRESETS.map((b) => (
-          <Tile key={b.id} label={b.name ?? ""} active={activeId === b.id} onClick={() => void apply(b)}>
-            <div className="h-full w-full" style={{ background: b.css }} />
-          </Tile>
-        ))}
         <button onClick={() => fileInput.current?.click()} className="flex aspect-[16/10] flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-line-strong text-[11px] text-muted transition-colors hover:bg-hover hover:text-ink">
-          <ImagePlus size={15} /> Photo
+          <ImagePlus size={15} /> <span className="whitespace-nowrap">Add photo</span>
         </button>
         <button onClick={() => setMaking((v) => !v)} aria-expanded={making} className={`flex aspect-[16/10] flex-col items-center justify-center gap-1 rounded-lg border border-dashed text-[11px] transition-colors hover:bg-hover hover:text-ink ${making ? "border-ink text-ink" : "border-line-strong text-muted"}`}>
-          <Palette size={15} /> Colour
+          <Palette size={15} /> <span className="whitespace-nowrap">Choose colour</span>
         </button>
       </div>
       <input ref={fileInput} type="file" accept="image/*" multiple className="hidden" onChange={(e) => e.target.files?.length && void onPick(e.target.files).finally(() => (e.target.value = ""))} />

@@ -275,6 +275,40 @@ sudo journalctl -u otto-opencode -n 30 --no-pager 2>/dev/null || true
 exit 1`;
 }
 
+/**
+ * For sandboxes without systemd (E2B, Daytona containers): run `opencode serve`
+ * under a tiny restart loop, detached with setsid so it outlives the command
+ * that started it. The password lives in a 600 env file in ~/.otto.
+ */
+export function daemonScript(password: string, port = OPENCODE_PORT): string {
+  return `set -eu
+D="$HOME/.otto"
+mkdir -p "$D" "$HOME/projects"
+umask 077
+printf 'OPENCODE_SERVER_PASSWORD=%s\n' '${password}' > "$D/opencode.env"
+cat > "$D/serve.sh" <<'SERVE'
+#!/bin/bash
+set -a; . "$HOME/.otto/opencode.env"; set +a
+export PATH="$HOME/.opencode/bin:$PATH" TERM=xterm-256color
+cd "$HOME/projects"
+while true; do
+  "$HOME/.opencode/bin/opencode" serve --hostname 0.0.0.0 --port ${port} >> "$HOME/.otto/opencode.log" 2>&1
+  sleep 2
+done
+SERVE
+chmod 700 "$D/serve.sh"
+if [ -f "$D/serve.pid" ]; then kill -- -"$(cat "$D/serve.pid")" 2>/dev/null || kill "$(cat "$D/serve.pid")" 2>/dev/null || true; fi
+pkill -f "opencode serve --hostname 0.0.0.0 --port ${port}" 2>/dev/null || true
+setsid nohup "$D/serve.sh" > /dev/null 2>&1 < /dev/null &
+echo $! > "$D/serve.pid"
+for i in $(seq 1 90); do
+  if curl -fsS -u "opencode:${password}" "http://127.0.0.1:${port}/global/health" >/dev/null 2>&1; then echo OTTO_READY; exit 0; fi
+  sleep 1
+done
+tail -n 30 "$D/opencode.log" 2>/dev/null || true
+exit 1`;
+}
+
 /** Quick in-sandbox check that the service answers; used on resume. */
 export function healthScript(password: string, port = OPENCODE_PORT): string {
   return `for i in $(seq 1 30); do curl -fsS -u "opencode:${password}" "http://127.0.0.1:${port}/global/health" >/dev/null 2>&1 && { echo OTTO_READY; exit 0; }; sleep 1; done; exit 1`;

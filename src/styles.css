@@ -559,13 +559,12 @@ input[type="range"] {
   background: rgb(var(--tint) / min(0.97, calc(0.72 - var(--glass) * 0.3 * (1 - var(--mismatch)) + var(--mismatch) * 0.25)));
 }
 
-/* Overlays: menus, settings, palette, toasts. They hold dense controls, so
-   they stay nearly opaque whatever the "see-through" setting says: the photo
-   only tints them. Readability over effect. */
+/* Overlays: menus, settings, palette, toasts. */
 [data-backdrop] .surface-overlay {
-  background: rgb(var(--overlay) / min(0.97, calc(0.84 + var(--mismatch) * 0.12)));
-  -webkit-backdrop-filter: blur(40px) saturate(1.6);
-  backdrop-filter: blur(40px) saturate(1.6);
+  /* Same frost the chat panel used: follows the see-through setting. */
+  background: rgb(var(--tint) / min(0.9, calc(0.9 - var(--glass) * 0.4 * (1 - var(--mismatch)) + var(--mismatch) * 0.1)));
+  -webkit-backdrop-filter: blur(50px) saturate(1.3);
+  backdrop-filter: blur(50px) saturate(1.3);
   border-color: var(--edge);
   box-shadow:
     inset 0 1px 0 var(--edge-top),
@@ -589,6 +588,34 @@ input[type="range"] {
     rgb(var(--tint) / calc(0.12 + var(--mismatch) * 0.4)) 40%,
     rgb(var(--tint) / calc(0.35 + var(--mismatch) * 0.35)) 100%
   );
+}
+
+/* Chat on the bare photo (desktop and phone): the list-scrim idea, heavier,
+   because long-form text needs more contrast than a list of titles. */
+[data-backdrop] .chat-scrim {
+  background: linear-gradient(
+    180deg,
+    rgb(var(--tint) / min(0.92, calc(0.55 + var(--mismatch) * 0.3))) 0%,
+    rgb(var(--tint) / min(0.9, calc(0.42 + var(--mismatch) * 0.38))) 30%,
+    rgb(var(--tint) / min(0.9, calc(0.46 + var(--mismatch) * 0.36))) 100%
+  );
+}
+.chat-surface {
+  background: var(--bg-panel);
+}
+[data-backdrop] .chat-surface {
+  background: transparent;
+}
+/* Grey text on the photo: translucent white/black reads better than fixed greys. */
+[data-backdrop] .on-scrim {
+  --muted: rgb(255 255 255 / 0.66);
+  --faint: rgb(255 255 255 / 0.5);
+  --text-2: rgb(255 255 255 / 0.84);
+}
+[data-theme="light"][data-backdrop] .on-scrim {
+  --muted: rgb(0 0 0 / 0.6);
+  --faint: rgb(0 0 0 / 0.45);
+  --text-2: rgb(0 0 0 / 0.78);
 }
 
 /* Text set directly on the photo. */

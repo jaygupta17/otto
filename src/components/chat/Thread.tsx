@@ -342,7 +342,7 @@ function TurnFooter({ text, took, model, agent, speed, onFork }: { text: string;
   const [copied, setCopied] = useState(false);
   const info = useChat((s) => (agent ? s.agents.find((a) => a.id === agent) : undefined));
   return (
-    <div className="mt-1 flex h-7 items-center gap-1 text-[12px] text-faint opacity-0 transition-opacity duration-200 group-hover/turn:opacity-100 max-[760px]:opacity-100">
+    <div className="mt-1 flex h-7 min-w-0 items-center gap-1 text-[12px] whitespace-nowrap text-faint opacity-0 transition-opacity duration-200 group-hover/turn:opacity-100 max-[760px]:opacity-100">
       <button
         className="flex items-center gap-1 rounded-md px-1.5 py-1 hover:bg-hover hover:text-ink"
         onClick={() => {
@@ -360,7 +360,7 @@ function TurnFooter({ text, took, model, agent, speed, onFork }: { text: string;
           {info?.name ?? agent}
         </span>
       )}
-      {model && <span className="px-1">· {model}</span>}
+      {model && <span className="min-w-0 truncate px-1">· {model}</span>}
       {took > 0 && <span className="px-1">· {duration(took)}</span>}
       {speed && <span className="px-1 tabular-nums" title="Output tokens per second">· {Math.round(speed)} tok/s</span>}
       <button className="ml-auto flex items-center gap-1 rounded-md px-1.5 py-1 hover:bg-hover hover:text-ink" title="Continue from this point in a new session" onClick={onFork}>

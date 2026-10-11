@@ -16,6 +16,7 @@ import { Popover, MenuItem } from "../ui/Popover";
 import { AgentClock } from "../ui/AgentClock";
 import { Backdrop } from "../ui/Backdrop";
 import { InboxTray } from "../chat/SessionExtras";
+import { ChatScrim } from "../ui/ChatScrim";
 import { AppGlyph } from "../ui/Mark";
 import { ConnectionBanner } from "../shell/Home";
 import { FilesPanel } from "../files/FilesPanel";
@@ -235,8 +236,9 @@ function SessionScreen({ sessionId }: { sessionId: string }) {
       onDragEnd={(_, info) => {
         if (info.offset.x > 110 || info.velocity.x > 500) open(null);
       }}
-      className="surface-panel absolute inset-0 z-10 flex flex-col shadow-pop"
+      className="chat-surface on-scrim absolute inset-0 z-10 flex flex-col shadow-pop"
     >
+      <ChatScrim />
       <div className="absolute inset-y-0 left-0 z-30 w-5 touch-none" onPointerDown={(e) => drag.start(e)} />
       <header className="safe-top relative z-20 shrink-0">
         <div className="flex h-[60px] items-center gap-2 border-b border-line px-3">

@@ -55,7 +55,7 @@ export function AppShell({ compact = false }: { compact?: boolean }) {
 
       <div ref={rowRef} className="relative z-[1] flex h-full min-w-0 flex-1">
         <main
-          className={`relative h-full min-w-0 overflow-hidden ${isHome && bd.on ? "" : "surface-panel"}`}
+          className={`relative h-full min-w-0 overflow-hidden ${(isHome || (view === "chat" && activeId)) && bd.on ? "" : "surface-panel"}`}
           style={editorOpen ? { width: chatWidth, flex: "none" } : { flex: "1 1 0%" }}
         >
           <AnimatePresence mode="wait" initial={false}>

@@ -35,8 +35,12 @@ export interface ServerEndpoint {
   /** Origin (and optional path prefix) of the OpenCode server, no trailing slash. */
   baseUrl: string;
   password: string;
-  /** Query token required by the sandbox provider's HTTPS proxy (Boat `_token`). */
+  /** Token required by the sandbox provider's HTTPS proxy (Boat `_token`, Daytona preview token). */
   gateToken?: string;
+  /** Send `gateToken` in this header instead of the `_token` query parameter (Daytona). */
+  gateHeader?: string;
+  /** Extra headers the provider's proxy wants on every request. */
+  extraHeaders?: Record<string, string>;
 }
 
 export interface SessionRevert {
@@ -90,7 +94,7 @@ export class OpenCode {
         u.searchParams.set(k, String(v));
       }
     }
-    if (this.endpoint.gateToken) u.searchParams.set("_token", this.endpoint.gateToken);
+    if (this.endpoint.gateToken && !this.endpoint.gateHeader) u.searchParams.set("_token", this.endpoint.gateToken);
     return u.toString();
   }
 
@@ -98,6 +102,8 @@ export class OpenCode {
     return {
       Authorization: `Basic ${btoa(`opencode:${this.endpoint.password}`)}`,
       Accept: "application/json",
+      ...this.endpoint.extraHeaders,
+      ...(this.endpoint.gateToken && this.endpoint.gateHeader ? { [this.endpoint.gateHeader]: this.endpoint.gateToken } : {}),
       ...extra,
     };
   }

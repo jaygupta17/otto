@@ -8,6 +8,7 @@ import { IconButton } from "../ui/Button";
 import { basename, money } from "../../lib/format";
 import { useTrafficLights } from "../../hooks/useChrome";
 import { ConnectionBanner } from "./Home";
+import { ChatScrim } from "../ui/ChatScrim";
 import { InboxTray, SessionInfoButton } from "../chat/SessionExtras";
 
 /** Desktop session pane: header, thread, floating composer. */
@@ -31,7 +32,8 @@ export function SessionView({ sessionId }: { sessionId: string }) {
 
   const mac = useTrafficLights();
   return (
-    <div className="relative flex h-full min-w-0 flex-col">
+    <div className="on-scrim relative flex h-full min-w-0 flex-col">
+      <ChatScrim />
       <header className={`drag relative z-10 flex h-[52px] shrink-0 items-center gap-2 pr-3 ${!sidebarOpen && mac ? "pl-[84px]" : "pl-3"}`} data-tauri-drag-region>
         {!sidebarOpen && (
           <>

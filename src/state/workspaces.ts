@@ -6,14 +6,19 @@ import { create } from "zustand";
 import { kv } from "../lib/kv";
 import { secrets } from "../lib/secrets";
 
-export type ProviderId = "boat" | "boxd" | "custom";
+export type ProviderId = "boat" | "boxd" | "e2b" | "daytona" | "custom";
+
+/** Providers whose API key Otto keeps (keychain) to create and wake machines. */
+export type CloudId = Exclude<ProviderId, "custom">;
 
 export interface Workspace {
   id: string;
   name: string;
   provider: ProviderId;
-  /** Boat sandbox id (bx_…) or boxd machine id */
+  /** The provider's sandbox / machine id */
   sandboxId?: string;
+  /** E2B: seconds without the app before the sandbox pauses */
+  sleepAfter?: number;
   baseUrl: string;
   createdAt: number;
   lastUsedAt: number;
@@ -24,15 +29,14 @@ interface State {
   hydrated: boolean;
   workspaces: Workspace[];
   activeId: string | null;
-  hasBoatKey: boolean;
-  hasBoxdKey: boolean;
   hydrate(): Promise<void>;
   add(ws: Workspace, creds: { password: string; gateToken?: string }): Promise<void>;
   update(id: string, patch: Partial<Workspace>, creds?: { password?: string; gateToken?: string | null }): Promise<void>;
   remove(id: string): Promise<void>;
   setActive(id: string | null): Promise<void>;
-  setBoatKey(key: string | null): Promise<void>;
-  setBoxdKey(key: string | null): Promise<void>;
+  /** Which provider keys are saved (for the Settings forms). */
+  keys: Partial<Record<CloudId, boolean>>;
+  setProviderKey(provider: CloudId, key: string | null): Promise<void>;
 }
 
 const KEY = "workspaces.v1";
@@ -40,6 +44,8 @@ const KEY = "workspaces.v1";
 export const secretKeys = {
   boat: "provider.boat.apiKey",
   boxd: "provider.boxd.apiKey",
+  e2b: "provider.e2b.apiKey",
+  daytona: "provider.daytona.apiKey",
   password: (id: string) => `ws.${id}.password`,
   gate: (id: string) => `ws.${id}.gate`,
 };
@@ -52,16 +58,15 @@ export const useWorkspaces = create<State>((set, get) => ({
   hydrated: false,
   workspaces: [],
   activeId: null,
-  hasBoatKey: false,
-  hasBoxdKey: false,
+  keys: {},
 
   async hydrate() {
     const saved = await kv.get<{ workspaces: Workspace[]; activeId: string | null }>(KEY);
-    const hasBoatKey = !!(await secrets.get(secretKeys.boat));
-    const hasBoxdKey = !!(await secrets.get(secretKeys.boxd));
     const workspaces = saved?.workspaces ?? [];
     const activeId = saved?.activeId && workspaces.some((w) => w.id === saved.activeId) ? saved.activeId : (workspaces[0]?.id ?? null);
-    set({ hydrated: true, workspaces, activeId, hasBoatKey, hasBoxdKey });
+    const keys: Partial<Record<CloudId, boolean>> = {};
+    for (const c of ["boat", "boxd", "e2b", "daytona"] as const) keys[c] = !!(await secrets.get(secretKeys[c]));
+    set({ hydrated: true, workspaces, activeId, keys });
   },
 
   async add(ws, creds) {
@@ -99,16 +104,10 @@ export const useWorkspaces = create<State>((set, get) => ({
     await persist({ workspaces, activeId: id });
   },
 
-  async setBoatKey(key) {
-    if (key) await secrets.set(secretKeys.boat, key);
-    else await secrets.delete(secretKeys.boat);
-    set({ hasBoatKey: !!key });
-  },
-
-  async setBoxdKey(key) {
-    if (key) await secrets.set(secretKeys.boxd, key);
-    else await secrets.delete(secretKeys.boxd);
-    set({ hasBoxdKey: !!key });
+  async setProviderKey(provider, key) {
+    if (key) await secrets.set(secretKeys[provider], key);
+    else await secrets.delete(secretKeys[provider]);
+    set({ keys: { ...get().keys, [provider]: !!key } });
   },
 }));
 

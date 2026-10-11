@@ -14,6 +14,8 @@ import { basename, timeAgo } from "../../lib/format";
 import { openExternal } from "../../lib/platform";
 import { BOAT_BILLING_URL } from "../../lib/providers/boat";
 import { BOXD_BILLING_URL } from "../../lib/providers/boxd";
+import { E2B_BILLING_URL } from "../../lib/providers/e2b";
+import { DAYTONA_BILLING_URL } from "../../lib/providers/daytona";
 import { useWorkspaces } from "../../state/workspaces";
 
 /**
@@ -127,5 +129,6 @@ export function ConnectionBanner() {
 
 function billingUrl() {
   const st = useWorkspaces.getState();
-  return st.workspaces.find((w) => w.id === st.activeId)?.provider === "boxd" ? BOXD_BILLING_URL : BOAT_BILLING_URL;
+  const p = st.workspaces.find((w) => w.id === st.activeId)?.provider;
+  return p === "boxd" ? BOXD_BILLING_URL : p === "e2b" ? E2B_BILLING_URL : p === "daytona" ? DAYTONA_BILLING_URL : BOAT_BILLING_URL;
 }

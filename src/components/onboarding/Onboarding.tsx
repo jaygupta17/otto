@@ -8,6 +8,8 @@ import { AgentClock, Spinner } from "../ui/AgentClock";
 import { Backdrop } from "../ui/Backdrop";
 import { SETUP_STEPS, newCheckpoint, provisionBoat, type ProvisionCheckpoint, type SetupStepId, type StepUpdate } from "../../lib/providers/provision";
 import { BOXD_BILLING_URL, BOXD_SIZES, BOXD_SLEEP, BoxdError, provisionBoxd, verifyBoxdKey } from "../../lib/providers/boxd";
+import { E2BClient, E2BError, E2B_BILLING_URL, E2B_KEYS_URL, E2B_SLEEP, provisionE2B } from "../../lib/providers/e2b";
+import { DaytonaClient, DaytonaError, DAYTONA_BILLING_URL, DAYTONA_KEYS_URL, DAYTONA_SIZES, DAYTONA_SLEEP, provisionDaytona } from "../../lib/providers/daytona";
 import { BoatClient, BOAT_BILLING_URL, isBillingError } from "../../lib/providers/boat";
 import { OpenCode } from "../../lib/opencode/client";
 import { uid } from "../../lib/id";
@@ -19,7 +21,7 @@ import { useNow } from "../../hooks/useNow";
 import { secretKeys, useWorkspaces } from "../../state/workspaces";
 
 type Screen = "providers" | "sandbox" | "custom" | "setup" | "done";
-type Cloud = "boat" | "boxd";
+type Cloud = "boat" | "boxd" | "e2b" | "daytona";
 
 interface ProviderCard {
   id: "boat" | "custom" | string;
@@ -42,12 +44,12 @@ const PROVIDERS: ProviderCard[] = [
   {
     id: "boxd",
     name: "boxd",
-    blurb: "Isolated microVMs that hibernate when idle and wake in milliseconds.",
+    blurb: "MicroVMs that hibernate when idle, wake instantly.",
     available: true,
     logo: <BoxdLogo />,
   },
-  { id: "e2b", name: "E2B", blurb: "Firecracker sandboxes.", available: false, logo: <LetterLogo letter="E" /> },
-  { id: "daytona", name: "Daytona", blurb: "Dev environments on demand.", available: false, logo: <LetterLogo letter="D" /> },
+  { id: "e2b", name: "E2B", blurb: "Sandboxes that pause and resume where they left off.", available: true, logo: <LetterLogo letter="E2B" tone="#ff8800" /> },
+  { id: "daytona", name: "Daytona", blurb: "Fast isolated sandboxes that stop when idle.", available: true, logo: <LetterLogo letter="D" tone="#0a0a0a" /> },
   { id: "custom", name: "Your own server", blurb: "Any reachable OpenCode v2 server.", available: true, logo: <div className="grid h-full w-full place-items-center rounded-lg border border-line bg-panel text-ink-2"><Server size={16} /></div> },
 ];
 
@@ -74,6 +76,28 @@ const CLOUD: Record<Cloud, { name: string; keyPlaceholder: string; keyHelp: stri
     defaultSleep: 14400,
     sleepHint: "A hibernated machine costs only its disk and wakes on the next request.",
     billingUrl: BOXD_BILLING_URL,
+  },
+  e2b: {
+    name: "E2B",
+    keyPlaceholder: "e2b_…",
+    keyHelp: E2B_KEYS_URL,
+    sizes: [],
+    sleep: E2B_SLEEP,
+    defaultSize: "",
+    defaultSleep: 1800,
+    sleepHint: "When Otto isn't open, the sandbox pauses after this long, keeping everything. It resumes when you come back. Hobby plans cap a run at 1 hour.",
+    billingUrl: E2B_BILLING_URL,
+  },
+  daytona: {
+    name: "Daytona",
+    keyPlaceholder: "dtn_…",
+    keyHelp: DAYTONA_KEYS_URL,
+    sizes: DAYTONA_SIZES,
+    sleep: DAYTONA_SLEEP,
+    defaultSize: "daytona-medium",
+    defaultSleep: 60,
+    sleepHint: "Stops after this long without Otto connected. Files are kept; Otto restarts the agent when you come back.",
+    billingUrl: DAYTONA_BILLING_URL,
   },
 };
 
@@ -114,7 +138,7 @@ export function Onboarding({ embedded = false, onDone, onCancel }: { embedded?: 
     setSleepAfter(CLOUD[c].defaultSleep);
     setKeyError(null);
     setApiKey("");
-    void secrets.get(c === "boxd" ? secretKeys.boxd : secretKeys.boat).then((k) => k && setApiKey(k));
+    void secrets.get(secretKeys[c]).then((k) => k && setApiKey(k));
     go("sandbox");
   }
 
@@ -137,10 +161,16 @@ export function Onboarding({ embedded = false, onDone, onCancel }: { embedded?: 
     try {
       if (cloud === "boxd") {
         await verifyBoxdKey(key);
-        await useWorkspaces.getState().setBoxdKey(key);
+        await useWorkspaces.getState().setProviderKey("boxd", key);
+      } else if (cloud === "e2b") {
+        await new E2BClient(key).verify();
+        await useWorkspaces.getState().setProviderKey("e2b", key);
+      } else if (cloud === "daytona") {
+        await new DaytonaClient(key).verify();
+        await useWorkspaces.getState().setProviderKey("daytona", key);
       } else {
         await new BoatClient(key).me();
-        await useWorkspaces.getState().setBoatKey(key);
+        await useWorkspaces.getState().setProviderKey("boat", key);
       }
       setCheckingKey(false);
       void runSetup(key);
@@ -160,7 +190,7 @@ export function Onboarding({ embedded = false, onDone, onCancel }: { embedded?: 
       for (const s of SETUP_STEPS) if (next[s.id].state !== "done") next[s.id] = { state: "idle" };
       return next;
     });
-    const ckKey = cloud === "boxd" ? "setup.checkpoint.boxd" : "setup.checkpoint";
+    const ckKey = cloud === "boat" ? "setup.checkpoint" : `setup.checkpoint.${cloud}`;
     if (!checkpointRef.current) checkpointRef.current = (await kv.get<ProvisionCheckpoint>(ckKey)) ?? newCheckpoint();
     const ctrl = new AbortController();
     abortRef.current = ctrl;
@@ -168,16 +198,21 @@ export function Onboarding({ embedded = false, onDone, onCancel }: { embedded?: 
       const onStep = (u: StepUpdate) => setSteps((prev) => ({ ...prev, [u.step]: { state: u.state, detail: u.detail } }));
       const onCheckpoint = (c: ProvisionCheckpoint) => void kv.set(ckKey, c);
       const result =
-        cloud === "boxd"
+        cloud === "e2b"
+          ? await provisionE2B(key, checkpointRef.current, { timeout: sleepAfter }, onStep, ctrl.signal, onCheckpoint)
+          : cloud === "daytona"
+            ? await provisionDaytona(key, checkpointRef.current, { snapshot: size, autoStop: sleepAfter, name: name.trim() || "otto" }, onStep, ctrl.signal, onCheckpoint)
+            : cloud === "boxd"
           ? await provisionBoxd(key, checkpointRef.current, { vcpu: Number(size) || 2, hibernateAfter: sleepAfter, name: name.trim() || "otto" }, onStep, ctrl.signal, onCheckpoint)
           : await provisionBoat(key, checkpointRef.current, { ttlSeconds: sleepAfter < 0 ? null : sleepAfter, type: size, name: name.trim() || "Otto" }, onStep, ctrl.signal, onCheckpoint);
       const wsId = uid("ws_");
       await useWorkspaces.getState().add(
         {
           id: wsId,
-          name: name.trim() || (cloud === "boxd" ? `boxd · ${result.endpoint.baseUrl.replace(/^https:\/\/(otto\.)?/, "").split(".")[0]}` : `Boat · ${result.sandboxId.slice(3)}`),
+          name: name.trim() || (cloud === "boxd" ? `boxd · ${result.endpoint.baseUrl.replace(/^https:\/\/(otto\.)?/, "").split(".")[0]}` : cloud === "boat" ? `Boat · ${result.sandboxId.slice(3)}` : `${CLOUD[cloud].name} · ${result.sandboxId.slice(0, 8)}`),
           provider: cloud,
           sandboxId: result.sandboxId,
+          sleepAfter: cloud === "e2b" ? sleepAfter : undefined,
           baseUrl: result.endpoint.baseUrl,
           createdAt: Date.now(),
           lastUsedAt: Date.now(),
@@ -192,7 +227,7 @@ export function Onboarding({ embedded = false, onDone, onCancel }: { embedded?: 
       go("done");
     } catch (e) {
       if ((e as Error).name === "AbortError") return;
-      setSetupError({ message: (e as Error).message || "Something went wrong.", billing: isBillingError(e) || (e instanceof BoxdError && e.billing) });
+      setSetupError({ message: (e as Error).message || "Something went wrong.", billing: isBillingError(e) || ((e instanceof BoxdError || e instanceof E2BError || e instanceof DaytonaError) && e.billing) });
     }
   }
 
@@ -215,7 +250,7 @@ export function Onboarding({ embedded = false, onDone, onCancel }: { embedded?: 
         {screen === "providers" && (
           <Providers
             embedded={embedded}
-            onPick={(id) => (id === "boat" || id === "boxd" ? pickCloud(id) : go("custom"))}
+            onPick={(id) => (id === "custom" ? go("custom") : pickCloud(id as Cloud))}
           />
         )}
         {screen === "sandbox" && (
@@ -327,8 +362,8 @@ function BoatForm(props: {
   const [show, setShow] = useState(false);
   const [advanced, setAdvanced] = useState(false);
   const c = CLOUD[props.cloud];
-  const sizes = c.sizes.length ? c.sizes : SIZES;
-  const sleeps = c.sleep.length ? c.sleep : SLEEP;
+  const sizes = props.cloud === "boat" ? SIZES : c.sizes;
+  const sleeps = props.cloud === "boat" ? SLEEP : c.sleep;
   return (
     <form
       onSubmit={(e) => {
@@ -370,10 +405,12 @@ function BoatForm(props: {
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }} className="overflow-hidden">
             <div className="space-y-4 pt-4">
               <TextField label="Name" placeholder="Otto" value={props.name} onChange={(e) => props.setName(e.target.value)} />
-              <div>
-                <div className="mb-1.5 text-[13px] font-medium text-ink">Size</div>
-                <Segmented options={sizes.map((s) => ({ id: s.id, label: s.label, sub: s.spec }))} value={props.size} onChange={props.setSize} />
-              </div>
+              {sizes.length > 0 && (
+                <div>
+                  <div className="mb-1.5 text-[13px] font-medium text-ink">Size</div>
+                  <Segmented options={sizes.map((s) => ({ id: s.id, label: s.label, sub: s.spec }))} value={props.size} onChange={props.setSize} />
+                </div>
+              )}
               <div>
                 <div className="mb-1.5 text-[13px] font-medium text-ink">Sleep after</div>
                 <Segmented options={sleeps.map((s) => ({ id: String(s.id), label: s.label }))} value={String(props.sleepAfter)} onChange={(v) => props.setSleepAfter(Number(v))} />
@@ -606,6 +643,12 @@ function BoxdLogo() {
   );
 }
 
-function LetterLogo({ letter }: { letter: string }) {
+function LetterLogo({ letter, tone }: { letter: string; tone?: string }) {
+  if (tone)
+    return (
+      <div className="grid h-full w-full place-items-center rounded-lg text-white" style={{ background: tone, fontSize: letter.length > 1 ? 11 : 15, fontWeight: 700, letterSpacing: "-0.02em" }}>
+        {letter}
+      </div>
+    );
   return <div className="grid h-full w-full place-items-center rounded-lg border border-line bg-panel text-[14px] font-semibold text-muted">{letter}</div>;
 }
