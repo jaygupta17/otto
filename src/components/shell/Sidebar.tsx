@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "motion/react";
-import { Pin, PinOff, Check, ChevronsUpDown, MoreHorizontal, PanelLeft, Pencil, Plus, Search, Settings, SquarePen, Keyboard, GitFork, Trash2, Cloud, Server, AlarmClock, Bot } from "lucide-react";
+import { Pin, PinOff, Check, ChevronsUpDown, MoreHorizontal, PanelLeft, Pencil, Plus, Search, Settings, SquarePen, Keyboard, GitFork, Trash2, Cloud, Server, AlarmClock, Bot, Laptop } from "lucide-react";
 import { memo, useMemo, useRef, useState } from "react";
 import type { SessionInfo } from "@opencode/client";
 import { sortedSessions, useChat } from "../../state/chat";
@@ -112,7 +112,7 @@ function WorkspaceSwitcher() {
           {all.map((w) => (
             <MenuItem
               key={w.id}
-              icon={w.provider !== "custom" ? <Cloud size={14} /> : <Server size={14} />}
+              icon={<WorkspaceIcon provider={w.provider} size={14} />}
               label={w.name}
               hint={w.sandboxId ?? new URL(w.baseUrl).host}
               active={w.id === ws?.id}
@@ -150,9 +150,14 @@ function WorkspaceSwitcher() {
 export function WorkspaceAvatar({ provider, size = 28 }: { provider: string; status?: string; size?: number }) {
   return (
     <div className="grid shrink-0 place-items-center rounded-lg border border-line bg-raised text-ink-2" style={{ width: size, height: size }}>
-      {provider !== "custom" ? <Cloud size={Math.round(size * 0.5)} /> : <Server size={Math.round(size * 0.5)} />}
+      <WorkspaceIcon provider={provider} size={Math.round(size * 0.5)} />
     </div>
   );
+}
+
+/** A cloud machine, this computer, or a server you run. */
+export function WorkspaceIcon({ provider, size }: { provider: string; size: number }) {
+  return provider === "local" ? <Laptop size={size} /> : provider === "custom" ? <Server size={size} /> : <Cloud size={size} />;
 }
 
 /** Static connection dot: green connected, red offline, amber while working on it. */

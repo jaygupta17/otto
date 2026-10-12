@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { ExternalLink, KeyRound, Moon, MoreHorizontal, Plus, Power, Trash2 } from "lucide-react";
 import { useUI, toast } from "../../state/ui";
-import { useWorkspaces, secretKeys, type CloudId, type Workspace } from "../../state/workspaces";
+import { useWorkspaces, secretKeys, isCloud, type CloudId, type Workspace } from "../../state/workspaces";
+import { stopLocal } from "../../lib/providers/local";
 import { useConnection } from "../../state/connection";
 import { secrets } from "../../lib/secrets";
 import { openExternal } from "../../lib/platform";
@@ -28,7 +29,7 @@ export function WorkspacesTab() {
       const out: Record<string, string> = {};
       await Promise.all(
         workspaces.map(async (w) => {
-          if (w.provider === "custom" || !w.sandboxId) return;
+          if (!isCloud(w.provider) || !w.sandboxId) return;
           const key = await secrets.get(secretKeys[w.provider]);
           if (!key) return;
           await CLOUD_OPS[w.provider]
@@ -91,10 +92,10 @@ function WorkspaceCard({ w, active, machine, onSelect, onMachine }: { w: Workspa
   const [menu, setMenu] = useState(false);
   const more = useRef<HTMLButtonElement>(null);
 
-  const ops = w.provider === "custom" ? null : CLOUD_OPS[w.provider];
+  const ops = isCloud(w.provider) ? CLOUD_OPS[w.provider] : null;
 
   async function cloudAction(kind: "stop" | "resume") {
-    if (!ops || w.provider === "custom" || !w.sandboxId) return;
+    if (!ops || !isCloud(w.provider) || !w.sandboxId) return;
     const key = await secrets.get(secretKeys[w.provider]);
     if (!key) return toast({ tone: "error", title: `Add your ${ops.name} API key below first` });
     setBusy(kind);
@@ -137,11 +138,21 @@ function WorkspaceCard({ w, active, machine, onSelect, onMachine }: { w: Workspa
       </div>
       {confirm ? (
         <>
-          <span className="text-[12.5px] text-muted">{ops ? `Remove from Otto? It stays in your ${ops.name} account.` : "Remove from Otto?"}</span>
+          <span className="text-[12.5px] text-muted">{ops ? `Remove from Otto? It stays in your ${ops.name} account.` : w.provider === "local" ? "Remove and stop its server? OpenCode stays installed." : "Remove from Otto?"}</span>
           <Button size="sm" variant="ghost" onClick={() => setConfirm(false)}>
             Cancel
           </Button>
-          <Button size="sm" variant="danger" onClick={() => void remove(w.id)}>
+          <Button
+            size="sm"
+            variant="danger"
+            onClick={async () => {
+              if (w.provider === "local") {
+                if (active) useConnection.getState().disconnect();
+                await stopLocal(w.baseUrl);
+              }
+              await remove(w.id);
+            }}
+          >
             Remove
           </Button>
         </>

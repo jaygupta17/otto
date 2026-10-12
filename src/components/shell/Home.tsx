@@ -1,8 +1,9 @@
 import { motion } from "motion/react";
-import { Cloud, PanelLeft, RotateCw, Server } from "lucide-react";
+import { PanelLeft, RotateCw } from "lucide-react";
 import { useMemo, type CSSProperties } from "react";
 import { Composer } from "../chat/Composer";
 import { ProjectPicker } from "../chat/Pickers";
+import { WorkspaceIcon } from "./Sidebar";
 import { AgentClock, Spinner } from "../ui/AgentClock";
 import { Button, IconButton } from "../ui/Button";
 import { useTrafficLights } from "../../hooks/useChrome";
@@ -66,7 +67,7 @@ export function Home({ compact = false }: { compact?: boolean }) {
               <ProjectPicker />
             </span>
             <span className="surface-thin inline-flex h-7 items-center gap-1.5 rounded-full px-2.5 text-muted">
-              {ws?.provider !== "custom" ? <Cloud size={13} /> : <Server size={13} />}
+              <WorkspaceIcon provider={ws?.provider ?? "boat"} size={13} />
               {ws?.name}
             </span>
           </div>

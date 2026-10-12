@@ -1,15 +1,17 @@
 /**
- * Workspaces = a sandbox (or any reachable OpenCode v2 server) the app talks to.
+ * Workspaces = a sandbox, this computer, or any reachable OpenCode v2 server the app talks to.
  * Metadata lives in the app store; credentials live in `secrets`.
  */
 import { create } from "zustand";
 import { kv } from "../lib/kv";
 import { secrets } from "../lib/secrets";
 
-export type ProviderId = "boat" | "boxd" | "e2b" | "daytona" | "custom";
+export type ProviderId = "boat" | "boxd" | "e2b" | "daytona" | "local" | "custom";
 
 /** Providers whose API key Otto keeps (keychain) to create and wake machines. */
-export type CloudId = Exclude<ProviderId, "custom">;
+export type CloudId = Exclude<ProviderId, "custom" | "local">;
+
+export const isCloud = (p: ProviderId): p is CloudId => p !== "custom" && p !== "local";
 
 export interface Workspace {
   id: string;

@@ -10,9 +10,10 @@ import { BoxdError, reviveBoxd } from "../lib/providers/boxd";
 import { E2BError, keepE2BAwake, reviveE2B } from "../lib/providers/e2b";
 import { DAYTONA_EXTRA_HEADERS, DAYTONA_PREVIEW_HEADER, DaytonaError, keepDaytonaAwake, reviveDaytona } from "../lib/providers/daytona";
 import { PROVIDER_NAME } from "../lib/providers/names";
+import { reviveLocal } from "../lib/providers/local";
 import { BoatError, isBillingError } from "../lib/providers/boat";
 import { secrets } from "../lib/secrets";
-import { secretKeys, useWorkspaces, type Workspace } from "./workspaces";
+import { isCloud, secretKeys, useWorkspaces, type Workspace } from "./workspaces";
 import { useChat } from "./chat";
 
 export type ConnStatus = "idle" | "connecting" | "waking" | "repairing" | "ready" | "error";
@@ -76,17 +77,27 @@ export const useConnection = create<State>((set, get) => ({
         });
       }
 
-      if (!info && ws.provider !== "custom" && ws.sandboxId) {
-        const apiKey = await secrets.get(secretKeys[ws.provider]);
-        if (!apiKey) throw new Error(`Add your ${PROVIDER_NAME[ws.provider]} API key in Settings → Workspaces to wake this machine.`);
+      if (!info && ws.provider === "local") {
+        // Not running (or something else took its port): start it again.
+        const endpoint = await reviveLocal(ws.baseUrl, password, (phase, detail) => !stale() && set({ status: phase, detail }), signal);
+        if (stale()) return;
+        if (endpoint.baseUrl !== ws.baseUrl) await useWorkspaces.getState().update(ws.id, { baseUrl: endpoint.baseUrl });
+        client = new OpenCode(endpoint);
+        info = await withTimeout(client.info(signal), 8000).catch(() => null);
+      }
+
+      if (!info && isCloud(ws.provider) && ws.sandboxId) {
+        const provider = ws.provider;
+        const apiKey = await secrets.get(secretKeys[provider]);
+        if (!apiKey) throw new Error(`Add your ${PROVIDER_NAME[provider]} API key in Settings → Workspaces to wake this machine.`);
         const progress = (phase: "waking" | "repairing", detail?: string) => !stale() && set({ status: phase, detail });
         const id = ws.sandboxId;
         const endpoint =
-          ws.provider === "boxd"
+          provider === "boxd"
             ? await reviveBoxd(apiKey, id, password, progress, signal)
-            : ws.provider === "e2b"
+            : provider === "e2b"
               ? await reviveE2B(apiKey, id, password, ws.sleepAfter ?? E2B_DEFAULT_SLEEP, progress, signal)
-              : ws.provider === "daytona"
+              : provider === "daytona"
                 ? await reviveDaytona(apiKey, id, password, progress, signal)
                 : await reviveBoat(apiKey, id, password, progress, signal);
         if (stale()) return;

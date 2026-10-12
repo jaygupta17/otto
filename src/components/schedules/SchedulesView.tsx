@@ -83,7 +83,7 @@ export function SchedulesView({ compact = false, onBack }: { compact?: boolean; 
                 </div>
                 <p className="mb-8 text-[13.5px] text-muted">
                   Agents that start on their own, even with Otto closed.
-                  {ws?.provider === "boat" && " They run while the sandbox is awake."}{ws?.provider === "boxd" && " They pause while the machine hibernates after being idle."}{ws?.provider === "e2b" && " They pause with the sandbox."}{ws?.provider === "daytona" && " They stop with the sandbox."}
+                  {ws?.provider === "boat" && " They run while the sandbox is awake."}{ws?.provider === "boxd" && " They pause while the machine hibernates after being idle."}{ws?.provider === "e2b" && " They pause with the sandbox."}{ws?.provider === "daytona" && " They stop with the sandbox."}{ws?.provider === "local" && " They run while this computer is awake."}
                 </p>
 
                 {error && <div className="selectable mb-4 rounded-xl bg-danger-soft px-4 py-3 text-[13px] text-danger">{error}</div>}

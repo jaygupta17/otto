@@ -1,3 +1,4 @@
+mod local;
 mod secrets;
 
 /// Frontend diagnostics → terminal (debug builds only).
@@ -22,6 +23,12 @@ pub fn run() {
             secrets::secret_set,
             secrets::secret_delete,
             secrets::secret_backend,
+            local::local_find_opencode,
+            local::local_install_opencode,
+            local::local_free_port,
+            local::local_start_server,
+            local::local_server_log,
+            local::local_stop_server,
             dev_log
         ])
         .run(tauri::generate_context!())

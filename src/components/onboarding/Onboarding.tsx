@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowLeft, ArrowRight, Check, ChevronDown, Eye, EyeOff, ExternalLink, KeyRound, Server, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, ChevronDown, Eye, EyeOff, ExternalLink, KeyRound, Laptop, Server, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AppGlyph } from "../ui/Mark";
 import { Button } from "../ui/Button";
@@ -11,8 +11,9 @@ import { BOXD_BILLING_URL, BOXD_SIZES, BOXD_SLEEP, BoxdError, provisionBoxd, ver
 import { E2BClient, E2BError, E2B_BILLING_URL, E2B_KEYS_URL, E2B_SLEEP, provisionE2B } from "../../lib/providers/e2b";
 import { DaytonaClient, DaytonaError, DAYTONA_BILLING_URL, DAYTONA_KEYS_URL, DAYTONA_SIZES, DAYTONA_SLEEP, provisionDaytona } from "../../lib/providers/daytona";
 import { BoatClient, BOAT_BILLING_URL, isBillingError } from "../../lib/providers/boat";
+import { LOCAL_SETUP_STEPS, localAvailable, localName, provisionLocal } from "../../lib/providers/local";
 import { OpenCode } from "../../lib/opencode/client";
-import { uid } from "../../lib/id";
+import { randomSecret, uid } from "../../lib/id";
 import { kv } from "../../lib/kv";
 import { secrets } from "../../lib/secrets";
 import { openExternal } from "../../lib/platform";
@@ -50,6 +51,14 @@ const PROVIDERS: ProviderCard[] = [
   },
   { id: "e2b", name: "E2B", blurb: "Sandboxes that pause and resume where they left off.", available: true, logo: <LetterLogo letter="E2B" tone="#ff8800" /> },
   { id: "daytona", name: "Daytona", blurb: "Fast isolated sandboxes that stop when idle.", available: true, logo: <LetterLogo letter="D" tone="#0a0a0a" /> },
+  {
+    id: "local",
+    name: localName(),
+    blurb: "Runs OpenCode here. Installs it if needed.",
+    available: localAvailable(),
+    badge: "No key needed",
+    logo: <div className="grid h-full w-full place-items-center rounded-lg border border-line bg-panel text-ink-2"><Laptop size={16} /></div>,
+  },
   { id: "custom", name: "Your own server", blurb: "Any reachable OpenCode v2 server.", available: true, logo: <div className="grid h-full w-full place-items-center rounded-lg border border-line bg-panel text-ink-2"><Server size={16} /></div> },
 ];
 
@@ -231,9 +240,37 @@ export function Onboarding({ embedded = false, onDone, onCancel }: { embedded?: 
     }
   }
 
+  const [local, setLocal] = useState(false);
+
+  async function runLocal() {
+    setLocal(true);
+    go("setup");
+    setSetupError(null);
+    setFinishedAt(0);
+    setStartedAt(Date.now());
+    setSteps(initialSteps());
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+    try {
+      const onStep = (u: StepUpdate) => setSteps((prev) => ({ ...prev, [u.step]: { state: u.state, detail: u.detail } }));
+      const { endpoint, version } = await provisionLocal(randomSecret(32), onStep, ctrl.signal);
+      const wsId = uid("ws_");
+      await useWorkspaces.getState().add(
+        { id: wsId, name: localName(), provider: "local", baseUrl: endpoint.baseUrl, createdAt: Date.now(), lastUsedAt: Date.now(), version },
+        { password: endpoint.password },
+      );
+      resultRef.current = { wsId };
+      setFinishedAt(Date.now());
+      go("done");
+    } catch (e) {
+      if ((e as Error).name === "AbortError") return;
+      setSetupError({ message: (e as Error).message || "Something went wrong.", billing: false });
+    }
+  }
+
   function cancelSetup() {
     abortRef.current?.abort();
-    go("sandbox", -1);
+    go(local ? "providers" : "sandbox", -1);
   }
 
   const content = (
@@ -250,7 +287,7 @@ export function Onboarding({ embedded = false, onDone, onCancel }: { embedded?: 
         {screen === "providers" && (
           <Providers
             embedded={embedded}
-            onPick={(id) => (id === "custom" ? go("custom") : pickCloud(id as Cloud))}
+            onPick={(id) => (id === "custom" ? go("custom") : id === "local" ? void runLocal() : (setLocal(false), pickCloud(id as Cloud)))}
           />
         )}
         {screen === "sandbox" && (
@@ -275,7 +312,7 @@ export function Onboarding({ embedded = false, onDone, onCancel }: { embedded?: 
         )}
         {screen === "custom" && <CustomForm onBack={() => go("providers", -1)} onConnected={(wsId) => { resultRef.current = { wsId }; setStartedAt(0); go("done"); }} />}
         {screen === "setup" && (
-          <SetupProgress cloud={cloud} steps={steps} error={setupError} startedAt={startedAt} onRetry={() => runSetup(apiKey.trim())} onCancel={cancelSetup} />
+          <SetupProgress cloud={cloud} list={local ? LOCAL_SETUP_STEPS : SETUP_STEPS} steps={steps} error={setupError} startedAt={startedAt} onRetry={() => (local ? runLocal() : runSetup(apiKey.trim()))} onCancel={cancelSetup} />
         )}
         {screen === "done" && <Done elapsed={startedAt ? finishedAt - startedAt : 0} onEnter={() => onDone?.()} />}
       </motion.div>
@@ -316,14 +353,15 @@ function initialSteps() {
 // ---------------------------------------------------------------------------
 
 function Providers({ onPick, embedded }: { onPick: (id: string) => void; embedded: boolean }) {
+  const hasLocal = useWorkspaces((s) => s.workspaces.some((w) => w.provider === "local"));
   return (
     <div>
       <h1 className={`${embedded ? "text-[20px]" : "text-[28px] leading-tight"} font-semibold text-ink`}>{embedded ? "Add a workspace" : "Where should your agents run?"}</h1>
       <p className="mt-2 text-[15px] leading-relaxed text-muted">
-        {embedded ? "Start another cloud machine or connect a server you already run." : "Otto starts a cloud machine, installs the OpenCode agent and keeps it running. You just bring an API key."}
+        {embedded ? "Start another cloud machine, use this computer, or connect a server you already run." : "Otto starts a cloud machine, installs the OpenCode agent and keeps it running. You just bring an API key."}
       </p>
       <ul className="mt-7 divide-y divide-[var(--border)] overflow-hidden rounded-3xl border border-line bg-raised">
-        {PROVIDERS.map((p) => (
+        {PROVIDERS.filter((p) => p.id !== "local" || (p.available && !hasLocal)).map((p) => (
           <li key={p.id}>
             <button disabled={!p.available} onClick={() => onPick(p.id)} className="group flex w-full items-center gap-3.5 px-4 py-3.5 text-left transition-colors hover:bg-hover disabled:hover:bg-transparent">
               <div className={`h-9 w-9 shrink-0 ${p.available ? "" : "opacity-50"}`}>{p.logo}</div>
@@ -492,6 +530,7 @@ function CustomForm({ onBack, onConnected }: { onBack: () => void; onConnected: 
 
 function SetupProgress({
   cloud,
+  list,
   steps,
   error,
   startedAt,
@@ -499,6 +538,7 @@ function SetupProgress({
   onCancel,
 }: {
   cloud: Cloud;
+  list: { id: SetupStepId; title: string; hint: string }[];
   steps: Record<SetupStepId, { state: string; detail?: string; at?: number }>;
   error: { message: string; billing: boolean } | null;
   startedAt: number;
@@ -517,7 +557,7 @@ function SetupProgress({
             : "Usually under a minute. You can leave this window in the background."}
       </p>
       <ol className="mt-7 border-t border-line">
-        {SETUP_STEPS.map((s) => {
+        {list.map((s) => {
           const st = steps[s.id];
           return (
             <li key={s.id} className="flex items-start gap-3 border-b border-line py-3">
