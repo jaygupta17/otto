@@ -140,8 +140,10 @@ export class OpenCode {
   }
 
   // ---- server ---------------------------------------------------------
-  health(signal?: AbortSignal) {
-    return this.request<{ healthy?: boolean; version?: string }>("GET", "/global/health", { signal });
+  // Liveness. v2 answered this at /api/health in 2.0.2 and at /api/info from
+// 2.0.26, and nothing newer; /api/info covers both, so ask for that.
+health(signal?: AbortSignal) {
+    return this.info(signal);
   }
   info(signal?: AbortSignal) {
     return this.request<ServerInfo>("GET", "/api/info", { signal });

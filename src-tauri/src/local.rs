@@ -102,7 +102,12 @@ fn no_window(cmd: &mut Command) {
 #[cfg(not(windows))]
 fn no_window(_: &mut Command) {}
 
-/// "opencode v2.0.27" → "2.0.27", only for major ≥ 2.
+/// Oldest OpenCode with every endpoint the app calls. `/api/info` — the
+/// handshake in `provisionLocal` — only exists from 2.0.26; earlier v2 builds
+/// 404 it and the setup just spins until it times out.
+const MIN_VERSION: (u32, u32, u32) = (2, 0, 26);
+
+/// "opencode v2.0.27" → "2.0.27", only when new enough to drive.
 fn v2_version(bin: &Path) -> Option<String> {
     let mut cmd = Command::new(bin);
     cmd.arg("--version").env("PATH", login_path());
@@ -111,8 +116,9 @@ fn v2_version(bin: &Path) -> Option<String> {
         .split_whitespace()
         .map(|w| w.trim_start_matches('v'))
         .find(|w| w.split('.').count() >= 3 && w.split('.').all(|p| p.chars().next().is_some_and(|c| c.is_ascii_digit())))?;
-    let major: u32 = v.split('.').next()?.parse().ok()?;
-    (major >= 2).then(|| v.to_string())
+    let n: Vec<u32> = v.split('.').map(|p| p.parse().unwrap_or(0)).collect();
+    let key = (n.first().copied()?, n.get(1).copied().unwrap_or(0), n.get(2).copied().unwrap_or(0));
+    (key >= MIN_VERSION).then(|| v.to_string())
 }
 
 fn managed_bin(dir: &Path) -> PathBuf {
@@ -385,15 +391,20 @@ mod tests {
         let pw = "test-password-otto";
         let pid = start(&dir, &bin, port, pw).unwrap();
         println!("started pid {pid} on {port}");
-        let url = format!("http://127.0.0.1:{port}/global/health");
-        let mut ok = false;
-        for _ in 0..60 {
-            if curl(&["-u", &format!("opencode:{pw}"), &url], Duration::from_secs(3)).is_ok() {
-                ok = true;
-                break;
-            }
-            std::thread::sleep(Duration::from_millis(500));
-        }
+// /api/info, not /api/health: the liveness route moved between 2.0.2 and
+// 2.0.26, and an unknown path answers 200 with the web UI's HTML. Assert on
+// the body so this can't pass on a fallback page again.
+let url = format!("http://127.0.0.1:{port}/api/info");
+let mut ok = false;
+for _ in 0..60 {
+if let Ok(body) = curl(&["-u", &format!("opencode:{pw}"), &url], Duration::from_secs(3)) {
+if body.contains("\"version\"") {
+ok = true;
+break;
+}
+}
+std::thread::sleep(Duration::from_millis(500));
+}
         let wrong = curl(&["-u", "opencode:wrong", &url], Duration::from_secs(3)).is_ok();
         stop(&dir, port).unwrap();
         std::thread::sleep(Duration::from_millis(800));

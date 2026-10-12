@@ -68,7 +68,13 @@ async function startServer(bin: string, preferredPort: number | undefined, passw
     await sleep(500);
   }
   const log = await call<string>("local_server_log", { port }).catch(() => "");
-  throw new Error(log || "The agent server didn't start.");
+  // "server listening on …" in the log means it did start and simply never
+  // answered, which is what an OpenCode too old to have /api/info looks like.
+  throw new Error(
+    log.includes("server listening")
+      ? "The agent server started but never answered. That OpenCode build is too old for Otto — it needs 2.0.26 or newer."
+      : log || "The agent server didn't start.",
+  );
 }
 
 export async function provisionLocal(password: string, report: (u: StepUpdate) => void, signal: AbortSignal): Promise<{ endpoint: ServerEndpoint; version: string }> {
