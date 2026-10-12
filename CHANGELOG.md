@@ -6,6 +6,8 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-12
+
 ### Added
 
 - **Update from inside Otto.** On macOS, Windows and Linux, Otto checks for a new version shortly after launch and every few hours. When one is out, an "Update" button appears at the bottom of the sidebar: it downloads in the background, then asks you to restart. Settings → General → Updates shows your version, checks on demand, and turns the automatic check off. Nothing downloads until you click.
@@ -66,7 +68,8 @@ First public release.
 - Scheduled tasks that run on the agent machine.
 - Project file browser with syntax highlighting.
 
-[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/jaygupta17/otto/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/jaygupta17/otto/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/jaygupta17/otto/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/jaygupta17/otto/compare/v0.2.0...v0.3.0
