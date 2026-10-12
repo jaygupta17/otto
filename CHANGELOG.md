@@ -6,6 +6,8 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-12
+
 ### Fixed
 
 - "This computer" workspaces set up again when an older OpenCode v2 is already on your PATH. Otto talks to an endpoint added in 2.0.26, so an older build never answered and setup gave up with a confusing error; it now installs a current one instead.
@@ -60,7 +62,8 @@ First public release.
 - Scheduled tasks that run on the agent machine.
 - Project file browser with syntax highlighting.
 
-[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/jaygupta17/otto/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/jaygupta17/otto/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/jaygupta17/otto/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/jaygupta17/otto/compare/v0.1.0...v0.2.0
