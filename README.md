@@ -6,6 +6,8 @@
 
 <p align="center">Run coding agents on a cloud machine and steer them from your laptop or phone.</p>
 
+<p align="center"><a href="https://jaygupta.dev/otto">Website</a> · <a href="https://github.com/jaygupta17/otto/releases/latest">Download</a> · <a href="https://jaygupta.dev/otto/releases">Changelog</a></p>
+
 <p align="center">
   <img src="assets/readme/hero.webp" alt="An agent adds link expiry to a small URL shortener, writes tests and gets them passing" />
 </p>

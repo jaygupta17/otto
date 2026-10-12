@@ -14,7 +14,6 @@ import { McpTab } from "./McpTab";
 import { SkillsTab } from "./SkillsTab";
 import { CommandsTab } from "./CommandsTab";
 import { Empty } from "./common";
-import { openExternal } from "../../lib/platform";
 
 const GROUPS: { label: string; items: { id: SettingsTab; label: string; icon: ReactNode; server?: boolean }[] }[] = [
   {
@@ -106,7 +105,7 @@ function About() {
     <div className="flex flex-col items-center py-10 text-center">
       <AppGlyph size={64} />
       <h3 className="mt-5 text-[20px] font-semibold">Otto</h3>
-      <p className="mt-1 text-[13px] text-muted">Version 0.1.0</p>
+      <p className="mt-1 text-[13px] text-muted">Version {__APP_VERSION__}</p>
       <p className="mt-3 max-w-[360px] text-[13.5px] text-muted">Cloud coding agents, powered by OpenCode.</p>
       {info && (
         <div className="mt-6 rounded-xl bg-sunken px-4 py-2 font-mono text-[12px] text-muted">
@@ -114,12 +113,6 @@ function About() {
           OpenCode {info.version}
         </div>
       )}
-      <p className="mt-8 text-[12px] text-muted">
-        Background painting by{" "}
-        <button type="button" onClick={() => void openExternal("https://wallhaven.cc/w/yqkl97")} className="underline decoration-current/30 underline-offset-2 hover:text-ink">
-          Bou Nin
-        </button>
-      </p>
     </div>
   );
 }
