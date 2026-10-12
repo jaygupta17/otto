@@ -6,6 +6,8 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-12
+
 ### Added
 
 - **Run agents on this computer.** Otto can start OpenCode right beside the app on macOS, Windows and Linux. It finds your OpenCode install (or fetches one), runs `opencode serve` locally on its own password, and leaves it running after you quit, so a long job keeps going. No cloud machine and no API key. Phones show a laptop icon for these workspaces so they aren't confused with a sandbox.
@@ -54,7 +56,8 @@ First public release.
 - Scheduled tasks that run on the agent machine.
 - Project file browser with syntax highlighting.
 
-[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/jaygupta17/otto/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/jaygupta17/otto/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/jaygupta17/otto/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/jaygupta17/otto/releases/tag/v0.1.0
