@@ -64,7 +64,13 @@ It runs on macOS, Windows, Linux, iOS and Android, built with [Tauri 2](https://
 
 ## Download
 
-Get the latest build from [Releases](https://github.com/jaygupta17/otto/releases/latest).
+On macOS, one command installs the latest version into Applications ([script](scripts/install.sh)):
+
+```sh
+curl -fsSL https://jaygupta.dev/otto/install.sh | sh
+```
+
+Everything else is on [Releases](https://github.com/jaygupta17/otto/releases/latest).
 
 | Platform | File |
 | --- | --- |
@@ -76,7 +82,7 @@ Get the latest build from [Releases](https://github.com/jaygupta17/otto/releases
 
 The builds aren't code-signed yet, so your OS will warn you the first time:
 
-- **macOS:** if it says Otto "is damaged" or can't be opened, move it to Applications and run `xattr -dr com.apple.quarantine /Applications/Otto.app`, or right-click the app and choose **Open**.
+- **macOS:** the install command above avoids this. With the `.dmg`, Otto isn't notarized yet, so the first launch is blocked. Move it to Applications and open it once, then go to **System Settings → Privacy & Security** and click **Open Anyway**. If macOS says Otto "is damaged" instead, run `xattr -dr com.apple.quarantine /Applications/Otto.app`.
 - **Windows:** on the SmartScreen prompt, choose **More info**, then **Run anyway**.
 - **Android:** open the APK from your phone's browser or Files app and allow **Install unknown apps** for it when asked.
 - **iOS:** Apple doesn't allow installing apps from a download. Build it yourself with Xcode (see [Mobile](#mobile)).

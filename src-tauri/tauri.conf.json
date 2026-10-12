@@ -34,6 +34,9 @@
     "active": true,
     "targets": "all",
     "category": "DeveloperTool",
+    "macOS": {
+      "signingIdentity": "-"
+    },
     "shortDescription": "A calm home for your cloud coding agents",
     "icon": [
       "icons/32x32.png",

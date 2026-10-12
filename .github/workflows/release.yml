@@ -46,7 +46,15 @@ jobs:
             pre=(); [[ "$TAG" == *-* ]] && pre=(--prerelease)
             gh release create "$TAG" --draft --title "Otto $TAG" --verify-tag "${notes[@]}" "${pre[@]}"
           fi
-          echo "id=$(gh api repos/${{ github.repository }}/releases --jq ".[] | select(.tag_name==\"$TAG\") | .id" | head -1)" >> "$GITHUB_OUTPUT"
+          # The releases list can lag a fresh draft by a few seconds; an empty id
+          # makes tauri-action skip every upload while the job still passes.
+          for i in 1 2 3 4 5 6; do
+            id=$(gh api repos/${{ github.repository }}/releases --jq ".[] | select(.tag_name==\"$TAG\") | .id" | head -1)
+            [ -n "$id" ] && break
+            sleep 5
+          done
+          [ -n "$id" ] || { echo "::error::Could not find the release id for $TAG"; exit 1; }
+          echo "id=$id" >> "$GITHUB_OUTPUT"
 
   desktop:
     needs: create-release

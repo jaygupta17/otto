@@ -1,0 +1,21 @@
+name: Provider request
+description: Ask for a new place to run agents.
+labels: [provider]
+body:
+  - type: input
+    id: provider
+    attributes:
+      label: Provider
+      placeholder: e.g. Fly Machines, Modal, Hetzner
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why this one?
+      description: Price, region, GPUs, something you already pay for, etc.
+  - type: textarea
+    id: api
+    attributes:
+      label: What the API offers
+      description: Links to docs for creating a machine, running commands and exposing a port over HTTPS, if you know them.

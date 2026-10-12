@@ -1,0 +1,45 @@
+name: Bug report
+description: Something in Otto doesn't work the way it should.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what you got instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Connect a Daytona sandbox
+        2. Start a session and ask for …
+        3. …
+  - type: input
+    id: version
+    attributes:
+      label: Otto version
+      description: Settings → About, e.g. 0.2.0
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options: [macOS (Apple Silicon), macOS (Intel), Windows, Linux, Android, iOS (built from source)]
+    validations:
+      required: true
+  - type: dropdown
+    id: machine
+    attributes:
+      label: Machine
+      options: [Boat, boxd, E2B, Daytona, My own OpenCode server]
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Remove API keys, server passwords and URLs you don't want public before posting.
