@@ -4,6 +4,7 @@ import { useWorkspaces } from "./state/workspaces";
 import { useConnection } from "./state/connection";
 import { useUI, initUI } from "./state/ui";
 import { initNotificationCenter } from "./state/notifications";
+import { initUpdates } from "./state/updates";
 import { initViewport } from "./lib/viewport";
 import { useCompact } from "./hooks/useMedia";
 import { Onboarding } from "./components/onboarding/Onboarding";
@@ -27,6 +28,7 @@ export default function App() {
 
   useEffect(() => {
     initViewport();
+    void initUpdates();
     void Promise.all([initUI(), useWorkspaces.getState().hydrate(), initNotificationCenter()]).then(() => setBooted(true));
   }, []);
 

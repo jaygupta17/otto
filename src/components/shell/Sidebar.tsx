@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from "motion/react";
 import { Pin, PinOff, Check, ChevronsUpDown, MoreHorizontal, PanelLeft, Pencil, Plus, Search, Settings, SquarePen, Keyboard, GitFork, Trash2, Cloud, Server, AlarmClock, Bot, Laptop } from "lucide-react";
+import { UpdatePill } from "./UpdateControls";
 import { memo, useMemo, useRef, useState } from "react";
 import type { SessionInfo } from "@opencode/client";
 import { sortedSessions, useChat } from "../../state/chat";
@@ -43,6 +44,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         <kbd className="font-sans text-[12px] text-faint">⌘K</kbd>
       </button>
       <SessionList query="" onNavigate={onNavigate} />
+      <UpdatePill />
       <SidebarFooter />
     </div>
   );

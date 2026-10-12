@@ -17,6 +17,7 @@ import { Spinner } from "../ui/AgentClock";
 import { Row, Rows, Section, Segmented, Slider, Toggle } from "./common";
 import { ModelSelect } from "./ModelSelect";
 import { PermissionsEditor } from "./AgentsTab";
+import { UpdatesSection } from "../shell/UpdateControls";
 
 export function GeneralTab() {
   return (
@@ -25,6 +26,7 @@ export function GeneralTab() {
       <AppearanceSection />
       <NotificationsSection />
       <DefaultsSection />
+      <UpdatesSection />
     </>
   );
 }

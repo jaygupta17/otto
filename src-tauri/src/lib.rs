@@ -18,6 +18,15 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_websocket::init())
+        .setup(|_app| {
+            // In-app updates: desktop only. Phones update through their stores / the APK.
+            #[cfg(desktop)]
+            {
+                _app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
+                _app.handle().plugin(tauri_plugin_process::init())?;
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             secrets::secret_get,
             secrets::secret_set,

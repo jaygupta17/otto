@@ -38,6 +38,10 @@ To undo before pushing: `git tag -d vx.y.z && git reset --hard HEAD~1`.
 1. Watch the Release workflow in the Actions tab. It checks the tag matches the app version, creates the draft with the changelog section as notes, and attaches the macOS, Windows, Linux and Android builds.
 2. Open the draft release, check the assets, and publish.
 
+Desktop builds also carry signed update bundles and a `latest.json` that the app's updater reads, so publishing a release is what offers it to everyone already on Otto. A draft or a pre-release is never offered; `/releases/latest` only points at a published, full release. The bundles are signed with the key in the `TAURI_SIGNING_PRIVATE_KEY` secret (plus `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` if the key has one; the current key has none, so that secret is unset); the matching public key is `plugins.updater.pubkey` in `src-tauri/tauri.conf.json`. Without the secret the desktop jobs fail. **Keep a backup of the private key**: lose it and installed copies can never update again, since they only accept updates signed by it.
+
+A local `bunx tauri build` needs the key too: `TAURI_SIGNING_PRIVATE_KEY=~/.tauri/otto-updater.key TAURI_SIGNING_PRIVATE_KEY_PASSWORD= bunx tauri build`.
+
 Android builds are signed with the keystore in the `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD` secrets. Without them the APK is signed with a throwaway key and can't update an earlier install.
 
 ## Other commands
