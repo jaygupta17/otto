@@ -54,7 +54,7 @@ interface Sandbox {
   public?: boolean;
 }
 
-const RUNNING = ["started"];
+export const RUNNING = ["started"];
 const BOOTING = ["creating", "starting", "restoring", "pulling_snapshot", "pending_build", "building_snapshot", "resuming"];
 
 export class DaytonaClient {
@@ -96,6 +96,12 @@ export class DaytonaClient {
   get(id: string, signal?: AbortSignal) {
     return this.call<Sandbox>("GET", `/sandbox/${id}`, undefined, signal);
   }
+  /** Sandboxes on this key, filtered to what Otto creates (labels: { app: "otto" }). */
+  list() {
+    return this.call<{ items?: Sandbox[] } | Sandbox[]>("GET", "/sandbox?limit=100&labels=" + encodeURIComponent(JSON.stringify({ app: "otto" }))).then((r) =>
+      Array.isArray(r) ? r : (r.items ?? []),
+    );
+  }
   start(id: string) {
     return this.call<unknown>("POST", `/sandbox/${id}/start`);
   }
@@ -129,7 +135,7 @@ const abortIf = (s: AbortSignal) => {
 };
 const tail = (s: string, n = 6) => s.trim().split("\n").filter(Boolean).slice(-n).join("\n");
 
-async function waitRunning(day: DaytonaClient, id: string, signal: AbortSignal, onDetail: (d: string) => void): Promise<Sandbox> {
+export async function waitRunning(day: DaytonaClient, id: string, signal: AbortSignal, onDetail: (d: string) => void): Promise<Sandbox> {
   const started = Date.now();
   for (;;) {
     abortIf(signal);

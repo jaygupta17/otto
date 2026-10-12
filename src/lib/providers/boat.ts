@@ -234,7 +234,7 @@ export function installScript(): string {
 
 /**
  * Bash that (re)writes the systemd unit for `opencode serve`, restarts it
- * and waits for /global/health. The password lives in a root-only env file.
+ * and waits for /api/info. The password lives in a root-only env file.
  */
 export function serviceScript(password: string, port = OPENCODE_PORT): string {
   return `set -eu
@@ -271,7 +271,7 @@ sudo systemctl daemon-reload
 sudo systemctl enable otto-opencode >/dev/null 2>&1
 sudo systemctl restart otto-opencode
 for i in $(seq 1 90); do
-  if curl -fsS -u "opencode:${password}" "http://127.0.0.1:${port}/global/health" >/dev/null 2>&1; then echo OTTO_READY; exit 0; fi
+  if curl -fsS -u "opencode:${password}" "http://127.0.0.1:${port}/api/info" >/dev/null 2>&1; then echo OTTO_READY; exit 0; fi
   sleep 1
 done
 sudo journalctl -u otto-opencode -n 30 --no-pager 2>/dev/null || true
@@ -308,7 +308,7 @@ pkill -f "opencode serve --hostname 0.0.0.0 --port ${port}" 2>/dev/null || true
 setsid nohup "$D/serve.sh" > /dev/null 2>&1 < /dev/null &
 echo $! > "$D/serve.pid"
 for i in $(seq 1 90); do
-  if curl -fsS -u "opencode:${password}" "http://127.0.0.1:${port}/global/health" >/dev/null 2>&1; then echo OTTO_READY; exit 0; fi
+  if curl -fsS -u "opencode:${password}" "http://127.0.0.1:${port}/api/info" >/dev/null 2>&1; then echo OTTO_READY; exit 0; fi
   sleep 1
 done
 tail -n 30 "$D/opencode.log" 2>/dev/null || true
@@ -317,7 +317,20 @@ exit 1`;
 
 /** Quick in-sandbox check that the service answers; used on resume. */
 export function healthScript(password: string, port = OPENCODE_PORT): string {
-  return `for i in $(seq 1 30); do curl -fsS -u "opencode:${password}" "http://127.0.0.1:${port}/global/health" >/dev/null 2>&1 && { echo OTTO_READY; exit 0; }; sleep 1; done; exit 1`;
+  return `for i in $(seq 1 30); do curl -fsS -u "opencode:${password}" "http://127.0.0.1:${port}/api/info" >/dev/null 2>&1 && { echo OTTO_READY; exit 0; }; sleep 1; done; exit 1`;
+}
+
+/**
+ * The password Otto's agent server was provisioned with; prints nothing when
+ * there is none. daemonScript keeps it in ~/.otto, serviceScript in a
+ * root-only /etc/otto file (hence `sudo -n`).
+ */
+export function readPasswordScript(): string {
+  return `for f in "$HOME/.otto/opencode.env" /etc/otto/opencode.env; do
+  v="$( (cat "$f" 2>/dev/null || sudo -n cat "$f" 2>/dev/null) | sed -n 's/^OPENCODE_SERVER_PASSWORD=//p' | head -n 1)"
+  if [ -n "$v" ]; then printf '%s\\n' "$v"; exit 0; fi
+done
+exit 0`;
 }
 
 export function wrapScript(script: string): string {

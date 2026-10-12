@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowLeft, ArrowRight, Check, ChevronDown, Eye, EyeOff, ExternalLink, KeyRound, Laptop, Server, X } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AppGlyph } from "../ui/Mark";
 import { Button } from "../ui/Button";
 import { TextField } from "../ui/Field";
@@ -19,9 +19,10 @@ import { secrets } from "../../lib/secrets";
 import { openExternal } from "../../lib/platform";
 import { clock, duration } from "../../lib/format";
 import { useNow } from "../../hooks/useNow";
-import { secretKeys, useWorkspaces } from "../../state/workspaces";
+import { secretKeys, useWorkspaces, isCloud, type CloudId } from "../../state/workspaces";
+import { attachExisting, listSandboxes, sandboxExists, type SandboxEntry } from "../../lib/providers/existing";
 
-type Screen = "providers" | "sandbox" | "custom" | "setup" | "done";
+type Screen = "providers" | "sandbox" | "existing" | "custom" | "setup" | "done";
 type Cloud = "boat" | "boxd" | "e2b" | "daytona";
 
 interface ProviderCard {
@@ -150,6 +151,12 @@ export function Onboarding({ embedded = false, onDone, onCancel }: { embedded?: 
     void secrets.get(secretKeys[c]).then((k) => k && setApiKey(k));
     go("sandbox");
   }
+  function openExisting(c: Cloud) {
+    setCloud(c);
+    setApiKey("");
+    void secrets.get(secretKeys[c]).then((k) => k && setApiKey(k));
+    go("existing");
+  }
 
   // ---- setup run ----
   const [steps, setSteps] = useState<Record<SetupStepId, { state: "idle" | "active" | "done" | "error"; detail?: string }>>(() => initialSteps());
@@ -159,6 +166,8 @@ export function Onboarding({ embedded = false, onDone, onCancel }: { embedded?: 
   const abortRef = useRef<AbortController | null>(null);
   const checkpointRef = useRef<ProvisionCheckpoint | null>(null);
   const resultRef = useRef<{ wsId: string } | null>(null);
+  /** Set while the setup screen is attaching an existing machine, so retry re-attaches instead of making a new one. */
+  const attachRef = useRef<{ id: string; sleepAfter?: number } | null>(null);
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
@@ -190,6 +199,7 @@ export function Onboarding({ embedded = false, onDone, onCancel }: { embedded?: 
   }
 
   async function runSetup(key: string) {
+    attachRef.current = null;
     go("setup");
     setSetupError(null);
     setFinishedAt(0);
@@ -243,6 +253,7 @@ export function Onboarding({ embedded = false, onDone, onCancel }: { embedded?: 
   const [local, setLocal] = useState(false);
 
   async function runLocal() {
+    attachRef.current = null;
     setLocal(true);
     go("setup");
     setSetupError(null);
@@ -270,7 +281,56 @@ export function Onboarding({ embedded = false, onDone, onCancel }: { embedded?: 
 
   function cancelSetup() {
     abortRef.current?.abort();
-    go(local ? "providers" : "sandbox", -1);
+    go(local ? "providers" : attachRef.current ? "existing" : "sandbox", -1);
+  }
+
+  /** Attach to an existing machine: revive it in place and register the workspace. */
+  async function runAttach(sandboxId: string, sleepAfter?: number) {
+    attachRef.current = { id: sandboxId, sleepAfter };
+    go("setup");
+    setLocal(false);
+    setSetupError(null);
+    setFinishedAt(0);
+    setStartedAt(Date.now());
+    setSteps(initialSteps());
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+    try {
+      const onStep = (u: StepUpdate) => setSteps((prev) => ({ ...prev, [u.step]: { state: u.state, detail: u.detail } }));
+      const password = randomSecret(32);
+      const { endpoint, version } = await attachExisting({
+        cloud,
+        apiKey: apiKey.trim(),
+        sandboxId,
+        password,
+        sleepAfter,
+        report: onStep,
+        signal: ctrl.signal,
+      });
+      // Reconnecting later wakes the machine with the saved key, so attaching must save it too.
+      await useWorkspaces.getState().setProviderKey(cloud, apiKey.trim());
+      const wsId = uid("ws_");
+      await useWorkspaces.getState().add(
+        {
+          id: wsId,
+          name: name.trim() || `${CLOUD[cloud].name} · ${sandboxId.slice(0, 8)}`,
+          provider: cloud,
+          sandboxId,
+          sleepAfter: cloud === "e2b" ? (sleepAfter ?? CLOUD.e2b.defaultSleep) : undefined,
+          baseUrl: endpoint.baseUrl,
+          createdAt: Date.now(),
+          lastUsedAt: Date.now(),
+          version,
+        },
+        { password: endpoint.password, gateToken: endpoint.gateToken },
+      );
+      resultRef.current = { wsId };
+      setFinishedAt(Date.now());
+      go("done");
+    } catch (e) {
+      if ((e as Error).name === "AbortError") return;
+      setSetupError({ message: (e as Error).message || "Something went wrong.", billing: isBillingError(e) || ((e instanceof BoxdError || e instanceof E2BError || e instanceof DaytonaError) && e.billing) });
+    }
   }
 
   const content = (
@@ -288,6 +348,19 @@ export function Onboarding({ embedded = false, onDone, onCancel }: { embedded?: 
           <Providers
             embedded={embedded}
             onPick={(id) => (id === "custom" ? go("custom") : id === "local" ? void runLocal() : (setLocal(false), pickCloud(id as Cloud)))}
+            onExisting={(c) => (setLocal(false), openExisting(c))}
+          />
+        )}
+        {screen === "existing" && (
+          <ExistingForm
+            cloud={cloud}
+            apiKey={apiKey}
+            setApiKey={(v) => {
+              setApiKey(v);
+              setKeyError(null);
+            }}
+            onBack={() => go("providers", -1)}
+            onAttach={(id, sleepAfter) => void runAttach(id, sleepAfter)}
           />
         )}
         {screen === "sandbox" && (
@@ -312,7 +385,7 @@ export function Onboarding({ embedded = false, onDone, onCancel }: { embedded?: 
         )}
         {screen === "custom" && <CustomForm onBack={() => go("providers", -1)} onConnected={(wsId) => { resultRef.current = { wsId }; setStartedAt(0); go("done"); }} />}
         {screen === "setup" && (
-          <SetupProgress cloud={cloud} list={local ? LOCAL_SETUP_STEPS : SETUP_STEPS} steps={steps} error={setupError} startedAt={startedAt} onRetry={() => (local ? runLocal() : runSetup(apiKey.trim()))} onCancel={cancelSetup} />
+          <SetupProgress cloud={cloud} list={local ? LOCAL_SETUP_STEPS : SETUP_STEPS} steps={steps} error={setupError} startedAt={startedAt} onRetry={() => (local ? runLocal() : attachRef.current ? runAttach(attachRef.current.id, attachRef.current.sleepAfter) : runSetup(apiKey.trim()))} onCancel={cancelSetup} />
         )}
         {screen === "done" && <Done elapsed={startedAt ? finishedAt - startedAt : 0} onEnter={() => onDone?.()} />}
       </motion.div>
@@ -352,7 +425,7 @@ function initialSteps() {
 
 // ---------------------------------------------------------------------------
 
-function Providers({ onPick, embedded }: { onPick: (id: string) => void; embedded: boolean }) {
+function Providers({ onPick, embedded, onExisting }: { onPick: (id: string) => void; embedded: boolean; onExisting: (id: CloudId) => void }) {
   const hasLocal = useWorkspaces((s) => s.workspaces.some((w) => w.provider === "local"));
   return (
     <div>
@@ -362,8 +435,8 @@ function Providers({ onPick, embedded }: { onPick: (id: string) => void; embedde
       </p>
       <ul className="mt-7 divide-y divide-[var(--border)] overflow-hidden rounded-3xl border border-line bg-raised">
         {PROVIDERS.filter((p) => p.id !== "local" || (p.available && !hasLocal)).map((p) => (
-          <li key={p.id}>
-            <button disabled={!p.available} onClick={() => onPick(p.id)} className="group flex w-full items-center gap-3.5 px-4 py-3.5 text-left transition-colors hover:bg-hover disabled:hover:bg-transparent">
+          <li key={p.id} className="flex items-stretch">
+            <button disabled={!p.available} onClick={() => onPick(p.id)} className={`group flex min-w-0 flex-1 items-center gap-3.5 px-4 py-3.5 text-left transition-colors hover:bg-hover disabled:hover:bg-transparent`}>
               <div className={`h-9 w-9 shrink-0 ${p.available ? "" : "opacity-50"}`}>{p.logo}</div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
@@ -372,14 +445,152 @@ function Providers({ onPick, embedded }: { onPick: (id: string) => void; embedde
                 </div>
                 <div className="mt-0.5 truncate text-[13px] text-muted">{p.blurb}</div>
               </div>
-              {p.available ? <ArrowRight size={16} className="text-faint transition-colors group-hover:text-ink" /> : <span className="text-[12px] text-faint">Coming soon</span>}
+              {p.available ? <ArrowRight size={16} className="text-faint transition-colors group-hover:text-ink" /> : <span className="shrink-0 text-[12px] text-faint">Coming soon</span>}
             </button>
+            {isCloud(p.id as CloudId) && p.available && (
+              <button
+                onClick={() => onExisting(p.id as CloudId)}
+                className="shrink-0 border-l border-[var(--border)] px-4 text-[12.5px] text-muted transition-colors hover:bg-hover hover:text-ink"
+                title={`Attach to one of your existing ${p.name} sandboxes`}
+              >
+                Attach…
+              </button>
+            )}
           </li>
         ))}
       </ul>
-      {!embedded && <p className="mt-4 text-[13px] text-muted">Keys stay on this device{navigator.userAgent.includes("Mac") ? ", in your Keychain" : ""}.</p>}
+      {!embedded && <p className="mt-4 text-[13px] text-muted">Keys stay on this device{navigator.userAgent.includes("Mac") ? ", in your Keychain" : ""}. "Attach" takes a machine you already have instead of making one.</p>}
     </div>
   );
+}
+
+/** Attach to a machine the account already has: pick it from the list, or paste its id. */
+function ExistingForm({
+  cloud,
+  apiKey,
+  setApiKey,
+  onBack,
+  onAttach,
+}: {
+  cloud: Cloud;
+  apiKey: string;
+  setApiKey: (v: string) => void;
+  onBack: () => void;
+  onAttach: (id: string, sleepAfter?: number) => void;
+}) {
+  const c = CLOUD[cloud];
+  const key = apiKey.trim();
+  const [id, setId] = useState("");
+  const [entries, setEntries] = useState<SandboxEntry[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [keyError, setKeyError] = useState<string | null>(null);
+  const [idError, setIdError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const workspaces = useWorkspaces((st) => st.workspaces);
+  const attached = useMemo(() => new Set(workspaces.filter((w) => w.provider === cloud && w.sandboxId).map((w) => w.sandboxId!)), [workspaces, cloud]);
+
+  // List once the key stops changing, not on every keystroke of a paste-in-progress.
+  useEffect(() => {
+    setEntries(null);
+    setKeyError(null);
+    if (!key) return;
+    let alive = true;
+    const t = setTimeout(() => {
+      setLoading(true);
+      listSandboxes(cloud, key)
+        .then((l) => alive && setEntries(l))
+        .catch((e) => alive && setKeyError((e as Error).message))
+        .finally(() => alive && setLoading(false));
+    }, 400);
+    return () => {
+      alive = false;
+      clearTimeout(t);
+    };
+  }, [cloud, key]);
+
+  async function attach(rawId: string) {
+    const sid = rawId.trim();
+    if (!sid) return setIdError(`Paste your ${c.name} sandbox id.`);
+    if (attached.has(sid)) return setIdError("That machine is already one of your workspaces.");
+    setBusy(true);
+    setIdError(null);
+    const ok = await sandboxExists(cloud, key, sid).catch(() => false);
+    setBusy(false);
+    if (!ok) return setIdError(`${c.name} doesn't know a sandbox with that id on this key.`);
+    onAttach(sid, cloud === "e2b" ? c.defaultSleep : undefined);
+  }
+
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        void attach(id);
+      }}
+    >
+      <BackLink onClick={onBack} />
+      <h2 className="text-[24px] leading-tight font-semibold">Attach to {c.name}</h2>
+      <p className="mt-2 mb-6 text-[15px] leading-relaxed text-muted">Otto connects to a machine your account already has, restarting its agent if needed. It won't create anything.</p>
+
+      <TextField
+        label="API key"
+        autoFocus
+        placeholder={c.keyPlaceholder}
+        type="password"
+        autoComplete="off"
+        spellCheck={false}
+        value={apiKey}
+        onChange={(e) => setApiKey((e as React.ChangeEvent<HTMLInputElement>).target.value)}
+        error={keyError ?? undefined}
+        trailing={loading ? <Spinner size={15} /> : undefined}
+      />
+      {!key && <p className="mt-2 text-[13px] text-muted">Paste the key first. Otto lists the machines on its account.</p>}
+
+      {entries && entries.length > 0 && (
+        <ul className="mt-4 divide-y divide-[var(--border)] overflow-hidden rounded-2xl border border-line bg-raised">
+          {entries.map((s) => {
+            const taken = attached.has(s.id);
+            return (
+              <li key={s.id}>
+                <button type="button" disabled={taken || busy} onClick={() => void attach(s.id)} className="group flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-hover disabled:opacity-50 disabled:hover:bg-transparent">
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[14px] font-medium text-ink">{s.name}</div>
+                    <div className="mt-0.5 truncate font-mono text-[12px] text-muted">{s.id}</div>
+                  </div>
+                  {taken ? <span className="shrink-0 text-[12px] text-faint">Already added</span> : <SandState state={s.state} />}
+                  <ArrowRight size={15} className="shrink-0 text-faint transition-colors group-hover:text-ink" />
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {entries && entries.length === 0 && <p className="mt-3 text-[13px] text-muted">No machines found on this key.</p>}
+
+      <div className="mt-4">
+        <TextField
+          label={entries?.length ? "Or paste a sandbox id" : "Sandbox id"}
+          placeholder="Sandbox id"
+          spellCheck={false}
+          autoCapitalize="off"
+          value={id}
+          onChange={(e) => {
+            setId((e as React.ChangeEvent<HTMLInputElement>).target.value);
+            setIdError(null);
+          }}
+          error={idError ?? undefined}
+        />
+      </div>
+
+      <Button type="submit" variant="primary" size="lg" className="mt-7" disabled={busy || !id.trim() || !key} trailing={busy ? <Spinner /> : undefined}>
+        {busy ? "Checking" : "Attach"}
+      </Button>
+    </form>
+  );
+}
+
+function SandState({ state }: { state: string }) {
+  const asleep = /archiv|paus|stop|hibernat|suspend/i.test(state);
+  return <span className={`shrink-0 rounded-md px-1.5 py-0.5 font-mono text-[11px] ${asleep ? "bg-[#f5b04a]/15 text-[#f5b04a]" : "bg-[#5fd39a]/15 text-[#5fd39a]"}`}>{state}</span>;
 }
 
 function BoatForm(props: {

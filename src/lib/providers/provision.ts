@@ -146,7 +146,7 @@ async function createWithTrialFallback(boat: BoatClient, opts: { ttlSeconds: num
   }
 }
 
-async function waitUntilRunning(boat: BoatClient, id: string, signal: AbortSignal, onDetail?: (d: string) => void): Promise<BoatSandbox> {
+export async function waitUntilRunning(boat: BoatClient, id: string, signal: AbortSignal, onDetail?: (d: string) => void): Promise<BoatSandbox> {
   const started = Date.now();
   for (;;) {
     if (signal.aborted) throw new DOMException("Cancelled", "AbortError");

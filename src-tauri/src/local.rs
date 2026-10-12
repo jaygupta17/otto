@@ -391,20 +391,20 @@ mod tests {
         let pw = "test-password-otto";
         let pid = start(&dir, &bin, port, pw).unwrap();
         println!("started pid {pid} on {port}");
-// /api/info, not /api/health: the liveness route moved between 2.0.2 and
-// 2.0.26, and an unknown path answers 200 with the web UI's HTML. Assert on
-// the body so this can't pass on a fallback page again.
-let url = format!("http://127.0.0.1:{port}/api/info");
-let mut ok = false;
-for _ in 0..60 {
-if let Ok(body) = curl(&["-u", &format!("opencode:{pw}"), &url], Duration::from_secs(3)) {
-if body.contains("\"version\"") {
-ok = true;
-break;
-}
-}
-std::thread::sleep(Duration::from_millis(500));
-}
+        // /api/info, not /api/health: the liveness route moved between 2.0.2 and
+        // 2.0.26, and an unknown path answers 200 with the web UI's HTML. Assert on
+        // the body so this can't pass on a fallback page again.
+        let url = format!("http://127.0.0.1:{port}/api/info");
+        let mut ok = false;
+        for _ in 0..60 {
+            if let Ok(body) = curl(&["-u", &format!("opencode:{pw}"), &url], Duration::from_secs(3)) {
+                if body.contains("\"version\"") {
+                    ok = true;
+                    break;
+                }
+            }
+            std::thread::sleep(Duration::from_millis(500));
+        }
         let wrong = curl(&["-u", "opencode:wrong", &url], Duration::from_secs(3)).is_ok();
         stop(&dir, port).unwrap();
         std::thread::sleep(Duration::from_millis(800));

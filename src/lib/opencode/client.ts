@@ -141,8 +141,8 @@ export class OpenCode {
 
   // ---- server ---------------------------------------------------------
   // Liveness. v2 answered this at /api/health in 2.0.2 and at /api/info from
-// 2.0.26, and nothing newer; /api/info covers both, so ask for that.
-health(signal?: AbortSignal) {
+  // 2.0.26, and nothing newer; /api/info covers both, so ask for that.
+  health(signal?: AbortSignal) {
     return this.info(signal);
   }
   info(signal?: AbortSignal) {

@@ -88,6 +88,12 @@ export class E2BClient {
       signal,
     );
   }
+  /** Sandboxes on this key, running and paused (the API's default filter covers both). */
+  list() {
+    return this.call<{ sandboxes?: { sandboxID: string; state?: string }[] } | { sandboxID: string; state?: string }[]>("GET", "/v2/sandboxes?limit=100").then((r) =>
+      Array.isArray(r) ? r : (r.sandboxes ?? []),
+    );
+  }
   get(id: string, signal?: AbortSignal) {
     return this.call<SandboxInfo>("GET", `/sandboxes/${id}`, undefined, signal);
   }

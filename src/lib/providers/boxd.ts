@@ -99,7 +99,7 @@ async function ensureProxy(boxd: Boxd, machine: Machine): Promise<string> {
   return `https://${made?.domain ?? `${PROXY}.${machine.name}.boxd.sh`}`;
 }
 
-async function wake(boxd: Boxd, machine: Machine, signal: AbortSignal, onDetail: (d: string) => void): Promise<Machine> {
+export async function wake(boxd: Boxd, machine: Machine, signal: AbortSignal, onDetail: (d: string) => void): Promise<Machine> {
   if (machine.status === "destroyed") throw new BoxdError("This machine no longer exists on boxd.");
   if (machine.status === "stopped") {
     onDetail("Booting the machine");
