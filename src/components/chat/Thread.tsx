@@ -8,6 +8,7 @@ import { revertIndex, useChat, type FormLite } from "../../state/chat";
 import { useUI } from "../../state/ui";
 import { agentColor } from "../../lib/agentColor";
 import type { PermissionRequestLite } from "../../lib/opencode/client";
+import { describePermission } from "../../lib/asks";
 import { Markdown } from "./Markdown";
 import { ActivityGroup } from "./Activity";
 import { AgentClock, Spinner } from "../ui/AgentClock";
@@ -487,7 +488,14 @@ function ShellCard({ msg }: { msg: Extract<UIMessage, { kind: "shell" }> }) {
 
 function PermissionCard({ req }: { req: PermissionRequestLite }) {
   const reply = useChat((s) => s.replyPermission);
-  const what = req.resources.length ? req.resources.slice(0, 3).join(", ") + (req.resources.length > 3 ? ` +${req.resources.length - 3}` : "") : "";
+  const { verb, command, targets } = describePermission(req);
+  const [all, setAll] = useState(false);
+  const [sent, setSent] = useState(false);
+  const shown = all ? targets : targets.slice(0, 4);
+  const answer = (r: "once" | "always" | "reject") => {
+    setSent(true);
+    void reply(req, r);
+  };
   return (
     <motion.div
       initial={{ opacity: 0, y: 10, scale: 0.98 }}
@@ -500,21 +508,47 @@ function PermissionCard({ req }: { req: PermissionRequestLite }) {
         <ShieldQuestion size={16} className="mt-0.5 shrink-0 text-info" />
         <div className="min-w-0 flex-1">
           <div className="text-[12px] font-medium text-info">Needs your approval</div>
-          <div className="mt-0.5 text-[14px] text-ink">
-            Allow <span className="font-semibold">{req.action}</span>?
-          </div>
-          {what && <div className="selectable mt-0.5 truncate font-mono text-[12px] text-muted">{what}</div>}
-          {req.message && <div className="selectable mt-1 text-[13px] text-ink-2">{req.message}</div>}
+          <div className="mt-0.5 text-[14.5px] font-semibold text-ink">{verb}</div>
         </div>
       </div>
-      <div className="mt-3 flex flex-wrap justify-end gap-2 px-3 pb-3">
-        <Button size="sm" variant="ghost" onClick={() => reply(req, "reject")}>
+      <div className="space-y-2 px-4 pt-2.5">
+        {command && (
+          <pre className="selectable scroll-quiet max-h-[40vh] overflow-auto rounded-lg bg-sunken px-3 py-2.5 font-mono text-[12.5px] leading-relaxed break-words whitespace-pre-wrap text-ink">
+            {command}
+          </pre>
+        )}
+        {shown.length > 0 && (
+          <ul className="selectable space-y-1 rounded-lg bg-sunken px-3 py-2 font-mono text-[12.5px] leading-snug text-ink-2">
+            {shown.map((t) => (
+              <li key={t} className="break-all">
+                {t}
+              </li>
+            ))}
+            {targets.length > shown.length && (
+              <li>
+                <button className="font-sans text-[12px] text-muted underline-offset-2 hover:text-ink hover:underline" onClick={() => setAll(true)}>
+                  Show {targets.length - shown.length} more
+                </button>
+              </li>
+            )}
+          </ul>
+        )}
+        {req.message && <div className="selectable text-[13px] leading-relaxed break-words text-ink-2">{req.message}</div>}
+        {req.save?.length ? (
+          <div className="text-[12px] leading-relaxed break-words text-muted">
+            Always allow covers <span className="font-mono text-ink-2">{req.save.join(", ")}</span>
+          </div>
+        ) : null}
+      </div>
+      {/* Phones: full-width buttons, the safe answer last. */}
+      <div className="mt-3 flex flex-col-reverse gap-2 px-3 pb-3 sm:flex-row sm:justify-end">
+        <Button variant="ghost" disabled={sent} className="h-10 w-full sm:h-7 sm:w-auto" size="sm" onClick={() => answer("reject")}>
           Deny
         </Button>
-        <Button size="sm" variant="secondary" onClick={() => reply(req, "always")}>
+        <Button variant="secondary" disabled={sent} className="h-10 w-full sm:h-7 sm:w-auto" size="sm" onClick={() => answer("always")}>
           Always allow
         </Button>
-        <Button size="sm" variant="primary" onClick={() => reply(req, "once")}>
+        <Button variant="primary" disabled={sent} className="h-10 w-full sm:h-7 sm:w-auto" size="sm" onClick={() => answer("once")}>
           Allow once
         </Button>
       </div>
@@ -532,12 +566,12 @@ function FormCard({ form }: { form: FormLite }) {
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }} className="my-4 overflow-hidden rounded-2xl border border-info/40 bg-raised">
       <div className="px-4 pt-3 text-[12px] font-medium text-info">The agent has a question</div>
-      <div className="px-4 pt-0.5 text-[15px] font-semibold">{form.title}</div>
+      <div className="selectable px-4 pt-0.5 text-[15px] leading-snug font-semibold break-words whitespace-pre-wrap">{form.title}</div>
       <div className="space-y-4 px-4 py-3">
         {visible.map((f) => (
           <div key={f.key}>
-            {(f.title || visible.length > 1) && <div className="mb-1 text-[13px] font-medium text-ink-2">{f.title ?? f.key}</div>}
-            {f.description && <div className="mb-2 text-[12.5px] text-muted">{f.description}</div>}
+            {(f.title || visible.length > 1) && <div className="selectable mb-1 text-[13px] font-medium break-words text-ink-2">{f.title ?? f.key}</div>}
+            {f.description && <div className="selectable mb-2 text-[12.5px] leading-relaxed break-words whitespace-pre-wrap text-muted">{f.description}</div>}
             {f.options?.length ? (
               <div className="flex flex-wrap gap-1.5">
                 {f.options.map((o) => {
@@ -548,7 +582,7 @@ function FormCard({ form }: { form: FormLite }) {
                     <button
                       key={o.value}
                       onClick={() => set(f.key, multi ? (on ? (cur as string[]).filter((x) => x !== o.value) : [...((cur as string[]) ?? []), o.value]) : o.value)}
-                      className={`rounded-lg border px-3 py-1.5 text-[13px] transition-colors ${on ? "border-ink bg-ink text-bg" : "border-line-strong bg-raised text-ink hover:bg-hover"}`}
+                      className={`max-w-full rounded-lg border px-3 py-2 text-left text-[13px] leading-snug break-words transition-colors sm:py-1.5 ${on ? "border-ink bg-ink text-bg" : "border-line-strong bg-raised text-ink hover:bg-hover"}`}
                     >
                       {o.label ?? o.value}
                     </button>
@@ -565,7 +599,7 @@ function FormCard({ form }: { form: FormLite }) {
               </div>
             ) : (
               <input
-                className="field h-9 w-full rounded-lg px-3 text-[14px] outline-none"
+                className="field h-10 w-full rounded-lg px-3 text-[16px] outline-none sm:h-9 sm:text-[14px]"
                 type={f.type === "number" || f.type === "integer" ? "number" : "text"}
                 placeholder={f.placeholder}
                 value={(values[f.key] as string) ?? ""}
@@ -575,11 +609,11 @@ function FormCard({ form }: { form: FormLite }) {
           </div>
         ))}
       </div>
-      <div className="flex justify-end gap-2 px-3 pb-3">
-        <Button size="sm" variant="ghost" onClick={() => reply(form, null)}>
+      <div className="flex flex-col-reverse gap-2 px-3 pb-3 sm:flex-row sm:justify-end">
+        <Button size="sm" variant="ghost" className="h-10 w-full sm:h-7 sm:w-auto" onClick={() => reply(form, null)}>
           Skip
         </Button>
-        <Button size="sm" variant="primary" disabled={!ready} onClick={() => reply(form, values)}>
+        <Button size="sm" variant="primary" className="h-10 w-full sm:h-7 sm:w-auto" disabled={!ready} onClick={() => reply(form, values)}>
           Send
         </Button>
       </div>

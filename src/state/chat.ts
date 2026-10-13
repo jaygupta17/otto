@@ -12,6 +12,7 @@ import { kv } from "../lib/kv";
 import { useWorkspaces } from "./workspaces";
 import { toast, useUI } from "./ui";
 import { dispatchAlerts } from "./notifications";
+import { permissionLine } from "../lib/asks";
 
 export interface Timeline {
   messages: UIMessage[];
@@ -242,11 +243,7 @@ export const useChat = create<State>((set, get) => ({
       client.models().then((models) => set({ models })),
       client.defaultModel().then((m) => set({ defaultModel: m })),
       client.pendingPermissions().then((list) => set({ permissions: Object.fromEntries(list.map((p) => [p.id, p])) })),
-      client.request<Record<string, unknown>>("GET", "/api/session/active").then((active) => {
-        const busy: Record<string, boolean> = {};
-        for (const k of Object.keys(active ?? {})) busy[k] = true;
-        set({ busy });
-      }),
+      client.activeSessions().then((ids) => set({ busy: Object.fromEntries(ids.map((id) => [id, true])) })),
     ]);
     const labels = ["sessions", "location", "agents", "models", "default model", "permissions", "active sessions"];
     results.forEach((r, i) => {
@@ -280,13 +277,14 @@ export const useChat = create<State>((set, get) => ({
     if (!client) return;
     await get().loadSessions();
     if (!get().agents.length || !get().models.length) void get().refreshCatalog();
+    // Runs that started or ended while the stream was down.
     client
-      .request<Record<string, unknown>>("GET", "/api/session/active")
-      .then((active) => {
-        const busy: Record<string, boolean> = {};
-        for (const k of Object.keys(active ?? {})) busy[k] = true;
-        set({ busy });
-      })
+      .activeSessions()
+      .then((ids) => set({ busy: Object.fromEntries(ids.map((id) => [id, true])) }))
+      .catch(() => {});
+    client
+      .pendingPermissions()
+      .then((list) => set({ permissions: Object.fromEntries(list.map((p) => [p.id, p])) }))
       .catch(() => {});
     const id = get().activeId;
     if (id) await get().loadTimeline(id, true);
@@ -614,7 +612,7 @@ function flush() {
   const touched = { sessions: false, busy: false, retrying: false, unread: false, timelines: false, permissions: false, forms: false };
   const finished: string[] = [];
   const alerts: Parameters<typeof dispatchAlerts>[0] = [];
-  const titleOf = (id?: string) => (id && sessions[id]?.title) || "Your session";
+  const titleOf = (id?: string) => (id && sessions[id]?.title) || "Untitled session";
 
   const mut = <K extends keyof typeof touched>(k: K) => {
     if (!touched[k]) {
@@ -730,7 +728,11 @@ function flush() {
               time: { ...sessions[sid].time, updated: e.created ?? Date.now() },
             };
           }
-          if (e.type !== "session.execution.interrupted") alerts.push(e.type === "session.execution.succeeded" ? { kind: "finished", sessionId: sid, title: "Agent finished", body: titleOf(sid) } : { kind: "failed", sessionId: sid, title: "Agent hit a problem", body: titleOf(sid) });
+          if (e.type === "session.execution.succeeded") alerts.push({ kind: "finished", sessionId: sid, title: titleOf(sid), body: "Finished. Your turn." });
+          else if (e.type === "session.execution.failed") {
+            const msg = ((d.error as { message?: string } | undefined)?.message ?? "").split("\n")[0].trim();
+            alerts.push({ kind: "failed", sessionId: sid, title: titleOf(sid), body: msg ? `Stopped: ${msg.length > 120 ? `${msg.slice(0, 118)}…` : msg}` : "Stopped with an error." });
+          }
           if (e.type === "session.execution.failed") {
             const err = d.error as { status?: number; message?: string } | undefined;
             const model = sessions[sid]?.model;
@@ -759,7 +761,7 @@ function flush() {
         }
         break;
       case "permission.asked":
-        alerts.push({ kind: "permission", sessionId: d.sessionID as string, title: "Agent needs your approval", body: `${titleOf(d.sessionID as string)} · ${d.action as string}` });
+        alerts.push({ kind: "permission", sessionId: d.sessionID as string, title: titleOf(d.sessionID as string), body: `Waiting for approval · ${permissionLine(d as unknown as PermissionRequestLite)}` });
         mut("permissions");
         permissions[d.id as string] = d as unknown as PermissionRequestLite;
         break;
@@ -769,7 +771,7 @@ function flush() {
         break;
       case "form.created": {
         const f = d.form as FormLite;
-        alerts.push({ kind: "question", sessionId: f.sessionID, title: "Agent has a question", body: f.title });
+        alerts.push({ kind: "question", sessionId: f.sessionID, title: titleOf(f.sessionID), body: `Has a question · ${f.title}` });
         mut("forms");
         forms[f.id] = f;
         break;

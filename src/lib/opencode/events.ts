@@ -29,6 +29,8 @@ export function startEventStream(client: OpenCode, opts: Options) {
   let everConnected = false;
   let watchdog: ReturnType<typeof setTimeout> | null = null;
   let wake: (() => void) | null = null;
+  /** Reconnect without backoff after a deliberate drop. */
+  let fast = false;
 
   const kick = () => {
     if (watchdog) clearTimeout(watchdog);
@@ -76,8 +78,9 @@ export function startEventStream(client: OpenCode, opts: Options) {
         attempt += 1;
         const msg = e instanceof Error ? e.message : String(e);
         opts.onStatus(attempt >= 4 ? "offline" : "reconnecting", { attempt, error: msg });
-        const delay = Math.min(15_000, 600 * 2 ** Math.min(attempt, 5)) * (0.8 + Math.random() * 0.4);
-        await sleep(delay);
+        const delay = fast ? 0 : Math.min(15_000, 600 * 2 ** Math.min(attempt, 5)) * (0.8 + Math.random() * 0.4);
+        fast = false;
+        if (delay) await sleep(delay);
       } finally {
         if (watchdog) clearTimeout(watchdog);
       }
@@ -92,9 +95,18 @@ export function startEventStream(client: OpenCode, opts: Options) {
       controller?.abort();
       wake?.();
     },
-    /** Skip the backoff and reconnect right now (e.g. app came to foreground). */
-    retryNow() {
+    /**
+     * Skip the backoff and reconnect right now (e.g. app came to foreground).
+     * `force` also drops a connection that still looks live: after a sleep or
+     * a phone backgrounding Otto the socket is often dead without knowing it,
+     * and events from that gap never arrive.
+     */
+    retryNow(force = false) {
       if (attempt > 0) wake?.();
+      else if (force && controller) {
+        fast = true;
+        controller.abort();
+      }
     },
   };
 }

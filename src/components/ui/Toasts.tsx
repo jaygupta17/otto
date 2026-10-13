@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "motion/react";
-import { AlertCircle, CheckCircle2, Info, X } from "lucide-react";
+import { AlertCircle, CheckCircle2, CircleHelp, Info, ShieldQuestion, X } from "lucide-react";
 import { useUI } from "../../state/ui";
 
 export function Toasts() {
@@ -18,12 +18,12 @@ export function Toasts() {
             transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
             className="surface-overlay bg-raised pointer-events-auto flex w-full max-w-[420px] items-start gap-3 rounded-2xl border border-line px-3.5 py-2.5 shadow-pop"
           >
-            <span className={`mt-0.5 ${t.tone === "error" ? "text-danger" : t.tone === "ok" ? "text-ok" : "text-muted"}`}>
-              {t.tone === "error" ? <AlertCircle size={17} /> : t.tone === "ok" ? <CheckCircle2 size={17} /> : <Info size={17} />}
+            <span className={`mt-0.5 shrink-0 ${t.tone === "error" ? "text-danger" : t.tone === "ok" ? "text-ok" : t.kind ? "text-info" : "text-muted"}`}>
+              {t.kind === "permission" ? <ShieldQuestion size={17} /> : t.kind === "question" ? <CircleHelp size={17} /> : t.tone === "error" ? <AlertCircle size={17} /> : t.tone === "ok" ? <CheckCircle2 size={17} /> : <Info size={17} />}
             </span>
             <div className="min-w-0 flex-1">
-              <div className="text-[13px] font-medium">{t.title}</div>
-              {t.body && <div className="selectable mt-0.5 line-clamp-3 text-[12.5px] text-muted">{t.body}</div>}
+              <div className="truncate text-[13px] font-medium">{t.title}</div>
+              {t.body && <div className="selectable mt-0.5 line-clamp-3 text-[12.5px] leading-snug break-words text-muted">{t.body}</div>}
             </div>
             {t.action && (
               <button

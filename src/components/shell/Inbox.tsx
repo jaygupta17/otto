@@ -77,7 +77,7 @@ function InboxList({ onPick }: { onPick: () => void }) {
                   <span className={`min-w-0 flex-1 truncate text-[13px] ${a.read ? "text-ink-2" : "font-medium text-ink"}`}>{a.title}</span>
                   <span className="shrink-0 text-[11.5px] text-faint">{timeAgo(a.time, now)}</span>
                 </span>
-                {a.body && <span className="mt-0.5 block truncate text-[12.5px] text-muted">{a.body}</span>}
+                {a.body && <span className="mt-0.5 line-clamp-2 block text-[12.5px] leading-snug break-words text-muted">{a.body}</span>}
               </span>
               {!a.read && <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-info" />}
             </button>

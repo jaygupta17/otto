@@ -88,17 +88,22 @@ export function dispatchAlerts(alerts: Omit<AgentAlert, "id" | "time" | "read">[
     items: [...fresh.map((a) => ({ ...a, id: `al_${now}_${seq++}`, time: now, read: false })).reverse(), ...s.items].slice(0, MAX),
   }));
 
-  const last = fresh[fresh.length - 1];
-  const more = fresh.length > 1 ? ` (+${fresh.length - 1} more)` : "";
+  // One notification per batch: the one that needs the user most.
+  const rank: Record<AlertKind, number> = { permission: 3, question: 3, failed: 2, finished: 1 };
+  const last = fresh.reduce((a, b) => (rank[b.kind] >= rank[a.kind] ? b : a));
+  const more = fresh.length > 1 ? ` · ${fresh.length - 1} more in the inbox` : "";
+  const waiting = last.kind === "permission" || last.kind === "question";
   if (background) {
     if (prefs.system) void sendSystem(last.title, (last.body ?? "") + more, last.sessionId);
   } else if (prefs.toasts) {
     const sid = last.sessionId;
     ui.pushToast({
       tone: last.kind === "failed" ? "error" : last.kind === "finished" ? "ok" : "info",
+      kind: last.kind,
+      sticky: waiting,
       title: last.title,
       body: (last.body ?? "") + more,
-      action: sid ? { label: "Open", run: () => openFromAlert(sid) } : undefined,
+      action: sid ? { label: waiting ? "Review" : "Open", run: () => openFromAlert(sid) } : undefined,
     });
   }
 }

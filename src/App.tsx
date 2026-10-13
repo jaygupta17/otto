@@ -42,11 +42,21 @@ export default function App() {
 
   // Coming back to the app: reconnect immediately instead of waiting for backoff.
   useEffect(() => {
-    const wake = () => document.visibilityState === "visible" && useConnection.getState().wake();
-    document.addEventListener("visibilitychange", wake);
+    // After a while away the socket may be dead without knowing it: start a fresh
+    // one (which resyncs sessions, runs and approvals) rather than trust it.
+    let away = 0;
+    const wake = () => useConnection.getState().wake();
+    const visibility = () => {
+      if (document.visibilityState === "hidden") away = Date.now();
+      else {
+        useConnection.getState().wake(!!away && Date.now() - away > 5000);
+        away = 0;
+      }
+    };
+    document.addEventListener("visibilitychange", visibility);
     window.addEventListener("online", wake);
     return () => {
-      document.removeEventListener("visibilitychange", wake);
+      document.removeEventListener("visibilitychange", visibility);
       window.removeEventListener("online", wake);
     };
   }, []);

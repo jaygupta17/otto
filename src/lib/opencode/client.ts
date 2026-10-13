@@ -263,6 +263,11 @@ export class OpenCode {
   replyPermission(sessionID: string, requestID: string, reply: PermissionReply) {
     return this.request<void>("POST", `/api/session/${sessionID}/permission/${requestID}/reply`, { body: { decision: reply } });
   }
+  /** Ids of sessions with a run in progress. */
+  async activeSessions(): Promise<string[]> {
+    const r = await this.request<{ data: Record<string, unknown> }>("GET", "/api/session/active");
+    return Object.keys(r?.data ?? {});
+  }
   async pendingPermissions() {
     const r = await this.request<{ data: PermissionRequestLite[] } | PermissionRequestLite[]>("GET", "/api/permission/request");
     return Array.isArray(r) ? r : r.data;
@@ -462,6 +467,8 @@ export interface PermissionRequestLite {
   resources: string[];
   message?: string;
   save?: string[];
+  /** Tool-specific details, e.g. `command` for the shell tool. */
+  metadata?: Record<string, unknown>;
 }
 
 export interface McpServer {

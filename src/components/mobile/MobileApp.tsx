@@ -190,7 +190,7 @@ function Group({ label, count, list, now }: { label: string; count: number; list
 const Row = memo(function Row({ s, now }: { s: SessionInfo; now: number }) {
   const busy = useChat((st) => !!st.busy[s.id]);
   const unread = useChat((st) => !!st.unread[s.id]);
-  const asking = useChat((st) => Object.values(st.permissions).some((p) => p.sessionID === s.id));
+  const asking = useChat((st) => Object.values(st.permissions).some((p) => p.sessionID === s.id) || Object.values(st.forms).some((f) => f.sessionID === s.id));
   const open = useChat((st) => st.open);
   return (
     <motion.button whileTap={{ backgroundColor: "var(--hover)" }} onClick={() => open(s.id)} className="flex w-full items-start gap-3 px-5 py-3 text-left">

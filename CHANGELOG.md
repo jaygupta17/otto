@@ -6,6 +6,15 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 ## [Unreleased]
 
+### Changed
+
+- **Approvals show the whole command.** When an agent asks to run something, the card shows the full command (every line, scrollable if it's long) instead of a short pattern, plus every path it wants to touch and what "Always allow" will remember. On phones the buttons go full width and are easier to hit. Questions wrap properly on small screens too.
+- **Clearer notifications.** Alerts now lead with the session name and say what happened: "Finished", the error it stopped on, the command waiting for approval, or the question it's asking. Approvals and questions stay on screen longer and offer "Review".
+
+### Fixed
+
+- Coming back to Otto after switching away no longer leaves a running session looking idle with no Stop button. Otto also reconnects right away when you return, so you don't miss events from while it was in the background.
+
 ## [0.5.0] - 2026-10-12
 
 ### Added

@@ -31,7 +31,8 @@ interface State {
   connect(ws: Workspace, opts?: { forceRevive?: boolean }): Promise<void>;
   disconnect(): void;
   retry(): void;
-  wake(): void;
+  /** Back in the foreground or online: reconnect now; `force` replaces a connection that still looks live. */
+  wake(force?: boolean): void;
 }
 
 let stream: ReturnType<typeof startEventStream> | null = null;
@@ -157,8 +158,8 @@ export const useConnection = create<State>((set, get) => ({
     if (ws) void get().connect(ws);
   },
 
-  wake() {
-    if (get().status === "ready") stream?.retryNow();
+  wake(force) {
+    if (get().status === "ready") stream?.retryNow(force);
     else if (get().status === "error") get().retry();
   },
 }));

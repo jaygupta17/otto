@@ -54,6 +54,10 @@ export interface Toast {
   tone: "info" | "error" | "ok";
   title: string;
   body?: string;
+  /** Picks the icon for agent alerts (an approval looks different from "finished"). */
+  kind?: "finished" | "failed" | "permission" | "question";
+  /** Keep it up longer: something is waiting on the user. */
+  sticky?: boolean;
   /** A button on the toast, e.g. "Open" for a session that needs you. */
   action?: { label: string; run(): void };
 }
@@ -259,7 +263,7 @@ export const useUI = create<UIState>((set, get) => ({
   pushToast(t) {
     const id = uid("t_");
     set({ toasts: [...get().toasts.slice(-3), { ...t, id }] });
-    setTimeout(() => get().dismissToast(id), t.action ? 8000 : t.tone === "error" ? 6500 : 3500);
+    setTimeout(() => get().dismissToast(id), t.sticky ? 20_000 : t.action ? 8000 : t.tone === "error" ? 6500 : 3500);
   },
   dismissToast(id) {
     set({ toasts: get().toasts.filter((t) => t.id !== id) });
