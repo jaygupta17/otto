@@ -6,6 +6,14 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 ## [Unreleased]
 
+### Changed
+
+- **New app id: `dev.jaygupta.otto`** (was `dev.otto.app`, a domain Otto doesn't own). On macOS, Windows and Linux your workspaces, settings and keys carry over on first launch. **On Android this installs as a new app:** uninstall the old Otto and add your workspaces again.
+
+### Fixed
+
+- **Fewer Keychain prompts on macOS.** Otto keeps all its keys and passwords in one Keychain item, so macOS asks once (after an update, at most once more) instead of once per workspace and key. Keys saved by older versions move over the first time they're used.
+
 ## [0.7.0] - 2026-10-13
 
 ### Added
