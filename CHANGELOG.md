@@ -6,6 +6,15 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 ## [Unreleased]
 
+### Added
+
+- **Update notices on Android.** Otto checks for a new version and, when one is out, offers the APK download; Android installs it over the current app. The update button now also shows in the phone layout.
+
+### Fixed
+
+- The Android and iOS apps show the Otto icon instead of the default Tauri one.
+- Android notifications use an Otto glyph in the status bar.
+
 ## [0.5.1] - 2026-10-13
 
 ### Changed

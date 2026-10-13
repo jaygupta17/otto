@@ -14,6 +14,7 @@ import { Composer } from "../chat/Composer";
 import { ProjectPicker } from "../chat/Pickers";
 import { Sheet } from "../ui/Sheet";
 import { InboxButton } from "../shell/Inbox";
+import { UpdatePill } from "../shell/UpdateControls";
 import { PanelChrome, SURFACES, SurfaceBody } from "../panel/SidePanel";
 import { Popover, MenuItem } from "../ui/Popover";
 import { AgentClock } from "../ui/AgentClock";
@@ -95,6 +96,7 @@ function SessionsScreen({ onNew, dimmed }: { onNew: () => void; dimmed: boolean 
           <div className="mt-3">
             <ConnectionBanner />
           </div>
+          <UpdatePill className="mt-2 text-[14px] [&>button]:h-11" />
         </div>
         {!loaded && <div className="mt-10 flex justify-center text-muted"><AgentClock /></div>}
         {loaded && active.length + recent.length === 0 && (

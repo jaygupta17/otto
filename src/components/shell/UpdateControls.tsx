@@ -1,26 +1,29 @@
 import { ArrowDownToLine, RotateCw, X } from "lucide-react";
-import { RELEASES_URL, updatesSupported, useUpdates } from "../../state/updates";
+import { installsInPlace, RELEASES_URL, updatesSupported, useUpdates } from "../../state/updates";
 import { openExternal } from "../../lib/platform";
 import { Button } from "../ui/Button";
 import { Spinner } from "../ui/AgentClock";
 import { Row, Rows, Section, Toggle } from "../settings/common";
 
 /** Sidebar pill: shows up only when there's something to do. */
-export function UpdatePill() {
+export function UpdatePill({ className = "mx-2 mb-1" }: { className?: string }) {
   const { status, version, progress, dismissed, install, restart, dismiss } = useUpdates();
   if (!updatesSupported()) return null;
+  const inPlace = installsInPlace();
   if (status === "available" && dismissed === version) return null;
   if (status !== "available" && status !== "downloading" && status !== "ready") return null;
 
   const label =
-    status === "ready" ? "Restart to update" : status === "downloading" ? (progress !== undefined ? `Updating… ${Math.round(progress * 100)}%` : "Updating…") : `Update to ${version}`;
+    status === "ready" ? "Restart to update" : status === "downloading" ? (progress !== undefined ? `Updating… ${Math.round(progress * 100)}%` : "Updating…") : inPlace
+          ? `Update to ${version}`
+          : `Otto ${version} is out`;
   return (
-    <div className="mx-2 mb-1 flex items-center gap-1 rounded-lg bg-accent-soft pr-1 text-[12.5px] text-ink">
+    <div className={`flex items-center gap-1 rounded-lg bg-accent-soft pr-1 text-[12.5px] text-ink ${className}`}>
       <button
         disabled={status === "downloading"}
         onClick={() => void (status === "ready" ? restart() : install())}
         className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-lg px-2.5 text-left font-medium transition-colors hover:bg-hover disabled:hover:bg-transparent"
-        title={status === "available" ? "Download and install. You'll restart when it's ready." : undefined}
+        title={status === "available" ? (inPlace ? "Download and install. You'll restart when it's ready." : "Download the new version. Android installs it over this one.") : undefined}
       >
         {status === "downloading" ? <Spinner size={13} /> : status === "ready" ? <RotateCw size={14} /> : <ArrowDownToLine size={14} />}
         <span className="truncate tabular-nums">{label}</span>
@@ -38,6 +41,7 @@ export function UpdatePill() {
 export function UpdatesSection() {
   const u = useUpdates();
   if (!updatesSupported()) return null;
+  const inPlace = installsInPlace();
 
   const hint =
     u.status === "checking"
@@ -45,7 +49,9 @@ export function UpdatesSection() {
       : u.status === "current"
         ? "You're up to date."
         : u.status === "available"
-          ? `Version ${u.version} is available.`
+          ? inPlace
+            ? `Version ${u.version} is available.`
+            : `Version ${u.version} is out. Download it and Android installs it over this one.`
           : u.status === "downloading"
             ? `Downloading ${u.version}${u.progress !== undefined ? ` · ${Math.round(u.progress * 100)}%` : ""}`
             : u.status === "ready"
@@ -59,7 +65,7 @@ export function UpdatesSection() {
   const action =
     u.status === "available" ? (
       <Button size="sm" variant="primary" onClick={() => void u.install()}>
-        Update
+        {inPlace ? "Update" : "Download"}
       </Button>
     ) : u.status === "ready" ? (
       <Button size="sm" variant="primary" onClick={() => void u.restart()}>

@@ -132,6 +132,7 @@ jobs:
       - name: Build APK
         run: |
           bunx tauri android init --ci
+          scripts/mobile-icons.sh
           bunx tauri android build --apk --ci
       - name: Sign APK
         env:

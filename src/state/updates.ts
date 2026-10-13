@@ -1,19 +1,27 @@
 /**
- * In-app updates (desktop): Tauri's updater reads latest.json from the newest
- * published GitHub release, verifies the signature against the key in
- * tauri.conf.json, and swaps the app in place.
+ * Updates.
+ *
+ * Desktop: Tauri's updater reads latest.json from the newest published GitHub
+ * release, verifies the signature against the key in tauri.conf.json, and
+ * swaps the app in place.
  *
  *   idle → checking → available → downloading → ready (restart) / error
+ *
+ * Android (sideloaded APK): no in-place install. Otto reads the same
+ * latest.json and, when it's newer, offers the release's APK; Android
+ * installs it over the old one. iOS updates through the App Store.
  *
  * Otto checks shortly after launch and every few hours while open, unless the
  * user turned that off. Nothing downloads until they say so.
  */
 import { create } from "zustand";
 import type { Update } from "@tauri-apps/plugin-updater";
-import { isTauri, osName } from "../lib/platform";
+import { httpFetch, isTauri, openExternal, osName } from "../lib/platform";
 import { kv } from "../lib/kv";
 
-export const RELEASES_URL = "https://github.com/jaygupta17/otto/releases/latest";
+const REPO = "https://github.com/jaygupta17/otto";
+export const RELEASES_URL = `${REPO}/releases/latest`;
+const MANIFEST = `${REPO}/releases/latest/download/latest.json`;
 
 type Status = "idle" | "checking" | "current" | "available" | "downloading" | "ready" | "error";
 
@@ -38,8 +46,24 @@ interface UpdatesState {
   dismiss(): void;
 }
 
-/** Only the desktop builds carry the updater plugin. */
-export const updatesSupported = () => isTauri && ["macos", "windows", "linux"].includes(osName());
+/** Desktop builds carry the updater plugin and install in place. */
+export const installsInPlace = () => isTauri && ["macos", "windows", "linux"].includes(osName());
+/** Android can't install in place, but can be told about a new APK. */
+export const updatesSupported = () => installsInPlace() || (isTauri && osName() === "android");
+
+/** The APK for a version, named the way the release workflow names it. */
+const apkUrl = (v: string) => `${REPO}/releases/download/v${v}/Otto_${v}_android.apk`;
+
+/** a > b for plain x.y.z versions (a pre-release suffix counts as older). */
+export function newer(a: string, b: string) {
+  const parse = (v: string) => v.replace(/^v/, "").split("-");
+  const [ma, pa] = parse(a);
+  const [mb, pb] = parse(b);
+  const x = ma.split(".").map(Number);
+  const y = mb.split(".").map(Number);
+  for (let i = 0; i < 3; i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) > (y[i] ?? 0);
+  return !pa && !!pb;
+}
 
 let pending: Update | null = null;
 
@@ -56,6 +80,18 @@ export const useUpdates = create<UpdatesState>((set, get) => ({
     if (s === "checking" || s === "downloading" || s === "ready") return;
     set({ status: "checking", error: undefined, installFailed: false });
     try {
+      if (!installsInPlace()) {
+        const res = await httpFetch(MANIFEST, { headers: { Accept: "application/json" } });
+        if (!res.ok) throw new Error(`GitHub answered ${res.status}`);
+        const m = (await res.json()) as { version?: string; notes?: string };
+        const v = m.version?.replace(/^v/, "");
+        set(
+          v && newer(v, __APP_VERSION__)
+            ? { status: "available", version: v, notes: m.notes?.trim() || undefined, checkedAt: Date.now() }
+            : { status: "current", version: undefined, notes: undefined, checkedAt: Date.now() },
+        );
+        return;
+      }
       const { check } = await import("@tauri-apps/plugin-updater");
       const update = await check();
       pending = update;
@@ -70,7 +106,14 @@ export const useUpdates = create<UpdatesState>((set, get) => ({
     }
   },
   async install() {
-    if (!pending || get().status !== "available") return;
+    const { status, version } = get();
+    if (status !== "available") return;
+    if (!installsInPlace()) {
+      // The browser downloads it; tapping the download installs over this version.
+      await openExternal(version ? apkUrl(version) : RELEASES_URL);
+      return;
+    }
+    if (!pending) return;
     set({ status: "downloading", progress: 0, error: undefined });
     let total = 0;
     let got = 0;

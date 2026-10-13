@@ -1,0 +1,5 @@
+<!-- Android status-bar icon: the glyph alone, cropped tight, white on transparent (Android tints it). -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="178 160 690 690">
+  <circle cx="472" cy="560" r="208" fill="none" stroke="#fff" stroke-width="64"/>
+  <circle cx="742" cy="282" r="72" fill="#fff"/>
+</svg>

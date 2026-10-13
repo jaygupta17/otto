@@ -82,6 +82,8 @@ export async function notify(title: string, body?: string, sessionId?: string) {
         title,
         body,
         channelId: osName() === "android" ? CHANNEL : undefined,
+        // A colour launcher icon shows as a white blob in the status bar; use the glyph.
+        icon: osName() === "android" ? "ic_stat_otto" : undefined,
         // One stack per session in the shade.
         group: sessionId,
         autoCancel: true,

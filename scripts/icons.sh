@@ -3,7 +3,7 @@
 #
 #   assets/icon.svg              desktop + README (rounded tile with margin)
 #   assets/icons/ios.svg         iOS (full bleed, opaque; iOS rounds it)
-#   assets/icons/android-*.svg   Android adaptive layers + legacy round icon
+#   assets/icons/android-*.svg   Android adaptive layers, legacy round icon, notification icon
 #
 # `tauri icon` handles desktop; its mobile output puts the whole tile inside
 # the adaptive layer (the launcher mask then clips the dot), so the mobile
@@ -33,6 +33,9 @@ for d in mdpi:1 hdpi:1.5 xhdpi:2 xxhdpi:3 xxxhdpi:4; do
   render assets/icons/android-monochrome.svg "$fg" "$dir/ic_launcher_monochrome.png"
   render assets/icon.svg "$ic" "$dir/ic_launcher.png"
   render assets/icons/android-round.svg "$ic" "$dir/ic_launcher_round.png"
+  # Status-bar icon for notifications (24dp, alpha only).
+  mkdir -p "$A/drawable-$name"
+  render assets/icons/android-notification.svg "$(awk "BEGIN{print int(24*$s)}")" "$A/drawable-$name/ic_stat_otto.png"
 done
 for n in ic_launcher ic_launcher_round; do
   cat > "$A/mipmap-anydpi-v26/$n.xml" <<XML
