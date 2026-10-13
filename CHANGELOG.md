@@ -6,6 +6,8 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-13
+
 ### Added
 
 - **Update notices on Android.** Otto checks for a new version and, when one is out, offers the APK download; Android installs it over the current app. The update button now also shows in the phone layout.
@@ -88,7 +90,8 @@ First public release.
 - Scheduled tasks that run on the agent machine.
 - Project file browser with syntax highlighting.
 
-[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/jaygupta17/otto/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/jaygupta17/otto/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/jaygupta17/otto/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/jaygupta17/otto/compare/v0.4.0...v0.4.1
