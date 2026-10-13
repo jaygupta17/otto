@@ -6,6 +6,14 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 ## [Unreleased]
 
+### Added
+
+- **A sky to start with.** Otto ships with two painted backgrounds, Dusk and Night, and starts on Dusk (with a portrait crop on phones). Pick another or "None" in Settings → General.
+
+### Fixed
+
+- Android's back button and gesture go back one step (close a menu or sheet, leave Settings, return from a chat to the list) instead of closing Otto.
+
 ## [0.6.0] - 2026-10-13
 
 ### Added

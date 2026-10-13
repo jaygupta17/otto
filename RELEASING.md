@@ -1,6 +1,6 @@
 # Releasing
 
-Releases are cut from `main` with one command. A pushed `v*` tag makes the [Release workflow](.github/workflows/release.yml) build every platform into a **draft** GitHub Release whose notes come from `CHANGELOG.md`. You review the draft and publish it.
+Releases are cut from `main` with one command. A pushed `v*` tag makes the [Release workflow](.github/workflows/release.yml) build every platform into a GitHub Release whose notes come from `CHANGELOG.md`. It stays a draft while the builds run and publishes itself once they all succeed; if any build fails it stays a draft.
 
 ## While you work
 
@@ -36,7 +36,7 @@ To undo before pushing: `git tag -d vx.y.z && git reset --hard HEAD~1`.
 ## After pushing
 
 1. Watch the Release workflow in the Actions tab. It checks the tag matches the app version, creates the draft with the changelog section as notes, and attaches the macOS, Windows, Linux and Android builds.
-2. Open the draft release, check the assets, and publish.
+2. When every job is green the release is published and becomes the latest. If a job failed, fix it and re-run the workflow (Run workflow → tag), or publish the draft by hand.
 
 Desktop builds also carry signed update bundles and a `latest.json` that the app's updater reads, so publishing a release is what offers it to everyone already on Otto. A draft or a pre-release is never offered; `/releases/latest` only points at a published, full release. The bundles are signed with the key in the `TAURI_SIGNING_PRIVATE_KEY` secret (plus `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` if the key has one; the current key has none, so that secret is unset); the matching public key is `plugins.updater.pubkey` in `src-tauri/tauri.conf.json`. Without the secret the desktop jobs fail. **Keep a backup of the private key**: lose it and installed copies can never update again, since they only accept updates signed by it.
 

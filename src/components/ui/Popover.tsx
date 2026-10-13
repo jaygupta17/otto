@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { useBack } from "../../lib/back";
 
 type Placement = "top-start" | "top-end" | "bottom-start" | "bottom-end";
 
@@ -26,6 +27,7 @@ export function Popover({
   className?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  useBack(open, onClose);
   const [pos, setPos] = useState<{ left: number; top?: number; bottom?: number; origin: string } | null>(null);
 
   useLayoutEffect(() => {

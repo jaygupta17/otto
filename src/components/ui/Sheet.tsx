@@ -1,6 +1,7 @@
 import { AnimatePresence, motion, useDragControls } from "motion/react";
 import { useEffect, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { useBack } from "../../lib/back";
 
 /**
  * Bottom sheet on phones, centered dialog on larger screens.
@@ -25,6 +26,7 @@ export function Sheet({
   compact: boolean;
 }) {
   const drag = useDragControls();
+  useBack(open, onClose);
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();

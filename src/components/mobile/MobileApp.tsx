@@ -10,6 +10,7 @@ import { basename, timeAgo } from "../../lib/format";
 import { deleteSession, renameSession } from "../../lib/actions";
 import { useNow } from "../../hooks/useNow";
 import { Thread } from "../chat/Thread";
+import { useBack } from "../../lib/back";
 import { Composer } from "../chat/Composer";
 import { ProjectPicker } from "../chat/Pickers";
 import { Sheet } from "../ui/Sheet";
@@ -36,6 +37,8 @@ export function MobileApp() {
   const [newOpen, setNewOpen] = useState(false);
   const pushed = !!activeId || view === "schedules";
   const bd = backdropSettings(useUI((s) => s.backdrop));
+  useBack(view === "schedules", () => setView("chat"));
+  useBack(!!activeId && view !== "schedules", () => useChat.getState().open(null));
 
   // Same materials as desktop (styles.css → Materials): the photo sits behind
   // every screen and each screen frosts over it instead of painting a solid fill.

@@ -17,7 +17,16 @@ export interface BackdropItem {
   /** CSS background value (fill) */
   css?: string;
   name?: string;
+  /** A portrait crop of `image` for tall windows (built-ins only). */
+  tall?: string;
 }
+
+/** Backgrounds that ship with Otto: always listed, never removed. The first is the default. */
+export const BUILTIN_BACKDROPS: BackdropItem[] = [
+  { id: "builtin.dusk", kind: "image", image: "/backgrounds/dusk.webp", tall: "/backgrounds/dusk-tall.webp", name: "Dusk" },
+  { id: "builtin.night", kind: "image", image: "/backgrounds/night.webp", name: "Night" },
+];
+const isBuiltin = (id?: string | null) => !!id && BUILTIN_BACKDROPS.some((b) => b.id === id);
 
 /** Defaults for a freshly chosen background (Settings → General sliders). */
 export const BACKDROP_DEFAULTS = { intensity: 0.74, chatFade: 1, fade: 1, blur: 0, glass: 0.6 };
@@ -213,7 +222,7 @@ export const useUI = create<UIState>((set, get) => ({
 
   backdrops: [],
   async applyBackdrop(item) {
-    const saved = get().backdrops.some((x) => x.id === item.id);
+    const saved = isBuiltin(item.id) || get().backdrops.some((x) => x.id === item.id);
     if (!saved) {
       const backdrops = [item, ...get().backdrops].slice(0, MAX_BACKDROPS);
       try {
@@ -301,6 +310,10 @@ export async function initUI() {
     if (backdrop.kind === "image" && !backdrop.activeId) backdrop.activeId = backdrops.find((x) => x.image === backdrop.image)?.id ?? null;
     const known = backdrop.kind === "image" || backdrop.kind === "fill";
     useUI.setState({ backdrop: known ? backdrop : { ...backdrop, kind: "none" } });
+  } else {
+    // Never chosen one: start on the built-in sky. Picking "None" is remembered.
+    const sky = BUILTIN_BACKDROPS[0];
+    useUI.setState({ backdrop: { ...useUI.getState().backdrop, kind: "image", activeId: sky.id, image: sky.image } });
   }
   useUI.setState({ backdrops });
   if ((await kv.get<boolean>("ui.homeCompact")) === false) useUI.setState({ homeCompact: false });

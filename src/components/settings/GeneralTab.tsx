@@ -1,6 +1,6 @@
 import { ImagePlus, Palette, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { useUI, toast, backdropSettings, BACKDROP_DEFAULTS } from "../../state/ui";
+import { useUI, toast, backdropSettings, BACKDROP_DEFAULTS, BUILTIN_BACKDROPS } from "../../state/ui";
 import { asImage } from "../ui/Backdrop";
 import { uid } from "../../lib/id";
 import { useChat } from "../../state/chat";
@@ -271,7 +271,7 @@ function AppearanceSection() {
   );
 }
 
-/** Saved photos and fills, the built-in fills, and buttons to add more. */
+/** The built-in skies, saved photos and fills, and buttons to add more. */
 function BackgroundPicker() {
   const backdrop = useUI((s) => s.backdrop);
   const saved = useUI((s) => s.backdrops);
@@ -298,6 +298,11 @@ function BackgroundPicker() {
         <Tile label="None" active={activeId === "none"} onClick={() => setBackdrop({ kind: "none", activeId: null })}>
           <div className="grid h-full w-full place-items-center bg-bg text-[11px] text-faint">None</div>
         </Tile>
+        {BUILTIN_BACKDROPS.map((b) => (
+          <Tile key={b.id} label={b.name!} active={activeId === b.id} onClick={() => void apply(b)}>
+            <div className="h-full w-full bg-cover bg-center" style={{ backgroundImage: `url(${b.image})` }} />
+          </Tile>
+        ))}
         {saved.map((b) => (
           <Tile key={b.id} label={b.name ?? (b.kind === "image" ? "Photo" : "Custom")} active={activeId === b.id} onClick={() => void apply(b)} onRemove={() => void remove(b.id)}>
             <div className="h-full w-full bg-cover bg-center" style={{ backgroundImage: b.kind === "image" ? `url(${b.image})` : asImage(b.css ?? "") }} />
