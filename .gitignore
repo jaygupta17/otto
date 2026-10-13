@@ -16,3 +16,7 @@ src-tauri/gen/apple/
 
 # Marketing masters (kept locally; README uses assets/readme)
 marketing/
+
+# Launch drafts and one-off debug scripts (kept locally)
+launch/
+scripts/dbprobe.ts
