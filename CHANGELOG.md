@@ -6,6 +6,8 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-13
+
 ### Added
 
 - **A sky to start with.** Otto ships with two painted backgrounds, Dusk and Night, and starts on Dusk (with a portrait crop on phones). Pick another or "None" in Settings → General.
@@ -98,7 +100,8 @@ First public release.
 - Scheduled tasks that run on the agent machine.
 - Project file browser with syntax highlighting.
 
-[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/jaygupta17/otto/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/jaygupta17/otto/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/jaygupta17/otto/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/jaygupta17/otto/compare/v0.4.1...v0.5.0
