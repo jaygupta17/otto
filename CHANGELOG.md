@@ -6,6 +6,12 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-13
+
+### Fixed
+
+- **ui:** Model picker is a popover on desktop; cap bottom sheets at 560px (d4d8590)
+
 ## [0.7.1] - 2026-10-13
 
 ### Changed
@@ -110,7 +116,8 @@ First public release.
 - Scheduled tasks that run on the agent machine.
 - Project file browser with syntax highlighting.
 
-[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.7.1...HEAD
+[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/jaygupta17/otto/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/jaygupta17/otto/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/jaygupta17/otto/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/jaygupta17/otto/compare/v0.5.1...v0.6.0
