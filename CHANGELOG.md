@@ -6,6 +6,8 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-10-13
+
 ### Changed
 
 - **New app id: `dev.jaygupta.otto`** (was `dev.otto.app`, a domain Otto doesn't own). On macOS, Windows and Linux your workspaces, settings and keys carry over on first launch. **On Android this installs as a new app:** uninstall the old Otto and add your workspaces again.
@@ -108,7 +110,8 @@ First public release.
 - Scheduled tasks that run on the agent machine.
 - Project file browser with syntax highlighting.
 
-[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/jaygupta17/otto/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/jaygupta17/otto/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/jaygupta17/otto/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/jaygupta17/otto/compare/v0.5.0...v0.5.1

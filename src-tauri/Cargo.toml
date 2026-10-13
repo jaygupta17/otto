@@ -1,6 +1,6 @@
 [package]
 name = "otto"
-version = "0.7.0"
+version = "0.7.1"
 description = "Otto — a calm home for your cloud coding agents"
 edition = "2021"
 
