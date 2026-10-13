@@ -6,6 +6,8 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-10-13
+
 ### Changed
 
 - **Approvals show the whole command.** When an agent asks to run something, the card shows the full command (every line, scrollable if it's long) instead of a short pattern, plus every path it wants to touch and what "Always allow" will remember. On phones the buttons go full width and are easier to hit. Questions wrap properly on small screens too.
@@ -77,7 +79,8 @@ First public release.
 - Scheduled tasks that run on the agent machine.
 - Project file browser with syntax highlighting.
 
-[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/jaygupta17/otto/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/jaygupta17/otto/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/jaygupta17/otto/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/jaygupta17/otto/compare/v0.3.0...v0.4.0
