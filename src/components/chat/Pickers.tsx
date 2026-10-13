@@ -5,6 +5,7 @@ import { useChat } from "../../state/chat";
 import { agentColor } from "../../lib/agentColor";
 import { Popover, MenuItem } from "../ui/Popover";
 import { Sheet } from "../ui/Sheet";
+import { useTouch } from "../../hooks/useMedia";
 import { kv } from "../../lib/kv";
 import { Spinner } from "../ui/AgentClock";
 import { basename, compactNumber, prettyPath } from "../../lib/format";
@@ -64,6 +65,9 @@ export function ModelPicker({ sessionId, compact = false }: { sessionId: string 
   const { ref, info } = useCurrentModel(sessionId);
   const label = info ? cleanName(info) : (ref?.id ?? "Choose model");
   const variant = ref?.variant && ref.variant !== "default" ? ref.variant : null;
+  // A narrow desktop window still gets the popover; the sheet is for phones.
+  const touch = useTouch();
+  const sheet = compact && touch;
 
   return (
     <>
@@ -76,12 +80,12 @@ export function ModelPicker({ sessionId, compact = false }: { sessionId: string 
         {variant && <span className="shrink-0 text-muted">{cap(variant)}</span>}
         <ChevronDown size={13} className="shrink-0 text-faint" />
       </button>
-      {compact ? (
+      {sheet ? (
         <Sheet open={open} onClose={() => setOpen(false)} compact title="Model">
           <ModelMenu sessionId={sessionId} touch onDone={() => setOpen(false)} />
         </Sheet>
       ) : (
-        <Popover open={open} onClose={() => setOpen(false)} anchor={anchor.current} placement="top-end" width={360}>
+        <Popover open={open} onClose={() => setOpen(false)} anchor={anchor.current} placement="top-end" width={Math.min(360, window.innerWidth - 16)}>
           <ModelMenu sessionId={sessionId} onDone={() => setOpen(false)} />
         </Popover>
       )}

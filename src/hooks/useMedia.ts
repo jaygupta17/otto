@@ -14,3 +14,6 @@ function useMedia(query: string): boolean {
 
 /** Phone-sized layout (also true for narrow desktop windows). */
 export const useCompact = () => useMedia("(max-width: 760px)");
+
+/** A finger, not a mouse: bottom sheets beat popovers here. */
+export const useTouch = () => useMedia("(pointer: coarse)");

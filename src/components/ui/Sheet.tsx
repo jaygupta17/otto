@@ -48,7 +48,7 @@ export function Sheet({
           />
           {compact ? (
             <motion.div
-              className="safe-bottom absolute inset-x-0 bottom-0 flex max-h-[calc(100%-var(--safe-t)-12px)] flex-col rounded-t-3xl border-t border-line bg-surface-solid surface-overlay"
+              className="safe-bottom absolute inset-x-0 bottom-0 mx-auto flex w-full max-w-[560px] max-h-[calc(100%-var(--safe-t)-12px)] flex-col rounded-t-3xl border-t border-line bg-surface-solid surface-overlay"
               initial={{ y: "100%" }}
               animate={{ y: 0 }}
               exit={{ y: "100%" }}
