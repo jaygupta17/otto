@@ -6,6 +6,8 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-16
+
 ### Added
 
 - **Teammates.** In Agents, + creates a teammate: a name, a job, standing instructions and a generated face in one of eight colours, plus its own model, step limit and permissions. Teammates are listed first in the agent menu, the command palette and under each reply, with their face and job. "What Piper is told" shows the exact prompt they run with. Everything is stored on the connected machine: who they are in `otto/teammates.json` in the OpenCode config folder, and the agent itself in `opencode.json`. If that agent goes missing, Otto rebuilds it from the teammate.
@@ -174,7 +176,8 @@ First public release.
 - Scheduled tasks that run on the agent machine.
 - Project file browser with syntax highlighting.
 
-[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/jaygupta17/otto/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/jaygupta17/otto/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/jaygupta17/otto/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/jaygupta17/otto/compare/v0.6.0...v0.7.0
