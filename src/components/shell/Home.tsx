@@ -1,5 +1,5 @@
 import { motion } from "motion/react";
-import { PanelLeft, RotateCw } from "lucide-react";
+import { Bug, Compass, Globe, PanelLeft, RotateCw, Search } from "lucide-react";
 import { useMemo, type CSSProperties } from "react";
 import { Composer } from "../chat/Composer";
 import { ProjectPicker } from "../chat/Pickers";
@@ -18,6 +18,8 @@ import { BOXD_BILLING_URL } from "../../lib/providers/boxd";
 import { E2B_BILLING_URL } from "../../lib/providers/e2b";
 import { DAYTONA_BILLING_URL } from "../../lib/providers/daytona";
 import { useWorkspaces } from "../../state/workspaces";
+import { kbd } from "../../hooks/useShortcuts";
+import { SessionHistory } from "../chat/SessionHistory";
 
 /**
  * New-session screen. With a background photo there is no panel here at all:
@@ -34,25 +36,21 @@ export function Home({ compact = false }: { compact?: boolean }) {
   const sidebarOpen = useUI((s) => s.sidebarOpen);
   const toggleSidebar = useUI((s) => s.toggleSidebar);
   const mac = useTrafficLights();
-  // Compact home drops its header — except while the sidebar is collapsed,
-  // where that strip is the window's drag surface and the only visible way back
-  // to the sidebar.
-  const header = !compact || !sidebarOpen;
 
   return (
     <div className="relative flex h-full flex-col overflow-hidden">
       {photo && <div aria-hidden className="home-scrim pointer-events-none absolute inset-0" style={compact ? ({ "--scrim-y": "50%" } as CSSProperties) : undefined} />}
-      {header && (
-        <header className={`drag relative z-10 flex h-[52px] shrink-0 items-center gap-2 pr-3 ${!sidebarOpen && mac ? "pl-[84px]" : "pl-3"}`} data-tauri-drag-region>
-          {!sidebarOpen && (
-            <IconButton label="Show sidebar (⌘B)" className="no-drag" onClick={() => toggleSidebar(true)}>
-              <PanelLeft size={17} />
-            </IconButton>
-          )}
-        </header>
-      )}
+      <header className={`drag relative z-10 flex h-[52px] shrink-0 items-center gap-2 pr-3 ${!sidebarOpen && mac ? "pl-[84px]" : "pl-3"}`} data-tauri-drag-region>
+        {!sidebarOpen && (
+          <IconButton label={`Show sidebar (${kbd("⌘B")})`} className="no-drag" onClick={() => toggleSidebar(true)}>
+            <PanelLeft size={17} />
+          </IconButton>
+        )}
+        <div className="flex-1" data-tauri-drag-region />
+        <SessionHistory sessionId={null} />
+      </header>
       <div className="scroll-quiet relative min-h-0 flex-1 overflow-y-auto px-5">
-        {/* Compact home has no header and no recent list, so the prompt block can
+        {/* Compact home has no recent list, so the prompt block can
             sit in the middle of the pane; min-h-full keeps it centred only when
             there is room, and the pane still scrolls once it grows past it. */}
         <div className={`mx-auto w-full max-w-[660px] ${compact ? "flex min-h-full flex-col justify-center py-10" : "pt-[14vh] pb-16"}`}>
@@ -71,6 +69,8 @@ export function Home({ compact = false }: { compact?: boolean }) {
               {ws?.name}
             </span>
           </div>
+
+          <Starters />
 
           {recent.length > 0 && !compact && (
             <section className="mt-12">
@@ -91,6 +91,46 @@ export function Home({ compact = false }: { compact?: boolean }) {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Ways in, for an empty box: each fills the prompt to finish, never sends. */
+const STARTERS = [
+  { icon: Search, label: "Research a topic", text: "Research this and give me a one-page brief with sources: " },
+  { icon: Globe, label: "Use the browser", text: "Open this site in the browser and tell me what you find: " },
+  { icon: Bug, label: "Fix an error", text: "Find and fix what's causing this error:\n\n" },
+  { icon: Compass, label: "Explain this project", text: "Walk me through how this project is organized and where to start." },
+];
+
+function Starters() {
+  const empty = useChat((s) => !(s.drafts.new ?? "").trim());
+  const ready = useConnection((s) => s.status === "ready");
+  if (!empty || !ready) return null;
+  const pick = (text: string) => {
+    useChat.getState().setDraft("new", text);
+    requestAnimationFrame(() => {
+      const ta = document.querySelector<HTMLTextAreaElement>("textarea[data-composer]");
+      if (!ta) return;
+      ta.focus();
+      ta.setSelectionRange(text.length, text.length);
+    });
+  };
+  return (
+    <div className="mt-5 flex flex-wrap gap-1.5">
+      {STARTERS.map(({ icon: Icon, label, text }, i) => (
+        <motion.button
+          key={label}
+          initial={{ opacity: 0, y: 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.2, delay: 0.04 * i }}
+          onClick={() => pick(text)}
+          className="surface-thin inline-flex h-8 items-center gap-2 rounded-full px-3 text-[13px] text-ink-2 hover:text-ink"
+        >
+          <Icon size={13} className="text-muted" />
+          {label}
+        </motion.button>
+      ))}
     </div>
   );
 }

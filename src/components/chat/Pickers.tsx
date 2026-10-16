@@ -1,16 +1,18 @@
-import { Check, ChevronDown, Folder, FolderGit2, FolderPlus, GitBranchPlus, Search } from "lucide-react";
+import { Check, ChevronDown, Folder, FolderGit2, FolderPlus, FolderSearch, GitBranchPlus, History, Search } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ModelInfo } from "@opencode/client";
-import { useChat } from "../../state/chat";
-import { agentColor } from "../../lib/agentColor";
+import { useChat, wsKey } from "../../state/chat";
+import { AgentMark } from "../ui/TeammateFace";
+import { useAgentName, useTeammates } from "../../state/teammates";
+import { isOfferedAgent } from "../../lib/teammates";
 import { Popover, MenuItem } from "../ui/Popover";
-import { Sheet } from "../ui/Sheet";
 import { useTouch } from "../../hooks/useMedia";
 import { kv } from "../../lib/kv";
 import { Spinner } from "../ui/AgentClock";
 import { basename, compactNumber, prettyPath } from "../../lib/format";
 import type { ModelRef } from "../../lib/opencode/client";
-import { toast } from "../../state/ui";
+import { toast, useUI } from "../../state/ui";
+import { FolderBrowser } from "./FolderBrowser";
 
 const PROVIDER_NAMES: Record<string, string> = {
   opencode: "OpenCode Zen",
@@ -56,8 +58,8 @@ const keyOf = (m: { providerID: string; id: string }) => `${m.providerID}/${m.id
 
 /**
  * The model menu: what's in use (with its effort levels) on top, then the
- * models used lately, then every provider's catalog. A popover on desktop,
- * a bottom sheet on phones.
+ * models used lately, then every provider's catalog. A dropdown by the
+ * button everywhere; on touch screens its rows are sized for a finger.
  */
 export function ModelPicker({ sessionId, compact = false }: { sessionId: string | null; compact?: boolean }) {
   const anchor = useRef<HTMLButtonElement>(null);
@@ -65,9 +67,7 @@ export function ModelPicker({ sessionId, compact = false }: { sessionId: string 
   const { ref, info } = useCurrentModel(sessionId);
   const label = info ? cleanName(info) : (ref?.id ?? "Choose model");
   const variant = ref?.variant && ref.variant !== "default" ? ref.variant : null;
-  // A narrow desktop window still gets the popover; the sheet is for phones.
   const touch = useTouch();
-  const sheet = compact && touch;
 
   return (
     <>
@@ -80,15 +80,9 @@ export function ModelPicker({ sessionId, compact = false }: { sessionId: string 
         {variant && <span className="shrink-0 text-muted">{cap(variant)}</span>}
         <ChevronDown size={13} className="shrink-0 text-faint" />
       </button>
-      {sheet ? (
-        <Sheet open={open} onClose={() => setOpen(false)} compact title="Model">
-          <ModelMenu sessionId={sessionId} touch onDone={() => setOpen(false)} />
-        </Sheet>
-      ) : (
-        <Popover open={open} onClose={() => setOpen(false)} anchor={anchor.current} placement="top-end" width={Math.min(360, window.innerWidth - 16)}>
-          <ModelMenu sessionId={sessionId} onDone={() => setOpen(false)} />
-        </Popover>
-      )}
+      <Popover open={open} onClose={() => setOpen(false)} anchor={anchor.current} placement="top-end" width={Math.min(360, window.innerWidth - 16)} label="Model">
+        <ModelMenu sessionId={sessionId} touch={touch} onDone={() => setOpen(false)} />
+      </Popover>
     </>
   );
 }
@@ -144,11 +138,11 @@ function ModelMenu({ sessionId, touch = false, onDone }: { sessionId: string | n
       <button
         key={keyOf(m)}
         onClick={() => pick(m)}
-        className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 text-left transition-colors hover:bg-hover ${touch ? "py-2.5" : "py-1.5"} ${active ? "bg-active" : ""}`}
+        className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 text-left transition-colors hover:bg-hover ${touch ? "py-2" : "py-1.5"} ${active ? "bg-active" : ""}`}
       >
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-1.5">
-            <span className={`truncate ${touch ? "text-[15px]" : "text-[13px]"} text-ink`}>{cleanName(m)}</span>
+            <span className={`truncate ${touch ? "text-[14.5px]" : "text-[13px]"} text-ink`}>{cleanName(m)}</span>
             {freeTag && isFree(m) && <span className="shrink-0 rounded-full bg-ok-soft px-1.5 py-px text-[10.5px] font-medium text-ok">Free</span>}
           </span>
           {showProvider && <span className="block truncate text-[12px] text-muted">{providerName(m.providerID)}</span>}
@@ -163,7 +157,7 @@ function ModelMenu({ sessionId, touch = false, onDone }: { sessionId: string | n
 
   const LIMIT = 6;
   return (
-    <div className="flex max-h-[inherit] flex-col">
+    <div className="flex max-h-[var(--pop-max,100%)] flex-col">
       {info && info.variants?.length > 0 && !term && (
         <div className="border-b border-line px-3 py-2.5">
           <div className="mb-1.5 flex items-center justify-between text-[12px] text-muted">
@@ -176,7 +170,7 @@ function ModelMenu({ sessionId, touch = false, onDone }: { sessionId: string | n
               <button
                 key={v.id}
                 onClick={() => void setModel({ providerID: info.providerID, id: info.id, variant: v.id }, sessionId)}
-                className={`flex-1 rounded-md px-2 text-[12.5px] transition-colors ${touch ? "py-2" : "py-1"} ${(ref?.variant ?? "default") === v.id ? "bg-raised font-medium text-ink shadow-soft" : "text-muted hover:text-ink"}`}
+                className={`flex-1 rounded-md px-2 text-[12.5px] transition-colors ${touch ? "py-1.5" : "py-1"} ${(ref?.variant ?? "default") === v.id ? "bg-raised font-medium text-ink shadow-soft" : "text-muted hover:text-ink"}`}
               >
                 {cap(v.id)}
               </button>
@@ -184,20 +178,22 @@ function ModelMenu({ sessionId, touch = false, onDone }: { sessionId: string | n
           </div>
         </div>
       )}
-      <div className="border-b border-line p-2">
-        <div className={`field flex items-center gap-2 rounded-lg px-2.5 ${touch ? "h-10" : "h-8"}`}>
-          <Search size={14} className="text-faint" />
-          <input
-            // No keyboard popping up over the list on phones; tap to search.
-            data-autofocus={touch ? undefined : true}
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Search models"
-            className={`min-w-0 flex-1 bg-transparent outline-none placeholder:text-faint ${touch ? "text-[16px]" : "text-[13px]"}`}
-          />
+      {(usable.length > 8 || term) && (
+        <div className="border-b border-line p-2">
+          <div className={`field flex items-center gap-2 rounded-lg px-2.5 ${touch ? "h-9" : "h-8"}`}>
+            <Search size={14} className="text-faint" />
+            <input
+              // No keyboard popping up over the list on phones; tap to search.
+              data-autofocus={touch ? undefined : true}
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search models"
+              className={`min-w-0 flex-1 bg-transparent outline-none placeholder:text-faint ${touch ? "text-[16px]" : "text-[13px]"}`}
+            />
+          </div>
         </div>
-      </div>
-      <div className={`scroll-quiet overflow-y-auto p-1.5 ${touch ? "" : "max-h-[min(420px,55vh)]"}`}>
+      )}
+      <div className="scroll-quiet max-h-[420px] min-h-0 flex-1 overflow-y-auto overscroll-contain p-1.5">
         {models.length === 0 && <div className="p-6 text-center text-[13px] text-muted">No models yet. Connect a provider in Settings.</div>}
         {models.length > 0 && groups.length === 0 && <div className="p-6 text-center text-[13px] text-muted">No models match "{q}".</div>}
         {recentModels.length > 0 && (
@@ -240,22 +236,39 @@ export function AgentPicker({ sessionId }: { sessionId: string | null }) {
   const picked = useChat((s) => s.pickedAgent);
   const sessionAgent = useChat((s) => (sessionId ? s.sessions[sessionId]?.agent : undefined));
   const setAgent = useChat((s) => s.setAgent);
-  const current = sessionAgent ?? picked;
+  const current = sessionAgent ?? picked ?? "";
   const refreshCatalog = useChat((s) => s.refreshCatalog);
-  const primary = agents.filter((a) => a.mode !== "subagent" && !a.hidden);
+  const roster = useTeammates((s) => s.byId);
+  const name = useAgentName(current);
+  // Teammates first, in the order they joined; then the remaining agents.
+  const primary = useMemo(() => {
+    const list = agents.filter((a) => a.mode !== "subagent" && !a.hidden && isOfferedAgent(a.id));
+    const joined = (id: string) => roster?.[id]?.created ?? Infinity;
+    return list.map((a, i) => ({ a, i })).sort((x, y) => joined(x.a.id) - joined(y.a.id) || x.i - y.i).map((x) => x.a);
+  }, [agents, roster]);
   const info = agents.find((a) => a.id === current);
+  // Loaded but nothing to talk to yet: the chip becomes the way to add a teammate.
+  const empty = !current && roster !== null;
   useEffect(() => {
     if (open && agents.length === 0) void refreshCatalog();
   }, [open, agents.length, refreshCatalog]);
   return (
     <>
-      <button ref={anchor} onClick={() => setOpen((v) => !v)} title="Switch agent (Tab)" className="flex h-8 items-center gap-1.5 rounded-md px-2 text-[13px] text-ink-2 hover:bg-hover hover:text-ink">
-        <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: agentColor(current, info?.color) }} />
-        {info?.name ?? cap(current)}
+      <button
+        ref={anchor}
+        onClick={() => (empty ? useUI.getState().openSettings("agents") : setOpen((v) => !v))}
+        title={empty ? "Add a teammate" : "Switch agent (Tab)"}
+        aria-label={empty ? "Add a teammate" : `Agent: ${name}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className={`flex h-8 items-center gap-1.5 rounded-md px-2 text-[13px] hover:bg-hover hover:text-ink ${empty ? "text-ink" : "text-ink-2"}`}
+      >
+        <AgentMark id={current} color={info?.color} size={roster?.[current] ? 18 : 12} />
+        {empty ? "Add a teammate" : name}
         <ChevronDown size={13} className="text-faint" />
       </button>
       <Popover open={open} onClose={() => setOpen(false)} anchor={anchor.current} placement="top-start" width={280}>
-        <div className="scroll-quiet max-h-[50vh] overflow-y-auto p-1.5">
+        <div role="menu" className="scroll-quiet max-h-[min(50vh,var(--pop-max))] overflow-y-auto p-1.5">
           {primary.length === 0 && (
             <div className="flex justify-center py-4 text-muted">
               <Spinner />
@@ -265,9 +278,9 @@ export function AgentPicker({ sessionId }: { sessionId: string | null }) {
             <MenuItem
               key={a.id}
               active={a.id === current}
-              icon={<span className="h-2 w-2 rounded-full" style={{ background: agentColor(a.id, a.color) }} />}
-              label={a.name}
-              hint={a.description}
+              icon={<AgentMark id={a.id} color={a.color} size={roster?.[a.id] ? 20 : 12} />}
+              label={roster?.[a.id]?.name ?? a.name}
+              hint={roster?.[a.id] ? roster[a.id].job || undefined : a.description}
               right={<Check size={14} className={`text-ink-2 ${a.id === current ? "" : "invisible"}`} />}
               onClick={() => {
                 void setAgent(a.id, sessionId);
@@ -282,31 +295,52 @@ export function AgentPicker({ sessionId }: { sessionId: string | null }) {
 }
 
 /**
- * Project folder for new sessions. Lists folders in the server's home
- * (~/projects on Boat) and can clone a git repo or create a folder.
+ * Project folder for new sessions: the server's home (~/projects on Boat),
+ * folders used lately, the home's folders, or browse anywhere. Can also clone
+ * a git repo or create a folder.
  */
+/** Per workspace: paths from one machine mean nothing on another. */
+const recentDirsKey = () => wsKey("projects.recent");
+
 export function ProjectPicker({ disabled }: { disabled?: boolean }) {
   const anchor = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
+  const [browsing, setBrowsing] = useState(false);
   const client = useChat((s) => s.client);
   const home = useChat((s) => s.homeDir);
   const dir = useChat((s) => s.projectDir);
-  const setDir = useChat((s) => s.setProjectDir);
+  const setProjectDir = useChat((s) => s.setProjectDir);
   const [folders, setFolders] = useState<string[] | null>(null);
+  const [recent, setRecent] = useState<string[]>([]);
   const [mode, setMode] = useState<"list" | "clone" | "new">("list");
   const [input, setInput] = useState("");
   const [working, setWorking] = useState(false);
+  const touch = useTouch();
+  const homeBase = home?.replace(/\/$/, "") ?? "";
 
   useEffect(() => {
-    if (!open || !client || !home) return;
+    if (!open) return;
+    void kv.get<string[]>(recentDirsKey()).then((r) => setRecent(r ?? []));
+    if (!client || !home) return;
     setFolders(null);
     client
-      .listDir(home, home)
-      .then((list) => setFolders(list.filter((e) => e.type === "directory" && !e.path.startsWith(".")).map((e) => e.path.replace(/\/$/, ""))))
+      .listFolders(home, home)
+      .then((list) => setFolders(list.map((e) => e.name).filter((n) => !n.startsWith(".")).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))))
       .catch(() => setFolders([]));
   }, [open, client, home]);
 
   const current = dir ?? home;
+
+  const setDir = (d: string | null) => {
+    setProjectDir(d);
+    if (!d || d === home) return;
+    const key = recentDirsKey();
+    void kv.get<string[]>(key).then((r) => {
+      const next = [d, ...(r ?? []).filter((x) => x !== d)].slice(0, 8);
+      setRecent(next);
+      void kv.set(key, next);
+    });
+  };
 
   async function runInHome(cmd: string, target: string) {
     if (!client || !home) return;
@@ -322,7 +356,7 @@ export function ProjectPicker({ disabled }: { disabled?: boolean }) {
         }
         await new Promise((r) => setTimeout(r, 1000));
       }
-      setDir(`${home.replace(/\/$/, "")}/${target}`);
+      setDir(`${homeBase}/${target}`);
       setOpen(false);
       setMode("list");
       setInput("");
@@ -334,11 +368,17 @@ export function ProjectPicker({ disabled }: { disabled?: boolean }) {
     }
   }
 
+  // Recent folders that aren't already one of home's direct children.
+  const recentOther = recent.filter((r) => r !== home && !(r.startsWith(homeBase + "/") && !r.slice(homeBase.length + 1).includes("/") && folders?.includes(r.slice(homeBase.length + 1))));
+
   return (
     <>
       <button
         ref={anchor}
         disabled={disabled}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`Project folder: ${current ? prettyPath(current, home) : "projects"}`}
         onClick={() => setOpen((v) => !v)}
         className="flex h-7 max-w-[220px] items-center gap-1.5 rounded-full px-2.5 text-[13px] text-muted transition-colors hover:text-ink disabled:pointer-events-none"
       >
@@ -354,25 +394,48 @@ export function ProjectPicker({ disabled }: { disabled?: boolean }) {
         }}
         anchor={anchor.current}
         placement="bottom-start"
-        width={300}
+        width={320}
+        label="Project folder"
       >
         {mode === "list" ? (
-          <div className="p-1.5">
-            <div className="px-2.5 pt-1.5 pb-1 text-[12px] font-semibold text-faint ">Work in</div>
+          <div className="flex max-h-[var(--pop-max)] flex-col p-1.5" role="menu">
+            <div className="px-2.5 pt-1.5 pb-1 text-[12px] font-semibold text-faint">Work in</div>
             <MenuItem icon={<Folder size={14} />} label="projects" hint={prettyPath(home ?? "", home)} active={!dir || dir === home} onClick={() => (setDir(null), setOpen(false))} />
-            {folders === null ? (
-              <div className="flex justify-center py-3 text-muted">
-                <Spinner />
-              </div>
-            ) : (
-              folders.map((f) => {
-                const full = `${home?.replace(/\/$/, "")}/${f}`;
-                return <MenuItem key={f} icon={<FolderGit2 size={14} />} label={f} active={dir === full} onClick={() => (setDir(full), setOpen(false))} />;
-              })
+            {recentOther.length > 0 && (
+              <>
+                <div className="px-2.5 pt-2 pb-1 text-[12px] font-semibold text-faint">Recent</div>
+                {recentOther.slice(0, 4).map((r) => (
+                  <MenuItem key={r} icon={<History size={14} />} label={basename(r)} hint={prettyPath(r, home)} active={dir === r} onClick={() => (setDir(r), setOpen(false))} />
+                ))}
+              </>
             )}
-            <div className="my-1 h-px bg-line" />
-            <MenuItem icon={<GitBranchPlus size={14} />} label="Clone a repository…" onClick={() => setMode("clone")} />
-            <MenuItem icon={<FolderPlus size={14} />} label="New folder…" onClick={() => setMode("new")} />
+            {(folders === null || folders.length > 0) && <div className="px-2.5 pt-2 pb-1 text-[12px] font-semibold text-faint">In {prettyPath(home ?? "", home)}</div>}
+            <div className="scroll-quiet min-h-[60px] shrink overflow-y-auto">
+              {folders === null ? (
+                <div className="flex justify-center py-3 text-muted">
+                  <Spinner />
+                </div>
+              ) : (
+                folders.map((f) => {
+                  const full = `${homeBase}/${f}`;
+                  return <MenuItem key={f} icon={<FolderGit2 size={14} />} label={f} active={dir === full} onClick={() => (setDir(full), setOpen(false))} />;
+                })
+              )}
+            </div>
+            <div className="my-1 h-px shrink-0 bg-line" />
+            <div className="shrink-0">
+              <MenuItem
+                icon={<FolderSearch size={14} />}
+                label="Browse folders…"
+                hint="Any folder on the server"
+                onClick={() => {
+                  setOpen(false);
+                  setBrowsing(true);
+                }}
+              />
+              <MenuItem icon={<GitBranchPlus size={14} />} label="Clone a repository…" onClick={() => setMode("clone")} />
+              <MenuItem icon={<FolderPlus size={14} />} label="New folder…" onClick={() => setMode("new")} />
+            </div>
           </div>
         ) : (
           <form
@@ -394,6 +457,7 @@ export function ProjectPicker({ disabled }: { disabled?: boolean }) {
             <input
               data-autofocus
               autoFocus
+              aria-label={mode === "clone" ? "Repository URL" : "Folder name"}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder={mode === "clone" ? "https://github.com/user/repo" : "my-app"}
@@ -412,6 +476,16 @@ export function ProjectPicker({ disabled }: { disabled?: boolean }) {
           </form>
         )}
       </Popover>
+      <FolderBrowser
+        open={browsing}
+        onClose={() => setBrowsing(false)}
+        start={current}
+        compact={touch && window.innerWidth < 640}
+        onPick={(d) => {
+          setDir(d === home ? null : d);
+          setBrowsing(false);
+        }}
+      />
     </>
   );
 }
