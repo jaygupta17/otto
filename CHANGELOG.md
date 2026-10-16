@@ -6,6 +6,21 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 ## [Unreleased]
 
+### Added
+
+- **Teammates come alive.** Faces are now soft, lit characters that move with what they're doing. Idle, they breathe, blink and glance around. Working, they nod as they take the task, narrow their eyes and wear the amber clock hand round their rim. Needing you, they look up wide-eyed, hop and show a blue beacon. Done, they smile, blush and pop once. Each face keeps its own timing, so a sidebar of teammates never moves in unison. Under reduced motion they hold still and keep their state marks.
+- **Teammates notice you.** Between states they do little things on their own: look around, tilt their head, hop, wiggle, blink. Faces watch your pointer and lean toward it. Hover a teammate's row or card and it perks up and grins; press it and it squishes. On a new session, your teammate says hello, looks down at what you're writing and nods along with each word. Poke it a few times and it gets dizzy.
+- **Accessories.** A teammate can wear an antenna, glasses, a headset, a cap or a sprout, picked under Look in their settings.
+- **Personalities.** Under Personality in a teammate's settings: a tagline, a greeting, a voice (how they talk and work, which goes into their prompt) and up to four things to ask them. The starter team comes with theirs, and existing starters pick them up on their own.
+- **Meet the teammate.** A new session with a teammate opens with their face, their greeting and their own starters, on desktop and on phones.
+- **Patch** joins the starter team: code and fixes, with tests. If you already have the others, "Add Patch" sits at the end of your teammates in Agents. With no teammates yet, Agents introduces the whole team by face.
+- **The team on your phone.** The sessions screen shows your teammates as a row of faces with their live state; tap one to start a session with them. Their sessions wear their face too.
+
+### Changed
+
+- Teammate colours are brighter, still clear of the status colours. Teammates using the old colours move to the new ones.
+- Sidebar rows for teammates show their state on the face instead of a separate clock or dot.
+
 ## [0.9.0] - 2026-10-16
 
 ### Added

@@ -36,7 +36,7 @@ Primary actions are ink, not a hue. Selection is neutral (`active`), never a col
 - Radius: 6 small controls · 8 buttons, inputs, rows · 10 cards & menus · 12 composer & dialogs. Nothing rounder except pills and avatars.
 - Structure is drawn with 1px lines. Shadows only on things that float (menus, dialogs, toasts, composer), always offset (`0 8px 24px -8px`).
 - Regions sit flush to the window edges and are split by 1px lines; no floating panel cards.
-- No gradients or glows. Glass appears only when the user sets a background photo.
+- No gradients or glows. Glass appears only when the user sets a background photo. The one exception is a teammate's face (below).
 
 ## Materials (only with a background photo)
 
@@ -63,8 +63,23 @@ Primary actions are ink, not a hue. Selection is neutral (`active`), never a col
 ## Motion
 
 - 150–200 ms ease-out for state changes; no bounce.
-- The only ambient motion is the **agent clock**: a ring with an amber hand that turns while an agent works. Everything static stays still.
-- Respect reduced motion.
+- Ambient motion belongs to agents only. A plain agent shows the **agent clock**: a ring with an amber hand that turns while it works. Everything static stays still.
+- Respect reduced motion: faces and the clock hold still and keep their state marks.
+
+## Teammate faces
+
+A teammate is a character, not a row: its face is its identity and its status at once.
+
+- A soft lit body (the only gradient in the app: light top-left, shade bottom-right, one highlight) with solid white pill eyes. No pupils, no outlines. It has to read at 14px and stay calm at 120px.
+- Body colours stay clear of the status hues so a face never reads as a state. The state shows as a mark on the face, in the status hue:
+  - **idle**: breathes and sways, blinks, and does little things on its own: looks around, tilts its head, hops, wiggles.
+  - **working**: a nod as it takes the task, bobbing along, eyes narrowed and reading across, and the amber hand running round its rim (the agent clock, worn by the agent).
+  - **needs you**: wide eyes, hopping for attention, a blue beacon.
+  - **done**: jumps for joy, happy eyes and a blush, sparkles burst out, then calm.
+- Faces notice you (`faceLife.ts`). Nearby faces watch the pointer and lean toward it. Hovering what a face belongs to (its row, its card) makes it perk up and grin; pressing squishes it. Hero faces (the new-session greeting, the editor header) also nod along with each word you type, and a few quick pokes make them dizzy.
+- Every face keeps its own timing, so a roster never moves in unison. Faces in lists fidget rarely; the hero fidgets often. Below 20px: blinks and hover only, no accessory, and state marks only. Off screen or in a hidden tab, faces hold still. Under reduced motion all of it stops.
+- An accessory (antenna, glasses, headset, cap, sprout) hints at the job. One at most.
+- Where a face carries the state (sidebar rows, the composer chip), don't repeat it beside the face with a clock or a dot.
 
 ## Signature
 
