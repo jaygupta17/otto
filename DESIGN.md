@@ -78,8 +78,17 @@ A teammate is a character, not a row: its face is its identity and its status at
   - **done**: jumps for joy, happy eyes and a blush, sparkles burst out, then calm.
 - Faces notice you (`faceLife.ts`). Nearby faces watch the pointer and lean toward it. Hovering what a face belongs to (its row, its card) makes it perk up and grin; pressing squishes it. Hero faces (the new-session greeting, the editor header) also nod along with each word you type, and a few quick pokes make them dizzy.
 - Every face keeps its own timing, so a roster never moves in unison. Faces in lists fidget rarely; the hero fidgets often. Below 20px: blinks and hover only, no accessory, and state marks only. Off screen or in a hidden tab, faces hold still. Under reduced motion all of it stops.
-- An accessory (antenna, glasses, headset, cap, sprout) hints at the job. One at most.
-- Where a face carries the state (sidebar rows, the composer chip), don't repeat it beside the face with a clock or a dot.
+- An accessory (antenna, glasses, headset, cap, sprout, bowtie) hints at the job. One at most.
+- Where a face carries the state (sidebar rows, the composer chip, handoff cards), don't repeat it beside the face with a clock, a dot or the word "Working".
+
+### Leads and handoffs
+
+A lead (Juno, the chief of staff) takes the whole job and hands the parts to teammates through OpenCode's subagent tool. Nothing runs outside OpenCode.
+
+- Leads compile as primary agents, so nobody hands work to a lead; everyone else compiles as `all` and is offered to the lead by name, job and tagline. One level deep: a teammate doing a lead's part can't hand it on.
+- Each handoff shows in the lead's thread as a card with the teammate's face wearing that part's state, and their name. The report card wears the face too.
+- While a teammate works on a lead's part, its sidebar row and phone face show it working, with "On a task for Juno" under the name. If it asks you something, both it and the lead show "Needs you", and the question waits in the lead's thread.
+- Leads sit first in the sidebar, the phone team strip and Agents.
 
 ## Signature
 

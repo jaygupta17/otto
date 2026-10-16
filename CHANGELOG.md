@@ -10,10 +10,12 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 - **Teammates come alive.** Faces are now soft, lit characters that move with what they're doing. Idle, they breathe, blink and glance around. Working, they nod as they take the task, narrow their eyes and wear the amber clock hand round their rim. Needing you, they look up wide-eyed, hop and show a blue beacon. Done, they smile, blush and pop once. Each face keeps its own timing, so a sidebar of teammates never moves in unison. Under reduced motion they hold still and keep their state marks.
 - **Teammates notice you.** Between states they do little things on their own: look around, tilt their head, hop, wiggle, blink. Faces watch your pointer and lean toward it. Hover a teammate's row or card and it perks up and grins; press it and it squishes. On a new session, your teammate says hello, looks down at what you're writing and nods along with each word. Poke it a few times and it gets dizzy.
-- **Accessories.** A teammate can wear an antenna, glasses, a headset, a cap or a sprout, picked under Look in their settings.
+- **Accessories.** A teammate can wear an antenna, glasses, a headset, a cap, a sprout or a bowtie, picked under Look in their settings.
 - **Personalities.** Under Personality in a teammate's settings: a tagline, a greeting, a voice (how they talk and work, which goes into their prompt) and up to four things to ask them. The starter team comes with theirs, and existing starters pick them up on their own.
 - **Meet the teammate.** A new session with a teammate opens with their face, their greeting and their own starters, on desktop and on phones.
 - **Patch** joins the starter team: code and fixes, with tests. If you already have the others, "Add Patch" sits at the end of your teammates in Agents. With no teammates yet, Agents introduces the whole team by face.
+- **Juno, chief of staff.** Hand Juno the whole job. Juno splits it up, gives each part to the right teammate at the same time, checks what comes back (sending it back when it's off), and answers once, saying who did what. Each handoff shows in Juno's thread with that teammate's face working on it. In the sidebar, they show as working "On a task for Juno". If you already have teammates, "Add Juno" is in Agents.
+- **Leads.** Any teammate can lead the team: turn on "Leads the team" in their settings. Nobody hands work to a lead, and teammates doing a lead's part can't pass it on.
 - **The team on your phone.** The sessions screen shows your teammates as a row of faces with their live state; tap one to start a session with them. Their sessions wear their face too.
 
 ### Changed
