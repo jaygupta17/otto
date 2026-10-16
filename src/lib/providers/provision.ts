@@ -2,9 +2,20 @@
  * Provisioning and reconnect flows for sandbox-backed workspaces.
  * Each step reports progress so the UI can tell a calm, honest story.
  */
+import { browserKitScript } from "./boatBrowser";
 import { BoatClient, BoatError, BOOTING_STATES, RUNNING_STATES, OPENCODE_PORT, installScript, serviceScript, healthScript, wrapScript, type BoatSandbox } from "./boat";
 import { OpenCode, type ServerEndpoint } from "../opencode/client";
 import { randomSecret, uid } from "../id";
+import { isTauri } from "../platform";
+
+/**
+ * Boat needs the Otto app: its proxy reads the access token from a cookie a
+ * browser page can't set, and its API refuses the Idempotency-Key header
+ * cross-origin ("Failed to fetch"). Say so before a machine is created.
+ */
+function assertBoatSupported() {
+  if (!isTauri) throw new BoatError(0, "app_only", "Boat machines work in the Otto app, not in a browser tab. Open Otto on your computer or phone to set this up.");
+}
 
 export type SetupStepId = "verify" | "machine" | "install" | "server" | "tunnel" | "hello";
 
@@ -68,6 +79,7 @@ export async function provisionBoat(
   };
 
   const limits = await step("verify", async () => {
+    assertBoatSupported();
     await boat.me(signal);
     const l = await boat.limits(signal).catch(() => null);
     // Reusing a sandbox from a previous attempt doesn't need a new start slot.
@@ -105,6 +117,8 @@ export async function provisionBoat(
 
   const version = await step("install", async () => {
     const r = await runScript(boat, sandbox.id, installScript(), 600, signal);
+    // The agent's browser. Not fatal: connecting retries it.
+    await runScript(boat, sandbox.id, browserKitScript(), 60, signal).catch(() => {});
     return r.stdout.trim().split("\n").pop()?.replace(/^opencode\s+/, "");
   });
 
@@ -201,6 +215,7 @@ export async function reviveBoat(
   report: (phase: "waking" | "repairing", detail?: string) => void,
   signal: AbortSignal,
 ): Promise<ServerEndpoint> {
+  assertBoatSupported();
   const boat = new BoatClient(apiKey);
   let sb = await boat.get(sandboxId, signal);
   if (sb.state === "cancelled") throw new BoatError(404, "not_found", "This sandbox no longer exists.");

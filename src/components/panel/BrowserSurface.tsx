@@ -1,22 +1,85 @@
 /**
- * A small browser for previewing what the agent builds. `localhost:3000`
- * means port 3000 on the agent machine, reached through the provider's
- * port forwarding (lib/preview.ts). Listening ports show up as chips.
+ * The Browser panel. On a Boat workspace it has two views:
+ *
+ *   Preview  a small browser for what the agent builds. `localhost:3000`
+ *            means port 3000 on the agent machine, reached through the
+ *            provider's port forwarding (lib/preview.ts).
+ *   Screen   the agent machine's desktop, live, with its Chrome (LiveScreen).
+ *
+ * Elsewhere it's just the preview.
  */
-import { ArrowLeft, ArrowRight, ExternalLink, Globe, RefreshCw, Radio } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { ArrowLeft, ArrowRight, ExternalLink, Globe, Monitor, RefreshCw, Radio } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useUI } from "../../state/ui";
 import { useChat } from "../../state/chat";
+import { useComputer, useHandoff, type BrowserView } from "../../state/computer";
 import { openExternal } from "../../lib/platform";
 import { LISTEN_COMMAND, parseListening, previewUrl, resolveAddress } from "../../lib/preview";
 import { IconButton } from "../ui/Button";
 import { Spinner } from "../ui/AgentClock";
 import { PanelEmpty, PanelHeader, useSurfaceVisible } from "./SidePanel";
+import { LiveScreen, useLiveTarget } from "./LiveScreen";
 
 export function BrowserSurface() {
+  const live = !!useLiveTarget();
+  const view = useComputer((s) => s.view);
+  const visible = useSurfaceVisible("browser");
+  const v = live ? view : "preview";
+  // A link from chat is a preview request: show it.
+  const request = useUI((s) => s.browserRequest?.n);
+  useEffect(() => {
+    if (request) useComputer.getState().setView("preview");
+  }, [request]);
+  return (
+    <>
+      {live && (
+        <PanelHeader>
+          <ViewTabs view={v} />
+        </PanelHeader>
+      )}
+      {/* The preview stays mounted so its page survives a look at the screen. */}
+      <div className={v === "preview" ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
+        <PreviewView inHeader={!live} active={visible && v === "preview"} />
+      </div>
+      {v === "screen" && <LiveScreen active={visible} />}
+    </>
+  );
+}
+
+const VIEWS: { id: BrowserView; label: string; icon: ReactNode }[] = [
+  { id: "preview", label: "Preview", icon: <Globe size={13} /> },
+  { id: "screen", label: "Agent's screen", icon: <Monitor size={13} /> },
+];
+
+function ViewTabs({ view }: { view: BrowserView }) {
+  const setView = useComputer((s) => s.setView);
+  const waiting = !!useHandoff(null);
+  return (
+    <div role="tablist" aria-label="View" className="no-drag flex items-center gap-0.5 rounded-lg bg-sunken p-0.5">
+      {VIEWS.map((t) => {
+        const on = t.id === view;
+        return (
+          <button
+            key={t.id}
+            role="tab"
+            aria-selected={on}
+            onClick={() => setView(t.id)}
+            className={`relative flex h-6 items-center gap-1.5 rounded-md px-2 text-[12.5px] transition-colors ${on ? "bg-raised text-ink shadow-sm" : "text-muted hover:text-ink"}`}
+          >
+            {t.icon}
+            {t.label}
+            {t.id !== "preview" && waiting && !on && <span className="h-1.5 w-1.5 rounded-full bg-info" aria-label="Waiting for you" />}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function PreviewView({ inHeader, active }: { inHeader: boolean; active: boolean }) {
   const request = useUI((s) => s.browserRequest);
   const client = useChat((s) => s.client);
-  const visible = useSurfaceVisible("browser");
+  const visible = active;
   const [stack, setStack] = useState<string[]>([]);
   const [index, setIndex] = useState(-1);
   const [input, setInput] = useState("");
@@ -86,58 +149,64 @@ export function BrowserSurface() {
     setLoading(true);
   };
 
+  const actions = current && (
+    <IconButton label="Open in your browser" size={28} onClick={() => void openExternal(current)}>
+      <ExternalLink size={14} />
+    </IconButton>
+  );
+  const nav = (
+    <div className="no-drag flex min-w-0 flex-1 items-center gap-0.5">
+      <IconButton label="Back" size={28} disabled={index <= 0} onClick={() => step(-1)}>
+        <ArrowLeft size={14} />
+      </IconButton>
+      <IconButton label="Forward" size={28} disabled={index >= stack.length - 1} onClick={() => step(1)}>
+        <ArrowRight size={14} />
+      </IconButton>
+      <IconButton
+        label="Reload"
+        size={28}
+        disabled={!current}
+        onClick={() => {
+          setLoading(true);
+          setNonce((n) => n + 1);
+        }}
+      >
+        {loading ? <Spinner size={12} /> : <RefreshCw size={13} />}
+      </IconButton>
+      <form
+        className="field ml-1 flex h-7 min-w-0 flex-1 items-center gap-2 rounded-lg px-2.5"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void go(input);
+          inputRef.current?.blur();
+        }}
+      >
+        {busy ? <Spinner size={11} /> : <Globe size={12} className="shrink-0 text-faint" />}
+        <input
+          ref={inputRef}
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onFocus={(e) => e.target.select()}
+          placeholder="localhost:3000 or a URL"
+          spellCheck={false}
+          autoCapitalize="off"
+          autoCorrect="off"
+          className="min-w-0 flex-1 bg-transparent text-[12.5px] outline-none placeholder:text-faint"
+        />
+      </form>
+    </div>
+  );
+
   return (
     <>
-      <PanelHeader
-        actions={
-          current && (
-            <IconButton label="Open in your browser" size={28} onClick={() => void openExternal(current)}>
-              <ExternalLink size={14} />
-            </IconButton>
-          )
-        }
-      >
-        <div className="no-drag flex min-w-0 flex-1 items-center gap-0.5">
-          <IconButton label="Back" size={28} disabled={index <= 0} onClick={() => step(-1)}>
-            <ArrowLeft size={14} />
-          </IconButton>
-          <IconButton label="Forward" size={28} disabled={index >= stack.length - 1} onClick={() => step(1)}>
-            <ArrowRight size={14} />
-          </IconButton>
-          <IconButton
-            label="Reload"
-            size={28}
-            disabled={!current}
-            onClick={() => {
-              setLoading(true);
-              setNonce((n) => n + 1);
-            }}
-          >
-            {loading ? <Spinner size={12} /> : <RefreshCw size={13} />}
-          </IconButton>
-          <form
-            className="field ml-1 flex h-7 min-w-0 flex-1 items-center gap-2 rounded-lg px-2.5"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void go(input);
-              inputRef.current?.blur();
-            }}
-          >
-            {busy ? <Spinner size={11} /> : <Globe size={12} className="shrink-0 text-faint" />}
-            <input
-              ref={inputRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onFocus={(e) => e.target.select()}
-              placeholder="localhost:3000 or a URL"
-              spellCheck={false}
-              autoCapitalize="off"
-              autoCorrect="off"
-              className="min-w-0 flex-1 bg-transparent text-[12.5px] outline-none placeholder:text-faint"
-            />
-          </form>
+      {inHeader ? (
+        <PanelHeader actions={actions}>{nav}</PanelHeader>
+      ) : (
+        <div className="flex h-10 shrink-0 items-center gap-0.5 border-b border-line pr-2 pl-1.5">
+          {nav}
+          {actions}
         </div>
-      </PanelHeader>
+      )}
 
       {current && ports && ports.length > 0 && (
         <div className="scroll-quiet flex shrink-0 items-center gap-1.5 overflow-x-auto border-b border-line px-3 py-1.5">
