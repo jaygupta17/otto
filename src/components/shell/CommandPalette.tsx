@@ -1,15 +1,16 @@
 import { AnimatePresence, motion } from "motion/react";
-import { AlarmClock, Bot, Cloud, CornerDownLeft, FolderTree, Keyboard, MessageSquare, Moon, PanelLeft, Plus, Search, Settings, Square, SquarePen, Sun, Monitor, Gauge, Undo2, Redo2, GitFork, Layers, SquareTerminal, Globe, BookOpen } from "lucide-react";
+import { AlarmClock, Bot, Cloud, CornerDownLeft, FolderTree, Keyboard, MessageSquare, Moon, PanelLeft, Plus, Search, Settings, Square, SquarePen, Sun, Monitor, Gauge, Undo2, Redo2, GitFork, Layers, SquareTerminal, Globe, BookOpen, Bookmark } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { sortedSessions, useChat } from "../../state/chat";
 import { useUI, type SettingsTab } from "../../state/ui";
 import { useWorkspaces } from "../../state/workspaces";
-import { currentDir, cycleEffort, primaryAgents } from "../../lib/actions";
+import { currentDir, cycleEffort, freshThread, primaryAgents } from "../../lib/actions";
 import { useTerminals } from "../../state/terminals";
-import { agentColor } from "../../lib/agentColor";
+import { AgentMark } from "../ui/TeammateFace";
+import { useTeammates } from "../../state/teammates";
 import { basename, timeAgo } from "../../lib/format";
-import { SHORTCUTS } from "../../hooks/useShortcuts";
+import { SHORTCUTS, kbd } from "../../hooks/useShortcuts";
 import { Sheet } from "../ui/Sheet";
 
 interface Item {
@@ -86,6 +87,7 @@ export function CommandPalette() {
       { id: "p-browser", group: "Panels", label: "Browser", keys: "⌘⇧B", icon: <Globe size={15} />, run: close(() => ui.togglePanel("browser")) },
       { id: "p-context", group: "Panels", label: "Context and changes", keys: "⌘⇧I", icon: <Gauge size={15} />, run: close(() => ui.togglePanel("context")) },
       { id: "p-project", group: "Panels", label: "Project instructions", keys: "⌘⇧J", icon: <BookOpen size={15} />, run: close(() => ui.togglePanel("project")) },
+      { id: "p-memory", group: "Panels", label: "Memory", keys: "⌘⇧M", icon: <Bookmark size={15} />, run: close(() => ui.togglePanel("memory")) },
       { id: "effort", group: "Actions", label: "Cycle thinking effort", keys: "⌃T", icon: <Gauge size={15} />, run: close(cycleEffort) },
       { id: "shortcuts", group: "Actions", label: "Keyboard shortcuts", keys: "⌘/", icon: <Keyboard size={15} />, run: close(() => ui.setShortcuts(true)) },
       { id: "theme-light", group: "Actions", label: "Theme: Light", icon: <Sun size={15} />, run: close(() => ui.setTheme("light")) },
@@ -102,11 +104,13 @@ export function CommandPalette() {
         ...(rev ? [{ id: "redo", group: "Actions" as const, label: "Redo", icon: <Redo2 size={15} />, run: close(() => void chat.redo(sid)) }] : []),
         { id: "fork", group: "Actions", label: "Fork session", hint: "Continue in a new session", icon: <GitFork size={15} />, run: close(() => void chat.fork(sid, null)) },
         { id: "compact", group: "Actions", label: "Compact conversation", hint: "Summarize to free up context", icon: <Layers size={15} />, run: close(() => void chat.compact(sid)) },
+        { id: "fresh", group: "Actions", label: "Fresh thread", hint: "Same agent and folder, empty context", icon: <SquarePen size={15} />, run: close(() => freshThread(sid, false)) },
       );
     }
     if (busyId) out.unshift({ id: "stop", group: "Actions", label: "Stop the agent", keys: "⌘.", icon: <Square size={14} />, run: close(() => void chat.interrupt(busyId)) });
     for (const a of primaryAgents()) {
-      out.push({ id: `agent-${a.id}`, group: "Agents", label: `Agent: ${a.name}`, hint: a.description, icon: <AgentDot color={agentColor(a.id, a.color)} />, run: close(() => void chat.setAgent(a.id, chat.activeId)) });
+      const t = useTeammates.getState().byId?.[a.id];
+      out.push({ id: `agent-${a.id}`, group: "Agents", label: `Agent: ${t?.name ?? a.name}`, hint: t ? t.job || undefined : a.description, icon: <AgentMark id={a.id} color={a.color} size={18} />, run: close(() => void chat.setAgent(a.id, chat.activeId)) });
     }
     for (const s of SETTINGS) out.push({ id: `set-${s.tab}`, group: "Settings", label: `Settings: ${s.label}`, icon: <Settings size={15} />, run: close(() => ui.openSettings(s.tab)) });
     for (const w of workspaces) {
@@ -203,7 +207,7 @@ export function CommandPalette() {
                       <span className="grid w-4 shrink-0 place-items-center text-muted">{it.icon}</span>
                       <span className="min-w-0 flex-1 truncate">{it.label}</span>
                       {it.hint && <span className="max-w-[45%] shrink truncate text-[12px] text-faint">{it.hint}</span>}
-                      {it.keys && <kbd className="shrink-0 font-sans text-[12px] text-faint">{it.keys}</kbd>}
+                      {it.keys && <kbd className="shrink-0 font-sans text-[12px] text-faint">{kbd(it.keys)}</kbd>}
                       {i === sel && <CornerDownLeft size={13} className="shrink-0 text-faint" />}
                     </div>
                   </div>
@@ -238,7 +242,7 @@ export function ShortcutsSheet({ compact }: { compact: boolean }) {
                 <div key={s.label} className="flex items-center justify-between gap-4 py-1.5">
                   <dt className="text-[14px] text-ink">{s.label}</dt>
                   <dd>
-                    <kbd className="rounded border border-line bg-sunken px-1.5 py-px font-sans text-[12px] text-ink-2">{s.keys}</kbd>
+                    <kbd className="rounded border border-line bg-sunken px-1.5 py-px font-sans text-[12px] text-ink-2">{kbd(s.keys)}</kbd>
                   </dd>
                 </div>
               ))}
@@ -248,7 +252,7 @@ export function ShortcutsSheet({ compact }: { compact: boolean }) {
       </div>
       <p className="px-6 pb-5 text-[13px] text-muted">
         <Bot size={13} className="mr-1 inline" />
-        On Windows and Linux, use Ctrl where you see ⌘.
+        In the composer, Tab switches agents; press Esc first to Tab out of it.
       </p>
     </Sheet>
   );

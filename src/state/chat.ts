@@ -5,14 +5,16 @@
  */
 import { create } from "zustand";
 import type { AgentInfo, ModelInfo, SessionInfo, V2Event } from "@opencode/client";
-import { OpenCode, type ModelRef, type PermissionRequestLite, type SessionRevert } from "../lib/opencode/client";
+import { OpenCode, OpenCodeError, type ModelRef, type PermissionRequestLite, type SessionRevert } from "../lib/opencode/client";
 import { applyEvent, eventSessionID, projectHistory, type Delivery, type UIMessage } from "../lib/opencode/projection";
 import { uid } from "../lib/id";
 import { kv } from "../lib/kv";
 import { useWorkspaces } from "./workspaces";
 import { toast, useUI } from "./ui";
+import { isOfferedAgent } from "../lib/teammates";
 import { dispatchAlerts } from "./notifications";
 import { permissionLine } from "../lib/asks";
+import { subagentOf, subagentStopNote, toolKind, type ToolBlock } from "../lib/opencode/tools";
 
 export interface Timeline {
   messages: UIMessage[];
@@ -40,11 +42,14 @@ interface State {
   timelines: Record<string, Timeline>;
   permissions: Record<string, PermissionRequestLite>;
   forms: Record<string, FormLite>;
+  /** Subagent session → the session that spawned it. Their asks surface in the parent chat. */
+  parents: Record<string, string>;
   agents: AgentInfo[];
   models: ModelInfo[];
   defaultModel: ModelRef | null;
   pickedModel: ModelRef | null;
-  pickedAgent: string;
+  /** The agent new sessions start with. null until a teammate exists. */
+  pickedAgent: string | null;
   homeDir: string | null;
   projectDir: string | null;
   /** Models the server rejected as deprecated/removed; hidden from pickers. */
@@ -52,6 +57,9 @@ interface State {
   /** Pinned session ids for this workspace (on-device). */
   pinned: string[];
   togglePin(id: string): void;
+  /** Agent rows open in the sidebar, by agent id. */
+  agentRowsOpen: string[];
+  toggleAgentRow(id: string, open?: boolean): void;
   refreshCatalog(): Promise<void>;
   activeId: string | null;
   drafts: Record<string, string>;
@@ -65,10 +73,12 @@ interface State {
   loadOlder(id: string): Promise<void>;
   send(text: string, opts?: { sessionId?: string | null }): Promise<string | null>;
   interrupt(id: string): Promise<void>;
+  /** Stop a subagent: tell the parent's agent it was the user (so it doesn't just retry), then interrupt the child. */
+  stopSubagent(parent: string, child: string, description?: string): Promise<void>;
   remove(id: string): Promise<void>;
   rename(id: string, title: string): Promise<void>;
   setModel(ref: ModelRef, sessionId?: string | null): Promise<void>;
-  setAgent(agent: string, sessionId?: string | null): Promise<void>;
+  setAgent(agent: string | null, sessionId?: string | null): Promise<void>;
   setProjectDir(dir: string | null): void;
   setDraft(key: string, text: string): void;
   replyPermission(req: PermissionRequestLite, reply: "once" | "always" | "reject"): Promise<void>;
@@ -106,15 +116,26 @@ export const useChat = create<State>((set, get) => ({
   timelines: {},
   permissions: {},
   forms: {},
+  parents: {},
   agents: [],
   models: [],
   defaultModel: null,
   pickedModel: null,
-  pickedAgent: "build",
+  pickedAgent: null,
   homeDir: null,
   projectDir: null,
   brokenModels: [],
   pinned: [],
+  agentRowsOpen: [],
+  toggleAgentRow(id, open) {
+    const cur = get().agentRowsOpen;
+    const isOpen = cur.includes(id);
+    const want = open ?? !isOpen;
+    if (want === isOpen) return;
+    const next = want ? [...cur, id] : cur.filter((x) => x !== id);
+    set({ agentRowsOpen: next });
+    void kv.set(wsKey("chat.agentRowsOpen"), next);
+  },
   togglePin(id) {
     const pinned = get().pinned.includes(id) ? get().pinned.filter((p) => p !== id) : [id, ...get().pinned];
     set({ pinned });
@@ -227,14 +248,15 @@ export const useChat = create<State>((set, get) => ({
   reset() {
     queue = [];
     pendingWhileLoading.clear();
-    set({ client: null, sessions: {}, sessionsLoaded: false, sessionsError: undefined, busy: {}, retrying: {}, unread: {}, timelines: {}, permissions: {}, forms: {}, agents: [], models: [], defaultModel: null, homeDir: null, activeId: null });
+    set({ client: null, sessions: {}, sessionsLoaded: false, sessionsError: undefined, busy: {}, retrying: {}, unread: {}, timelines: {}, permissions: {}, forms: {}, parents: {}, agents: [], models: [], defaultModel: null, homeDir: null, activeId: null, pickedModel: null, pickedAgent: null, projectDir: null });
   },
 
   async bootstrap(client) {
     set({ client });
     const prefs = await kv.get<{ model?: ModelRef; agent?: string; projectDir?: string | null }>(wsKey("chat.prefs"));
-    if (prefs) set({ pickedModel: prefs.model ?? null, pickedAgent: prefs.agent ?? "build", projectDir: prefs.projectDir ?? null });
-    set({ brokenModels: (await kv.get<string[]>(wsKey("chat.brokenModels"))) ?? [], pinned: (await kv.get<string[]>(wsKey("chat.pinned"))) ?? [], delivery: (await kv.get<Delivery>("chat.delivery")) ?? "steer" });
+    // Always set all three: a workspace with no saved choices must not inherit the last one's (a local path on a cloud machine).
+    set({ pickedModel: prefs?.model ?? null, pickedAgent: prefs?.agent && isOfferedAgent(prefs.agent) ? prefs.agent : null, projectDir: prefs?.projectDir ?? null });
+    set({ brokenModels: (await kv.get<string[]>(wsKey("chat.brokenModels"))) ?? [], pinned: (await kv.get<string[]>(wsKey("chat.pinned"))) ?? [], agentRowsOpen: (await kv.get<string[]>(wsKey("chat.agentRowsOpen"))) ?? [], delivery: (await kv.get<Delivery>("chat.delivery")) ?? "steer" });
 
     const results = await Promise.allSettled([
       get().loadSessions(),
@@ -242,10 +264,18 @@ export const useChat = create<State>((set, get) => ({
       client.agents().then((agents) => set({ agents })),
       client.models().then((models) => set({ models })),
       client.defaultModel().then((m) => set({ defaultModel: m })),
-      client.pendingPermissions().then((list) => set({ permissions: Object.fromEntries(list.map((p) => [p.id, p])) })),
+      client.pendingPermissions().then((list) => {
+        set({ permissions: Object.fromEntries(list.map((p) => [p.id, p])) });
+        learnParents(list.map((p) => p.sessionID));
+      }),
       client.activeSessions().then((ids) => set({ busy: Object.fromEntries(ids.map((id) => [id, true])) })),
+      // Questions asked before this connection (a handoff left waiting, say) only arrive here.
+      client.pendingForms<FormLite>().then((list) => {
+        set({ forms: Object.fromEntries(list.map((f) => [f.id, f])) });
+        learnParents(list.map((f) => f.sessionID));
+      }),
     ]);
-    const labels = ["sessions", "location", "agents", "models", "default model", "permissions", "active sessions"];
+    const labels = ["sessions", "location", "agents", "models", "default model", "permissions", "active sessions", "questions"];
     results.forEach((r, i) => {
       if (r.status === "rejected") console.error(`bootstrap: ${labels[i]} failed`, r.reason);
     });
@@ -256,6 +286,15 @@ export const useChat = create<State>((set, get) => ({
     if (pickedModel && models.length && !models.some((m) => m.providerID === pickedModel.providerID && m.id === pickedModel.id)) set({ pickedModel: null });
     const defInfo = defaultModel && models.find((m) => m.providerID === defaultModel.providerID && m.id === defaultModel.id);
     if (models.length && (!defInfo || !defInfo.capabilities?.tools)) set({ defaultModel: fallbackModel(models, get().brokenModels) ?? defaultModel });
+    if (!get().agents.length || !models.length) void retryCatalog(client);
+    // A remembered folder that's gone (deleted, or the machine was rebuilt) would fail the first message: fall back to home.
+    const dir = get().projectDir;
+    if (dir && dir !== get().homeDir) {
+      client.listFolders(dir, get().homeDir).catch((e) => {
+        // Only when the machine says it isn't there; a network blip keeps the choice.
+        if (e instanceof OpenCodeError && e.status === 404 && get().client === client && get().projectDir === dir) get().setProjectDir(null);
+      });
+    }
   },
 
   async refreshCatalog() {
@@ -284,7 +323,17 @@ export const useChat = create<State>((set, get) => ({
       .catch(() => {});
     client
       .pendingPermissions()
-      .then((list) => set({ permissions: Object.fromEntries(list.map((p) => [p.id, p])) }))
+      .then((list) => {
+        set({ permissions: Object.fromEntries(list.map((p) => [p.id, p])) });
+        learnParents(list.map((p) => p.sessionID));
+      })
+      .catch(() => {});
+    client
+      .pendingForms<FormLite>()
+      .then((list) => {
+        set({ forms: Object.fromEntries(list.map((f) => [f.id, f])) });
+        learnParents(list.map((f) => f.sessionID));
+      })
       .catch(() => {});
     const id = get().activeId;
     if (id) await get().loadTimeline(id, true);
@@ -335,7 +384,12 @@ export const useChat = create<State>((set, get) => ({
         messages = applyEvent(messages, e);
       }
       pendingWhileLoading.delete(id);
-      set((s) => ({ timelines: { ...s.timelines, [id]: { messages, loaded: true, loading: false, older: r.cursor.next ?? null } } }));
+      const kids = childSessions(id, messages);
+      set((s) => ({
+        timelines: { ...s.timelines, [id]: { messages, loaded: true, loading: false, older: r.cursor.next ?? null } },
+        parents: Object.keys(kids).every((k) => s.parents[k] === kids[k]) ? s.parents : { ...s.parents, ...kids },
+      }));
+      void inferChildren(id);
     } catch (e) {
       pendingWhileLoading.delete(id);
       set((s) => ({ timelines: { ...s.timelines, [id]: { ...(s.timelines[id] ?? empty()), loading: false, error: (e as Error).message } } }));
@@ -424,6 +478,16 @@ export const useChat = create<State>((set, get) => ({
     }
   },
 
+  async stopSubagent(parent, child, description) {
+    const client = get().client;
+    if (!client) return;
+    const note = subagentStopNote(child, description);
+    // The note waits for the agent's next turn (resume: false). If the server
+    // can't take it (older OpenCode), stop anyway: the user asked to.
+    await client.synthetic(parent, { ...note, resume: false }).catch(() => {});
+    await get().interrupt(child);
+  },
+
   async remove(id) {
     const client = get().client;
     if (!client) return;
@@ -474,7 +538,8 @@ export const useChat = create<State>((set, get) => ({
     set({ pickedAgent: agent });
     void savePrefs();
     const client = get().client;
-    if (client && sessionId) {
+    // No agent (null) is only the new-draft state: there's no session to switch.
+    if (client && sessionId && agent) {
       const prev = get().sessions[sessionId];
       if (prev) set((s) => ({ sessions: { ...s.sessions, [sessionId]: { ...prev, agent } } }));
       try {
@@ -543,7 +608,7 @@ export const useChat = create<State>((set, get) => ({
  * Per-workspace on-device key. Model lists, agents and folders differ per
  * server, so a choice made on one workspace must not leak into another.
  */
-function wsKey(base: string) {
+export function wsKey(base: string) {
   return `${base}.${useWorkspaces.getState().activeId ?? "none"}`;
 }
 
@@ -608,11 +673,14 @@ function flush() {
   queue = [];
   if (!events.length) return;
   const st = useChat.getState();
-  let { sessions, busy, retrying, unread, timelines, permissions, forms } = st;
-  const touched = { sessions: false, busy: false, retrying: false, unread: false, timelines: false, permissions: false, forms: false };
+  let { sessions, busy, retrying, unread, timelines, permissions, forms, parents } = st;
+  const touched = { sessions: false, busy: false, retrying: false, unread: false, timelines: false, permissions: false, forms: false, parents: false };
   const finished: string[] = [];
   const alerts: Parameters<typeof dispatchAlerts>[0] = [];
-  const titleOf = (id?: string) => (id && sessions[id]?.title) || "Untitled session";
+  // Alerts for a subagent's asks open (and are named after) the chat the user started.
+  const rootID = (id: string) => rootSession(parents, id);
+  const titleOf = (id?: string) => (id && sessions[rootID(id)]?.title) || "Untitled session";
+  const unknown: string[] = [];
 
   const mut = <K extends keyof typeof touched>(k: K) => {
     if (!touched[k]) {
@@ -624,15 +692,26 @@ function flush() {
       if (k === "timelines") timelines = { ...timelines };
       if (k === "permissions") permissions = { ...permissions };
       if (k === "forms") forms = { ...forms };
+      if (k === "parents") parents = { ...parents };
     }
   };
 
+  const settled: ToolSettled[] = [];
   for (const e of events) {
     const d = (e as { data?: Record<string, unknown> }).data ?? {};
     const sid = eventSessionID(e);
+    if (e.type === "session.tool.success" && sid && toolListeners.size) {
+      const block = timelines[sid]?.messages.flatMap((m) => ("blocks" in m ? m.blocks : [])).find((b) => b.kind === "tool" && b.id === d.id);
+      settled.push({ sessionId: sid, name: block?.kind === "tool" ? block.name : undefined, metadata: d.metadata as Record<string, unknown> | undefined });
+    }
     switch (e.type) {
       case "session.created": {
-        if (d.parentID) break; // subagent sessions stay out of the main list
+        if (d.parentID) {
+          // Subagent sessions stay out of the main list; remember whose they are.
+          mut("parents");
+          parents[d.sessionID as string] = d.parentID as string;
+          break;
+        }
         mut("sessions");
         const id = d.sessionID as string;
         sessions[id] = sessions[id] ?? ({
@@ -760,8 +839,20 @@ function flush() {
           }
         }
         break;
+      case "session.tool.called":
+      case "session.tool.progress":
+      case "session.tool.success": {
+        // A subagent call names its child session in its metadata.
+        const child = (d.metadata as { sessionID?: unknown } | undefined)?.sessionID;
+        if (sid && typeof child === "string" && child !== sid && parents[child] !== sid) {
+          mut("parents");
+          parents[child] = sid;
+        }
+        break;
+      }
       case "permission.asked":
-        alerts.push({ kind: "permission", sessionId: d.sessionID as string, title: titleOf(d.sessionID as string), body: `Waiting for approval · ${permissionLine(d as unknown as PermissionRequestLite)}` });
+        if (!sessions[d.sessionID as string] && !parents[d.sessionID as string]) unknown.push(d.sessionID as string);
+        alerts.push({ kind: "permission", sessionId: rootID(d.sessionID as string), title: titleOf(d.sessionID as string), body: `Waiting for approval · ${permissionLine(d as unknown as PermissionRequestLite)}` });
         mut("permissions");
         permissions[d.id as string] = d as unknown as PermissionRequestLite;
         break;
@@ -771,7 +862,8 @@ function flush() {
         break;
       case "form.created": {
         const f = d.form as FormLite;
-        alerts.push({ kind: "question", sessionId: f.sessionID, title: titleOf(f.sessionID), body: `Has a question · ${f.title}` });
+        if (!sessions[f.sessionID] && !parents[f.sessionID]) unknown.push(f.sessionID);
+        alerts.push({ kind: "question", sessionId: rootID(f.sessionID), title: titleOf(f.sessionID), body: `Has a question · ${f.title}` });
         mut("forms");
         forms[f.id] = f;
         break;
@@ -806,9 +898,40 @@ function flush() {
   if (touched.timelines) patch.timelines = timelines;
   if (touched.permissions) patch.permissions = permissions;
   if (touched.forms) patch.forms = forms;
+  if (touched.parents) patch.parents = parents;
   useChat.setState(patch);
+  if (unknown.length) learnParents(unknown);
   for (const id of finished) scheduleReconcile(id);
   if (alerts.length) dispatchAlerts(alerts);
+  for (const t of settled) for (const fn of toolListeners) fn(t);
+}
+
+export interface ToolSettled {
+  sessionId: string;
+  /** Unknown when the session's timeline isn't loaded. */
+  name?: string;
+  metadata?: Record<string, unknown>;
+}
+const toolListeners = new Set<(t: ToolSettled) => void>();
+/** Hear about every tool call that finishes, in any session. Returns an unsubscribe. */
+export function onToolSettled(fn: (t: ToolSettled) => void) {
+  toolListeners.add(fn);
+  return () => void toolListeners.delete(fn);
+}
+
+/**
+ * A server that has only just started can answer before its config has
+ * loaded, with no agents or models (every real server has at least `build`).
+ * Ask again a few times instead of leaving the pickers empty until the next
+ * reconnect.
+ */
+async function retryCatalog(client: OpenCode) {
+  for (const ms of [600, 1500, 4000]) {
+    await new Promise((r) => setTimeout(r, ms));
+    const s = useChat.getState();
+    if (s.client !== client || (s.agents.length && s.models.length)) return;
+    await s.refreshCatalog();
+  }
 }
 
 /**
@@ -820,6 +943,102 @@ function fallbackModel(models: ModelInfo[], broken: string[] = []): ModelRef | n
   const free = usable.filter((m) => m.providerID === "opencode" && /-free$/.test(m.id)).sort((a, b) => b.time.released - a.time.released);
   const pick = free[0] ?? usable.sort((a, b) => b.time.released - a.time.released)[0];
   return pick ? { providerID: pick.providerID, id: pick.id } : null;
+}
+
+// ---------------------------------------------------------------------------
+// Subagent sessions
+// ---------------------------------------------------------------------------
+
+/** Child sessions a timeline's subagent calls point at. */
+function childSessions(parent: string, messages: UIMessage[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const m of messages) {
+    if (m.kind === "subagent" && m.childID) out[m.childID] = parent;
+    if (m.kind !== "assistant") continue;
+    for (const b of m.blocks) {
+      const child = b.kind === "tool" ? b.metadata?.sessionID ?? b.metadata?.sessionId : undefined;
+      if (typeof child === "string" && child !== parent) out[child] = parent;
+    }
+  }
+  return out;
+}
+
+/**
+ * A running subagent call names its child session only in live progress
+ * events, so a snapshot taken mid-run (reload, reconnect) lacks it. Find it
+ * among the session's children: created after the call started, by the same
+ * agent, titled with the call's description, and not claimed by another call.
+ */
+async function inferChildren(parent: string) {
+  const { client, timelines } = useChat.getState();
+  const open: ToolBlock[] = [];
+  const claimed = new Set<string>();
+  for (const m of timelines[parent]?.messages ?? []) {
+    if (m.kind !== "assistant") continue;
+    for (const b of m.blocks) {
+      if (b.kind !== "tool" || toolKind(b.name) !== "subagent") continue;
+      const s = subagentOf(b);
+      if (s.childID) claimed.add(s.childID);
+      else if (b.status === "running" || b.status === "streaming") open.push(b);
+    }
+  }
+  if (!client || !open.length) return;
+  const kids = await client.sessions({ parentID: parent, limit: 50 }).then((r) => r.data).catch(() => []);
+  const found: Record<string, string> = {};
+  for (const b of open) {
+    const s = subagentOf(b);
+    const match = kids
+      .filter((k) => !claimed.has(k.id) && k.time.created >= b.started - 2000 && (!s.agent || !k.agent || k.agent === s.agent) && (!s.description || !k.title || k.title === s.description))
+      .sort((x, y) => x.time.created - y.time.created)[0];
+    if (!match) continue;
+    claimed.add(match.id);
+    found[b.id] = match.id;
+  }
+  if (!Object.keys(found).length) return;
+  useChat.setState((st) => {
+    const t = st.timelines[parent];
+    if (!t) return {};
+    const messages = t.messages.map((m) =>
+      m.kind !== "assistant" || !m.blocks.some((b) => b.kind === "tool" && found[b.id])
+        ? m
+        : { ...m, blocks: m.blocks.map((b) => (b.kind === "tool" && found[b.id] && !b.metadata?.sessionID ? { ...b, metadata: { ...(b.metadata ?? {}), sessionID: found[b.id] } } : b)) },
+    );
+    const parents = { ...st.parents };
+    for (const c of Object.values(found)) parents[c] = parent;
+    return { timelines: { ...st.timelines, [parent]: { ...t, messages } }, parents };
+  });
+}
+
+const asked = new Set<string>();
+
+/** Ask the server who owns sessions we only know from an ask (e.g. after a restart mid-subagent). */
+function learnParents(ids: string[]) {
+  const { client, sessions, parents } = useChat.getState();
+  if (!client) return;
+  for (const id of new Set(ids)) {
+    if (!id || sessions[id] || parents[id] || asked.has(id)) continue;
+    asked.add(id);
+    void client
+      .session(id)
+      .then((s) => {
+        if (s.parentID) useChat.setState((x) => ({ parents: { ...x.parents, [id]: s.parentID! } }));
+      })
+      .catch(() => asked.delete(id));
+  }
+}
+
+/** The top-level session a (possibly nested) subagent session belongs to. */
+export function rootSession(parents: Record<string, string>, id: string): string {
+  let cur = id;
+  for (let i = 0; i < 8 && parents[cur]; i++) cur = parents[cur];
+  return cur;
+}
+
+/** Whether an ask from `askSession` belongs in `sessionId`'s chat (its own, or one of its subagents'). */
+export function asksFor(parents: Record<string, string>, askSession: string, sessionId: string) {
+  let cur: string | undefined = askSession;
+  for (let i = 0; i < 9 && cur; i++, cur = parents[cur]) if (cur === sessionId) return true;
+  return false;
 }
 
 // ---------------------------------------------------------------------------

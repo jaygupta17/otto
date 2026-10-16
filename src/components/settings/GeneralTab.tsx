@@ -11,8 +11,9 @@ import { notifyPermission, requestNotifyPermission, type Permission } from "../.
 import { dispatchAlerts, useNotifications, type AlertKind } from "../../state/notifications";
 import { Button } from "../ui/Button";
 import { Select } from "../ui/Select";
-import { AgentDot } from "../shell/CommandPalette";
-import { agentColor } from "../../lib/agentColor";
+import { AgentMark } from "../ui/TeammateFace";
+import { useTeammates } from "../../state/teammates";
+import { isOfferedAgent } from "../../lib/teammates";
 import { Spinner } from "../ui/AgentClock";
 import { Row, Rows, Section, Segmented, Slider, Toggle } from "./common";
 import { ModelSelect } from "./ModelSelect";
@@ -96,6 +97,7 @@ function DefaultsSection() {
   const load = useExtensions((s) => s.load);
   const update = useExtensions((s) => s.update);
   const agents = useChat((s) => s.agents);
+  const roster = useTeammates((s) => s.byId);
   const client = useChat((s) => s.client);
   const [perms, setPerms] = useState<PermissionModel | null>(null);
   const [saving, setSaving] = useState(false);
@@ -163,10 +165,10 @@ function DefaultsSection() {
                   )
                 }
                 options={[
-                  { value: "", label: "Build", hint: "OpenCode default", icon: <AgentDot color={agentColor("build")} /> },
+                  { value: "", label: "Otto's choice", hint: "Oldest teammate", icon: <AgentMark id={undefined} size={18} /> },
                   ...agents
-                    .filter((a) => a.mode !== "subagent" && !a.hidden && a.id !== "build")
-                    .map((a) => ({ value: a.id, label: a.name, icon: <AgentDot color={agentColor(a.id, a.color)} /> })),
+                    .filter((a) => a.mode !== "subagent" && !a.hidden && isOfferedAgent(a.id))
+                    .map((a) => ({ value: a.id, label: roster?.[a.id]?.name ?? a.name, icon: <AgentMark id={a.id} color={a.color} size={18} /> })),
                 ]}
               />
             </div>

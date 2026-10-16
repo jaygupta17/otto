@@ -1,11 +1,12 @@
 import { useChat } from "../../state/chat";
-import { agentColor } from "../../lib/agentColor";
+import { useTeammates } from "../../state/teammates";
 import { Select } from "../ui/Select";
-import { AgentDot } from "../shell/CommandPalette";
+import { AgentMark } from "../ui/TeammateFace";
 
 /** Agent chooser for forms. "" means `emptyLabel` (inherit / default). */
 export function AgentSelect({ value, onChange, emptyLabel, primaryOnly = true }: { value: string; onChange: (v: string) => void; emptyLabel: string; primaryOnly?: boolean }) {
   const agents = useChat((s) => s.agents);
+  const roster = useTeammates((s) => s.byId);
   return (
     <Select
       ariaLabel="Agent"
@@ -15,7 +16,10 @@ export function AgentSelect({ value, onChange, emptyLabel, primaryOnly = true }:
         { value: "", label: emptyLabel, text: emptyLabel },
         ...agents
           .filter((a) => !a.hidden && (!primaryOnly || a.mode !== "subagent"))
-          .map((a) => ({ value: a.id, label: a.name, text: a.name, icon: <AgentDot color={agentColor(a.id, a.color)} /> })),
+          .map((a) => {
+            const name = roster?.[a.id]?.name ?? a.name;
+            return { value: a.id, label: name, text: name, icon: <AgentMark id={a.id} color={a.color} size={18} /> };
+          }),
       ]}
     />
   );

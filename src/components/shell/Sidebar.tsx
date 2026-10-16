@@ -1,20 +1,23 @@
-import { AnimatePresence, motion } from "motion/react";
-import { Pin, PinOff, Check, ChevronsUpDown, MoreHorizontal, PanelLeft, Pencil, Plus, Search, Settings, SquarePen, Keyboard, GitFork, Trash2, Cloud, Server, AlarmClock, Bot, Laptop } from "lucide-react";
+import { AnimatePresence } from "motion/react";
+import { Check, ChevronsUpDown, PanelLeft, Plus, Search, Settings, SquarePen, Keyboard, Cloud, Server, AlarmClock, Bot, Laptop } from "lucide-react";
 import { UpdatePill } from "./UpdateControls";
-import { memo, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { SessionInfo } from "@opencode/client";
 import { sortedSessions, useChat } from "../../state/chat";
+import { useTeammates } from "../../state/teammates";
+import { isOfferedAgent } from "../../lib/teammates";
+import { AgentRows, type AgentGroup } from "./AgentRows";
+import { SessionRow } from "./SessionRow";
 import { useConnection } from "../../state/connection";
 import { useActiveWorkspace, useWorkspaces } from "../../state/workspaces";
 import { useUI } from "../../state/ui";
-import { timeAgo, basename } from "../../lib/format";
-import { deleteSession } from "../../lib/actions";
 import { useNow } from "../../hooks/useNow";
 import { IconButton } from "../ui/Button";
 import { InboxButton } from "./Inbox";
 import { Popover, MenuItem } from "../ui/Popover";
 import { AgentClock } from "../ui/AgentClock";
 import { useTrafficLights } from "../../hooks/useChrome";
+import { kbd } from "../../hooks/useShortcuts";
 
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const toggle = useUI((s) => s.toggleSidebar);
@@ -23,7 +26,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <div className="flex h-full w-full flex-col">
       <div className={`drag flex h-[52px] shrink-0 items-center gap-1 pr-2 ${mac ? "pl-[84px]" : "pl-3"}`} data-tauri-drag-region>
-        <IconButton label="Hide sidebar (⌘B)" className="no-drag" onClick={() => toggle(false)}>
+        <IconButton label={`Hide sidebar (${kbd("⌘B")})`} className="no-drag" onClick={() => toggle(false)}>
           <PanelLeft size={17} />
         </IconButton>
         <div className="flex-1" data-tauri-drag-region />
@@ -41,7 +44,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       >
         <Search size={14} className="shrink-0" />
         <span className="flex-1">Search</span>
-        <kbd className="font-sans text-[12px] text-faint">⌘K</kbd>
+        <kbd className="font-sans text-[12px] text-faint">{kbd("⌘K")}</kbd>
       </button>
       <SessionList query="" onNavigate={onNavigate} />
       <UpdatePill />
@@ -67,7 +70,7 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
         }}
       >
         <SquarePen size={15} className="text-muted" /> New session
-        <kbd className="ml-auto font-sans text-[12px] text-faint">⌘N</kbd>
+        <kbd className="ml-auto font-sans text-[12px] text-faint">{kbd("⌘N")}</kbd>
       </button>
       <button
         className={`${item} ${view === "schedules" ? "bg-active text-ink" : "text-ink-2 hover:bg-hover"}`}
@@ -204,26 +207,47 @@ function SessionList({ query, onNavigate }: { query: string; onNavigate?: () => 
   const loaded = useChat((s) => s.sessionsLoaded);
   const busy = useChat((s) => s.busy);
   const pinned = useChat((s) => s.pinned);
+  const catalog = useChat((s) => s.agents);
+  const roster = useTeammates((s) => s.byId);
   const status = useConnection((s) => s.status);
   const now = useNow(true, 30_000);
 
-  const groups = useMemo(() => {
+  const { pins, rows, groups } = useMemo(() => {
     const q = query.trim().toLowerCase();
     const list = sortedSessions(sessions).filter((s) => !q || (s.title ?? "").toLowerCase().includes(q) || s.location.directory.toLowerCase().includes(q));
     const pins = pinned.map((id) => list.find((s) => s.id === id)).filter((s): s is SessionInfo => !!s);
-    const working = list.filter((s) => busy[s.id] && !pinned.includes(s.id));
-    const rest = list.filter((s) => !busy[s.id] && !pinned.includes(s.id));
+    const loose = list.filter((s) => !pinned.includes(s.id));
+
+    // Searching is a flat list. Otherwise each agent gets a row: teammates in the order they joined, then other agents that have sessions.
+    const teammates = Object.values(roster ?? {}).sort((a, b) => a.created - b.created || a.name.localeCompare(b.name));
+    const teamIds = new Set(teammates.map((t) => t.id));
+    const byAgent = new Map<string, SessionInfo[]>();
+    const rest: SessionInfo[] = [];
+    for (const s of loose) {
+      const a = s.agent ?? "";
+      const offered = teamIds.has(a) || (!!a && isOfferedAgent(a) && catalog.some((c) => c.id === a));
+      if (!q && offered) byAgent.set(a, [...(byAgent.get(a) ?? []), s]);
+      else rest.push(s);
+    }
+    const rows: AgentGroup[] = q
+      ? []
+      : [
+          ...teammates.map((t) => ({ id: t.id, name: t.name, job: t.job, sessions: byAgent.get(t.id) ?? [] })),
+          ...[...byAgent.keys()].filter((id) => !teamIds.has(id)).map((id) => ({ id, name: catalog.find((c) => c.id === id)?.name ?? id, sessions: byAgent.get(id) ?? [] })),
+        ];
+
+    const working = rest.filter((s) => busy[s.id]);
+    const idle = rest.filter((s) => !busy[s.id]);
     const out: [string, SessionInfo[]][] = [];
-    if (pins.length) out.push(["Pinned", pins]);
     if (working.length) out.push(["Working", working]);
-    for (const s of rest) {
+    for (const s of idle) {
       const g = groupOf(s.time.updated, now);
       const last = out[out.length - 1];
       if (last && last[0] === g) last[1].push(s);
       else out.push([g, [s]]);
     }
-    return out;
-  }, [sessions, busy, query, now, pinned]);
+    return { pins, rows, groups: out };
+  }, [sessions, busy, query, now, pinned, roster, catalog]);
 
   return (
     <div className="scroll-quiet mt-2 min-h-0 flex-1 overflow-y-auto px-2 pb-3">
@@ -234,129 +258,36 @@ function SessionList({ query, onNavigate }: { query: string; onNavigate?: () => 
           ))}
         </div>
       )}
-      {loaded && groups.length === 0 && <div className="px-2 py-3 text-[13px] text-muted">{query ? `Nothing matches “${query}”.` : "Sessions you start appear here."}</div>}
-      {groups.map(([label, list]) => (
-        <div key={label} className="mt-3 first:mt-1">
-          <div className="flex items-center gap-1.5 px-2 pb-1 text-[12px] font-medium text-muted">
-            {label}
-            {label === "Working" && <span className="tabular-nums">{list.length}</span>}
-          </div>
-          <AnimatePresence initial={false}>
-            {list.map((s) => (
-              <SessionRow key={s.id} s={s} now={now} onNavigate={onNavigate} />
-            ))}
-          </AnimatePresence>
+      {loaded && pins.length === 0 && rows.length === 0 && groups.length === 0 && <div className="px-2 py-3 text-[13px] text-muted">{query ? `Nothing matches “${query}”.` : "Sessions you start appear here."}</div>}
+      {pins.length > 0 && <SessionGroup label="Pinned" list={pins} now={now} onNavigate={onNavigate} />}
+      {rows.length > 0 && (
+        <div className="mt-3 first:mt-1">
+          <div className="px-2 pb-1 text-[12px] font-medium text-muted">Teammates</div>
+          <AgentRows groups={rows} now={now} onNavigate={onNavigate} />
         </div>
+      )}
+      {groups.map(([label, list]) => (
+        <SessionGroup key={label} label={label} list={list} now={now} onNavigate={onNavigate} />
       ))}
     </div>
   );
 }
 
-const SessionRow = memo(function SessionRow({ s, now, onNavigate }: { s: SessionInfo; now: number; onNavigate?: () => void }) {
-  const active = useChat((st) => st.activeId === s.id);
-  const busy = useChat((st) => !!st.busy[s.id]);
-  const unread = useChat((st) => !!st.unread[s.id]);
-  const asking = useChat((st) => Object.values(st.permissions).some((p) => p.sessionID === s.id) || Object.values(st.forms).some((f) => f.sessionID === s.id));
-  const open = useChat((st) => st.open);
-  const rename = useChat((st) => st.rename);
-  const isPinned = useChat((st) => st.pinned.includes(s.id));
-  const togglePin = useChat((st) => st.togglePin);
-  const [menu, setMenu] = useState(false);
-  const [editing, setEditing] = useState(false);
-  const more = useRef<HTMLButtonElement>(null);
-  const title = s.title || "New session";
-
+function SessionGroup({ label, list, now, onNavigate }: { label: string; list: SessionInfo[]; now: number; onNavigate?: () => void }) {
   return (
-    <motion.div layout="position" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.15 }}>
-      <div
-        role="button"
-        tabIndex={0}
-        onClick={() => {
-          open(s.id);
-          onNavigate?.();
-        }}
-        onContextMenu={(e) => {
-          e.preventDefault();
-          setMenu(true);
-        }}
-        className={`group relative flex h-8 items-center gap-2 rounded-md px-2 text-[13px] transition-colors ${active ? "bg-active text-ink" : "text-ink-2 hover:bg-hover"}`}
-      >
-        <span className="grid w-3.5 shrink-0 place-items-center" title={busy ? "Working" : asking ? "Needs you" : unread ? "New result" : s.outcome === "failed" ? "Failed" : undefined}>
-          {busy ? <AgentClock size={12} /> : asking ? <span className="h-2 w-2 rounded-full bg-info" /> : unread ? <span className="h-1.5 w-1.5 rounded-full bg-ink" /> : s.outcome === "failed" ? <span className="h-1.5 w-1.5 rounded-full bg-danger" /> : null}
-        </span>
-        {editing ? (
-          <input
-            autoFocus
-            defaultValue={title}
-            onClick={(e) => e.stopPropagation()}
-            onBlur={(e) => {
-              setEditing(false);
-              const v = e.target.value.trim();
-              if (v && v !== title) void rename(s.id, v);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-              if (e.key === "Escape") setEditing(false);
-            }}
-            className="field min-w-0 flex-1 rounded-md px-1.5 text-[13px] outline-none"
-          />
-        ) : (
-          <span className={`min-w-0 flex-1 truncate ${unread || asking ? "font-medium text-ink" : ""}`}>{title}</span>
-        )}
-        <span className={`shrink-0 text-[12px] tabular-nums group-hover:hidden ${asking ? "text-info" : "text-faint"}`}>{busy ? "" : asking ? "Needs you" : timeAgo(s.time.updated, now)}</span>
-        <button
-          ref={more}
-          onClick={(e) => {
-            e.stopPropagation();
-            setMenu(true);
-          }}
-          className="hidden h-6 w-6 shrink-0 place-items-center rounded-md text-muted hover:bg-active hover:text-ink group-hover:grid"
-          aria-label="Session actions"
-        >
-          <MoreHorizontal size={15} />
-        </button>
+    <div className="mt-3 first:mt-1">
+      <div className="flex items-center gap-1.5 px-2 pb-1 text-[12px] font-medium text-muted">
+        {label}
+        {label === "Working" && <span className="tabular-nums">{list.length}</span>}
       </div>
-      <Popover open={menu} onClose={() => setMenu(false)} anchor={more.current} placement="bottom-end" width={200}>
-        <div className="p-1.5">
-          <div className="truncate px-2 pt-1 pb-1.5 text-[12px] text-muted">{basename(s.location.directory)}</div>
-          <MenuItem
-            icon={isPinned ? <PinOff size={14} /> : <Pin size={14} />}
-            label={isPinned ? "Unpin" : "Pin"}
-            onClick={() => {
-              setMenu(false);
-              togglePin(s.id);
-            }}
-          />
-          <MenuItem
-            icon={<Pencil size={14} />}
-            label="Rename"
-            onClick={() => {
-              setMenu(false);
-              setEditing(true);
-            }}
-          />
-          <MenuItem
-            icon={<GitFork size={14} />}
-            label="Fork"
-            onClick={() => {
-              setMenu(false);
-              void useChat.getState().fork(s.id, null);
-            }}
-          />
-          <MenuItem
-            icon={<Trash2 size={14} />}
-            label="Delete"
-            danger
-            onClick={() => {
-              setMenu(false);
-              void deleteSession(s.id);
-            }}
-          />
-        </div>
-      </Popover>
-    </motion.div>
+      <AnimatePresence initial={false}>
+        {list.map((s) => (
+          <SessionRow key={s.id} s={s} now={now} onNavigate={onNavigate} />
+        ))}
+      </AnimatePresence>
+    </div>
   );
-});
+}
 
 function SidebarFooter() {
   const openSettings = useUI((s) => s.openSettings);
@@ -365,10 +296,10 @@ function SidebarFooter() {
   const status = useConnection((s) => s.status);
   return (
     <div className="flex h-11 shrink-0 items-center gap-2 px-2">
-      <IconButton label="Settings (⌘,)" onClick={() => openSettings()}>
+      <IconButton label={`Settings (${kbd("⌘,")})`} onClick={() => openSettings()}>
         <Settings size={16} />
       </IconButton>
-      <IconButton label="Keyboard shortcuts (⌘/)" onClick={() => useUI.getState().setShortcuts(true)}>
+      <IconButton label={`Keyboard shortcuts (${kbd("⌘/")})`} onClick={() => useUI.getState().setShortcuts(true)}>
         <Keyboard size={16} />
       </IconButton>
       <div className="ml-auto flex items-center gap-1.5 px-2 text-[12px] text-muted tabular-nums">

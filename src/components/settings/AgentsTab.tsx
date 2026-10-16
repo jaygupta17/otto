@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from "motion/react";
 import { Bot, ChevronRight, Lock, Plus, RotateCcw, Trash2, X, ArrowLeft } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { AgentInfo } from "@opencode/client";
 import { useChat } from "../../state/chat";
 import { AGENT_COLORS, agentColor } from "../../lib/agentColor";
@@ -13,6 +13,13 @@ import { TextField } from "../ui/Field";
 import { Spinner } from "../ui/AgentClock";
 import { EffectPicker, Empty, Label, Row, Rows, SearchBox, Segmented, TextArea, Toggle } from "./common";
 import { ModelSelect, type ModelValue } from "./ModelSelect";
+import { TeammateEditor } from "./TeammateEditor";
+import { useTeammates } from "../../state/teammates";
+import { TeammateFace } from "../ui/TeammateFace";
+import { isOfferedAgent, listNames, STARTER_TEAM, type Teammate } from "../../lib/teammates";
+import { MEMORY_TOOLS, isMemoryTool } from "../../lib/memory";
+
+const MEMORY_ALL = "memory_*";
 
 const NO_RULES: readonly { action: string; resource: string; effect: Effect }[] = [];
 const BUILTIN = new Set(["build", "plan", "general", "explore", "compaction", "title", "summary"]);
@@ -42,6 +49,17 @@ export function AgentsTab({ compact }: { compact: boolean }) {
   const [creating, setCreating] = useState(false);
   const [q, setQ] = useState("");
   const [showHidden, setShowHidden] = useState(false);
+  const roster = useTeammates((s) => s.byId);
+  const addStarters = useTeammates((s) => s.addStarters);
+  const noTeammates = roster !== null && Object.keys(roster).length === 0;
+  const editorRef = useRef<HTMLDivElement>(null);
+
+  // A different agent opens at its top, not wherever the last one was left.
+  useEffect(() => {
+    let el = editorRef.current?.parentElement;
+    while (el && !/auto|scroll/.test(getComputedStyle(el).overflowY)) el = el.parentElement;
+    if (el) el.scrollTop = 0;
+  }, [selected, creating]);
 
   useEffect(() => {
     void load();
@@ -51,19 +69,27 @@ export function AgentsTab({ compact }: { compact: boolean }) {
   }, [load]);
 
   const cfgAgents = config?.agents ?? {};
+  const team = useMemo(() => {
+    const t = q.trim().toLowerCase();
+    return Object.values(roster ?? {})
+      .filter((m) => !t || `${m.id} ${m.name} ${m.job}`.toLowerCase().includes(t))
+      .sort((a, b) => a.created - b.created || a.name.localeCompare(b.name));
+  }, [roster, q]);
   const list = useMemo(() => {
-    const ids = new Set([...agents.map((a) => a.id), ...Object.keys(cfgAgents)]);
+    const ids = new Set([...agents.map((a) => a.id), ...Object.keys(cfgAgents)].filter((id) => !roster?.[id] && isOfferedAgent(id)));
     const t = q.trim().toLowerCase();
     return [...ids]
       .map((id) => ({ id, info: agents.find((a) => a.id === id), cfg: cfgAgents[id] }))
       .filter((a) => showHidden || !(a.info?.hidden ?? a.cfg?.hidden))
       .filter((a) => !t || `${a.id} ${a.info?.name ?? ""} ${a.info?.description ?? a.cfg?.description ?? ""}`.toLowerCase().includes(t))
       .sort((a, b) => rankMode(a.info?.mode ?? a.cfg?.mode) - rankMode(b.info?.mode ?? b.cfg?.mode) || a.id.localeCompare(b.id));
-  }, [agents, cfgAgents, q, showHidden]);
+  }, [agents, cfgAgents, q, showHidden, roster]);
 
   useEffect(() => {
-    if (!selected && !creating && !compact && list.length) setSelected(list[0].id);
-  }, [list, selected, creating, compact]);
+    if (selected || creating || compact) return;
+    const first = team[0]?.id ?? list[0]?.id;
+    if (first) setSelected(first);
+  }, [team, list, selected, creating, compact]);
 
   if (error) return <Empty icon={<Bot size={20} />} title="Couldn't read the server config" body={error} action={<Button onClick={() => load(true)}>Retry</Button>} />;
   if (!config)
@@ -85,7 +111,7 @@ export function AgentsTab({ compact }: { compact: boolean }) {
               <SearchBox value={q} onChange={setQ} placeholder="Find agent" />
             </div>
             <IconButton
-              label="New agent"
+              label="New teammate"
               className="hairline"
               onClick={() => {
                 setCreating(true);
@@ -95,6 +121,36 @@ export function AgentsTab({ compact }: { compact: boolean }) {
               <Plus size={16} />
             </IconButton>
           </div>
+          {/* Phone layout has no editor pane to hold the offer, so it sits in the list. */}
+          {compact && noTeammates && (
+            <div className="mt-3 rounded-2xl border border-line px-4 py-3">
+              <div className="text-[13.5px] font-medium">Start with Otto's team</div>
+              <div className="mt-0.5 text-[12.5px] text-muted">{listNames(STARTER_TEAM.map((t) => t.name))} each have a job and their own memory, model and permissions.</div>
+              <Button size="sm" variant="primary" className="mt-3" onClick={() => void addStarters()}>
+                {`Add ${listNames(STARTER_TEAM.map((t) => t.name))}`}
+              </Button>
+            </div>
+          )}
+          {team.length > 0 && (
+            <>
+              <div className="mb-1 mt-3 px-2.5 text-[12px] font-medium text-faint">Teammates</div>
+              <div className="space-y-0.5">
+                {team.map((m) => (
+                  <TeammateRow
+                    key={m.id}
+                    t={m}
+                    disabled={!!cfgAgents[m.id]?.disabled}
+                    active={selected === m.id && !creating}
+                    onClick={() => {
+                      setCreating(false);
+                      setSelected(m.id);
+                    }}
+                  />
+                ))}
+              </div>
+              <div className="mb-1 mt-4 px-2.5 text-[12px] font-medium text-faint">Agents</div>
+            </>
+          )}
           <div className="space-y-0.5">
             {list.map((a) => (
               <AgentRow
@@ -116,7 +172,7 @@ export function AgentsTab({ compact }: { compact: boolean }) {
         </div>
       )}
       {showEditor && (
-        <div className="min-w-0 flex-1">
+        <div ref={editorRef} className="min-w-0 flex-1">
           <AnimatePresence mode="wait" initial={false}>
             <motion.div key={creating ? "new" : (selected ?? "none")} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, transition: { duration: 0.08 } }} transition={{ duration: 0.18 }}>
               {compact && (
@@ -131,19 +187,26 @@ export function AgentsTab({ compact }: { compact: boolean }) {
                 </button>
               )}
               {creating ? (
-                <AgentEditor
+                <TeammateEditor
                   key="new"
-                  isNew
-                  origin="custom"
                   onDone={(id) => {
                     setCreating(false);
                     setSelected(id);
                   }}
                 />
+              ) : selected && roster?.[selected] ? (
+                <TeammateEditor key={`${selected}-${roster[selected].updated}`} teammate={roster[selected]} cfg={cfgAgents[selected]} onDone={(id) => setSelected(id)} />
               ) : selected ? (
                 <AgentEditor key={selected} id={selected} info={agents.find((a) => a.id === selected)} cfg={cfgAgents[selected]} origin={originOf(selected, cfgAgents[selected], agents.find((a) => a.id === selected))} onDone={(id) => setSelected(id)} />
+              ) : noTeammates ? (
+                <Empty
+                  icon={<Bot size={20} />}
+                  title="Start with Otto's team"
+                  body={`${listNames(STARTER_TEAM.map((t) => t.name))} each have a job, standing instructions, and their own model and permissions. Add them to this machine, then change anything.`}
+                  action={<Button variant="primary" onClick={() => void addStarters()}>{`Add ${listNames(STARTER_TEAM.map((t) => t.name))}`}</Button>}
+                />
               ) : (
-                <Empty icon={<Bot size={20} />} title="Pick an agent" body="Agents are personas with their own instructions, model and permissions." />
+                <Empty icon={<Bot size={20} />} title="Pick a teammate" body="Teammates have a name, a job and standing instructions, and keep their own model and permissions." />
               )}
             </motion.div>
           </AnimatePresence>
@@ -161,6 +224,18 @@ function originOf(id: string, cfg?: AgentConfig, info?: AgentInfo): Origin {
   if (BUILTIN.has(id)) return "builtin";
   if (cfg && (cfg.system !== undefined || cfg.description !== undefined || !info)) return "custom";
   return info ? "file" : "custom";
+}
+
+function TeammateRow({ t, active, disabled, onClick }: { t: Teammate; active: boolean; disabled: boolean; onClick: () => void }) {
+  return (
+    <button onClick={onClick} className={`flex w-full items-center gap-2.5 rounded-xl px-2 py-1.5 text-left transition-colors ${active ? "bg-active" : "hover:bg-hover"}`}>
+      <TeammateFace seed={t.face} color={t.color} size={26} />
+      <span className="min-w-0 flex-1">
+        <span className={`block truncate text-[13.5px] ${disabled ? "text-faint line-through" : "text-ink"}`}>{t.name}</span>
+        {t.job && <span className="block truncate text-[12px] text-muted">{t.job}</span>}
+      </span>
+    </button>
+  );
 }
 
 function AgentRow({ id, info, cfg, active, onClick }: { id: string; info?: AgentInfo; cfg?: AgentConfig; active: boolean; onClick: () => void }) {
@@ -195,27 +270,24 @@ function draftFrom(id: string, info?: AgentInfo, cfg?: AgentConfig): Draft {
   };
 }
 
-function AgentEditor({ id, info, cfg, origin, isNew = false, onDone }: { id?: string; info?: AgentInfo; cfg?: AgentConfig; origin: Origin; isNew?: boolean; onDone: (id: string) => void }) {
+function AgentEditor({ id, info, cfg, origin, onDone }: { id: string; info?: AgentInfo; cfg?: AgentConfig; origin: Origin; onDone: (id: string) => void }) {
   const update = useExtensions((s) => s.update);
   const globalRules = useExtensions((s) => s.config?.permissions) ?? NO_RULES;
-  const initial = useMemo(() => (isNew ? { ...draftFrom("", undefined, undefined), color: COLORS[0] } : draftFrom(id!, info, cfg)), [isNew, id, info, cfg]);
+  const initial = useMemo(() => draftFrom(id, info, cfg), [id, info, cfg]);
   const [d, setD] = useState<Draft>(initial);
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [section, setSection] = useState<"general" | "permissions">("general");
   const set = (p: Partial<Draft>) => setD((x) => ({ ...x, ...p }));
   const dirty = JSON.stringify({ ...d, perms: serializeRules(d.perms) }) !== JSON.stringify({ ...initial, perms: serializeRules(initial.perms) });
-  const idError = isNew && d.id && !/^[a-z0-9][a-z0-9_-]*$/.test(d.id) ? "Lowercase letters, numbers, - and _ only." : null;
   const editableBasics = origin !== "file";
 
   async function save() {
-    const agentId = isNew ? d.id.trim() : id!;
-    if (!agentId || idError) return;
+    const agentId = id;
     setSaving(true);
     const ok = await update(
       (c) => {
         const agents = { ...(c.agents ?? {}) };
-        if (isNew && (agents[agentId] || useChat.getState().agents.some((a) => a.id === agentId))) throw new Error(`An agent called “${agentId}” already exists.`);
         const prev = agents[agentId] ?? {};
         const next: AgentConfig = { ...prev };
         const assign = <K extends keyof AgentConfig>(k: K, v: AgentConfig[K] | undefined) => {
@@ -223,7 +295,7 @@ function AgentEditor({ id, info, cfg, origin, isNew = false, onDone }: { id?: st
           else next[k] = v;
         };
         // For built-ins only persist what the user actually changed.
-        const changed = (k: keyof Draft) => isNew || origin === "custom" || JSON.stringify(d[k]) !== JSON.stringify(initial[k]);
+        const changed = (k: keyof Draft) => origin === "custom" || JSON.stringify(d[k]) !== JSON.stringify(initial[k]);
         if (changed("description")) assign("description", d.description.trim() || undefined);
         if (changed("mode")) assign("mode", d.mode);
         if (changed("system")) assign("system", d.system.trim() ? d.system : undefined);
@@ -237,7 +309,7 @@ function AgentEditor({ id, info, cfg, origin, isNew = false, onDone }: { id?: st
         else agents[agentId] = next;
         return { ...c, agents };
       },
-      { success: isNew ? `Agent “${agentId}” created` : "Agent saved" },
+      { success: "Agent saved" },
     );
     setSaving(false);
     if (ok) onDone(agentId);
@@ -247,12 +319,12 @@ function AgentEditor({ id, info, cfg, origin, isNew = false, onDone }: { id?: st
     const ok = await update(
       (c) => {
         const agents = { ...(c.agents ?? {}) };
-        delete agents[id!];
+        delete agents[id];
         return { ...c, agents };
       },
       { success: origin === "builtin" ? "Reset to defaults" : "Agent deleted" },
     );
-    if (ok) onDone(origin === "builtin" ? id! : "");
+    if (ok) onDone(origin === "builtin" ? id : "");
   }
 
   return (
@@ -262,7 +334,7 @@ function AgentEditor({ id, info, cfg, origin, isNew = false, onDone }: { id?: st
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: d.color || agentColor(id) }} />
-            <h3 className="truncate text-[20px] font-semibold">{isNew ? d.id || "New agent" : (info?.name ?? id)}</h3>
+            <h3 className="truncate text-[20px] font-semibold">{info?.name ?? id}</h3>
             {origin === "builtin" && <span className="rounded-full bg-sunken px-2 py-px text-[12px] font-medium text-muted">Built-in</span>}
             {origin === "file" && (
               <span className="flex items-center gap-1 rounded-full bg-sunken px-2 py-px text-[12px] font-medium text-muted">
@@ -271,11 +343,10 @@ function AgentEditor({ id, info, cfg, origin, isNew = false, onDone }: { id?: st
             )}
           </div>
         </div>
-        {!isNew && (
-          <div className="flex shrink-0 items-center gap-2 pt-1 text-[12.5px] text-muted">
-            Enabled <Toggle on={!d.disabled} onChange={(v) => set({ disabled: !v })} label="Enabled" />
-          </div>
-        )}
+        <div className="flex shrink-0 items-center gap-2 pt-1 text-[12.5px] text-muted">
+          Enabled <Toggle on={!d.disabled} onChange={(v) => set({ disabled: !v })} label="Enabled" />
+        </div>
+
       </div>
 
       <div className="mb-5">
@@ -292,7 +363,6 @@ function AgentEditor({ id, info, cfg, origin, isNew = false, onDone }: { id?: st
 
       {section === "general" ? (
         <div className="space-y-5">
-          {isNew && <TextField label="Name" autoFocus placeholder="reviewer" value={d.id} onChange={(e) => set({ id: e.target.value.toLowerCase() })} error={idError} hint="Used as @name" />}
           {origin === "file" && <div className="rounded-xl bg-sunken px-3.5 py-2.5 text-[12.5px] text-muted">Defined in a file on the server. Its instructions are edited there.</div>}
           <div>
             <Label>Description</Label>
@@ -321,7 +391,6 @@ function AgentEditor({ id, info, cfg, origin, isNew = false, onDone }: { id?: st
             <div>
               <Label hint={origin === "builtin" ? "Empty keeps the built-in prompt" : undefined}>Instructions</Label>
               <TextArea value={d.system} onChange={(v) => set({ system: v })} rows={8} placeholder="You are a meticulous code reviewer. Focus on correctness and security…" />
-              {d.system.trim() && <p className="mt-1.5 text-[12.5px] text-muted">These replace OpenCode's built-in prompt. OpenCode's free models refuse agents like that, so give this agent a model from a connected provider.</p>}
             </div>
           )}
           <div>
@@ -353,7 +422,7 @@ function AgentEditor({ id, info, cfg, origin, isNew = false, onDone }: { id?: st
         <PermissionsEditor model={d.perms} onChange={(perms) => set({ perms })} globalRules={globalRules} />
       )}
 
-      {!isNew && origin !== "file" && (
+      {origin !== "file" && (
         <div className="mt-8 flex items-center justify-between rounded-2xl border border-line px-4 py-3">
           <div>
             <div className="text-[13.5px] font-medium">{origin === "builtin" ? "Reset to defaults" : "Delete agent"}</div>
@@ -377,22 +446,20 @@ function AgentEditor({ id, info, cfg, origin, isNew = false, onDone }: { id?: st
       )}
 
       <AnimatePresence>
-        {(dirty || isNew) && (
+        {dirty && (
           <motion.div
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 16 }}
             transition={{ type: "spring", stiffness: 500, damping: 36 }}
-            className="bg-raised sticky bottom-3 z-10 mt-6 flex items-center gap-3 rounded-2xl border border-line px-4 py-2.5 shadow-pop"
+            className="surface-overlay bg-raised sticky bottom-3 z-10 mt-6 flex items-center gap-3 rounded-2xl border border-line px-4 py-2.5 shadow-pop"
           >
-            <span className="flex-1 text-[13px] text-muted">{isNew ? "New agent" : "Unsaved changes"}</span>
-            {!isNew && (
-              <Button size="sm" variant="ghost" onClick={() => setD(initial)}>
-                Discard
-              </Button>
-            )}
-            <Button size="sm" variant="primary" disabled={saving || (isNew && (!d.id || !!idError))} onClick={() => void save()}>
-              {saving ? <Spinner size={13} /> : isNew ? "Create agent" : "Save"}
+            <span className="flex-1 text-[13px] text-muted">Unsaved changes</span>
+            <Button size="sm" variant="ghost" onClick={() => setD(initial)}>
+              Discard
+            </Button>
+            <Button size="sm" variant="primary" disabled={saving} onClick={() => void save()}>
+              {saving ? <Spinner size={13} /> : "Save"}
             </Button>
           </motion.div>
         )}
@@ -425,6 +492,19 @@ export function PermissionsEditor({ model, onChange, globalRules }: { model: Per
     onChange({ ...model, keys });
   };
   const inherited = (action: string) => inheritedEffect(action, { global: globalRules, agentGlobal: model.global });
+
+  // Last rule wins, so "All memory tools" must come before the per-tool rows.
+  // Re-emit every memory row from the keys, in that order, on each change.
+  const setMemoryKey = (action: string, effect: Effect | null) => {
+    const cur = model.keys[action] ?? { effect: null, patterns: [] };
+    const keys = { ...model.keys, [action]: { ...cur, effect } };
+    if (effect === null && cur.patterns.length === 0) delete keys[action];
+    const isMem = (a: string) => a === MEMORY_ALL || isMemoryTool(a);
+    const rest = Object.entries(keys).filter(([a]) => !isMem(a));
+    const mem = Object.entries(keys).filter(([a]) => isMem(a)).sort(([a], [b]) => Number(b === MEMORY_ALL) - Number(a === MEMORY_ALL));
+    onChange({ ...model, keys: Object.fromEntries([...rest, ...mem]), source: model.source.filter((r) => !(isMem(r.action) && r.resource === "*")) });
+  };
+  const memoryAll = model.keys[MEMORY_ALL]?.effect ?? null;
 
   const mcpNames = useMemo(() => [...new Set([...(mcp ?? []).map((m) => m.name), ...Object.keys(mcpConfig ?? {})])], [mcp, mcpConfig]);
   const presets: { id: string; label: string; apply: () => void }[] = [
@@ -518,6 +598,23 @@ export function PermissionsEditor({ model, onChange, globalRules }: { model: Per
         )}
       </PermGroup>
 
+      <PermGroup title="Memory">
+        <PermRow noAsk title="All memory tools" subtitle="Saving and recalling across sessions. Teammates never stop to ask, so it is on or off." code={MEMORY_ALL} value={memoryAll} inherited={inherited(MEMORY_ALL)} onChange={(v) => setMemoryKey(MEMORY_ALL, v)} />
+        {MEMORY_TOOLS.map((t) => (
+          <PermRow
+            key={t.action}
+            noAsk
+            indent
+            title={t.label}
+            subtitle={t.hint ?? t.action}
+            code={t.action}
+            value={model.keys[t.action]?.effect ?? null}
+            inherited={memoryAll ?? inherited(t.action)}
+            onChange={(v) => setMemoryKey(t.action, v)}
+          />
+        ))}
+      </PermGroup>
+
       <PermGroup title="MCP servers">
         {mcp === null ? (
           <div className="flex justify-center py-3 text-muted">
@@ -547,6 +644,7 @@ function PermGroup({ title, children }: { title: string; children: React.ReactNo
 }
 
 function PermRow({
+  noAsk,
   title,
   subtitle,
   code,
@@ -568,6 +666,7 @@ function PermRow({
   onPatterns?: (p: { pattern: string; effect: Effect }[]) => void;
   example?: string;
   indent?: boolean;
+  noAsk?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState("");
@@ -585,7 +684,7 @@ function PermRow({
             {subtitle && <span className="block truncate text-[12px] text-muted">{subtitle}</span>}
           </span>
         </button>
-        <EffectPicker value={value} inherited={inherited} onChange={onChange} />
+        <EffectPicker value={value} inherited={inherited} onChange={onChange} noAsk={noAsk} />
       </div>
       <AnimatePresence initial={false}>
         {open && canPattern && (

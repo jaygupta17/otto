@@ -1,6 +1,7 @@
 /** Small app-level actions shared by keyboard shortcuts and the command palette. */
 import { useChat } from "../state/chat";
-import { toast } from "../state/ui";
+import { toast, useUI } from "../state/ui";
+import { isOfferedAgent } from "./teammates";
 import { confirmDialog, promptDialog } from "../components/ui/Dialogs";
 
 /** The directory the user is working in: the open session's, else the picked project, else home. */
@@ -32,7 +33,32 @@ export async function renameSession(id: string) {
 
 /** Primary agents the user can pick, in menu order. */
 export function primaryAgents() {
-  return useChat.getState().agents.filter((a) => a.mode !== "subagent" && !a.hidden);
+  return useChat.getState().agents.filter((a) => a.mode !== "subagent" && !a.hidden && isOfferedAgent(a.id));
+}
+
+/**
+ * A fresh draft with `agent` picked. Desktop shows the draft on the home
+ * screen; phones push it as a screen, like a session.
+ */
+export function startDraft(agent: string | null, phone: boolean) {
+  const st = useChat.getState();
+  if (agent) void st.setAgent(agent, null);
+  st.open(null);
+  if (phone) useUI.getState().setDraftOpen(true);
+}
+
+/**
+ * A new, empty session with the same teammate, model and folder: a clean
+ * context window. Unlike a fork, nothing from the old conversation comes
+ * along (teammates still have their memory).
+ */
+export function freshThread(id: string, phone: boolean) {
+  const st = useChat.getState();
+  const s = st.sessions[id];
+  if (!s) return;
+  if (s.location?.directory) st.setProjectDir(s.location.directory);
+  if (s.model) void st.setModel(s.model, null);
+  startDraft(s.agent && isOfferedAgent(s.agent) ? s.agent : null, phone);
 }
 
 /** Move to the next (or previous) primary agent for the current session or draft. */

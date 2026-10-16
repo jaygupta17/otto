@@ -114,10 +114,29 @@ const EFFECT_STYLE: Record<Effect, string> = {
 
 /**
  * Inherit / Allow / Ask / Deny. When inheriting, the effective value is shown
- * faintly so people see what will actually happen.
+ * faintly so people see what will actually happen. `noAsk` is for tools that
+ * run inside the code tool, where OpenCode never stops to ask: there "ask"
+ * behaves as allow, so it's shown as allow and not offered.
  */
-export function EffectPicker({ value, inherited, onChange, allowInherit = true }: { value: Effect | null; inherited?: Effect; onChange: (v: Effect | null) => void; allowInherit?: boolean }) {
-  const opts: (Effect | null)[] = allowInherit ? [null, "allow", "ask", "deny"] : ["allow", "ask", "deny"];
+export function EffectPicker({
+  value,
+  inherited,
+  onChange,
+  allowInherit = true,
+  noAsk = false,
+}: {
+  value: Effect | null;
+  inherited?: Effect;
+  onChange: (v: Effect | null) => void;
+  allowInherit?: boolean;
+  noAsk?: boolean;
+}) {
+  const effects: Effect[] = noAsk ? ["allow", "deny"] : ["allow", "ask", "deny"];
+  const opts: (Effect | null)[] = allowInherit ? [null, ...effects] : effects;
+  if (noAsk) {
+    if (value === "ask") value = "allow";
+    if (inherited === "ask" || inherited === undefined) inherited = "allow";
+  }
   return (
     <div className="inline-flex shrink-0 gap-0.5 rounded-lg bg-sunken p-0.5 hairline">
       {opts.map((o) => {
