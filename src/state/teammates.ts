@@ -117,7 +117,9 @@ export const useTeammates = create<State>((set, get) => ({
       const c = client();
       const now = Date.now();
       const have = get().byId ?? {};
-      const todo = STARTER_TEAM.filter((t) => !have[t.id]);
+      // An agent of the user's own under a starter's id stays theirs.
+      const theirs = new Set(useChat.getState().agents.map((a) => a.id));
+      const todo = STARTER_TEAM.filter((t) => !have[t.id] && !theirs.has(t.id));
       if (!todo.length) {
         toast({ tone: "ok", title: "The starter team is already here" });
         return true;

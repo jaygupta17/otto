@@ -324,6 +324,16 @@ function Front({ kind, hex, cx, left, right, y, eyeW, eyeH }: { kind: Accessory;
         <circle cx="15.4" cy="32.4" r="1.7" fill="var(--accent, #f0a020)" />
       </g>
     );
+  if (kind === "bowtie") {
+    // Under the chin; light on dark bodies, dark on light ones.
+    const tie = mix(hex, 255, 0.82);
+    return (
+      <g>
+        <path d="M20 33.4 L15.6 31.2 Q14.8 33.4 15.6 35.6 Z M20 33.4 L24.4 31.2 Q25.2 33.4 24.4 35.6 Z" fill={tie} stroke={tie} strokeWidth="0.8" strokeLinejoin="round" />
+        <rect x="18.7" y="32.1" width="2.6" height="2.6" rx="0.9" fill={mix(hex, 255, 0.6)} />
+      </g>
+    );
+  }
   if (kind === "cap")
     return (
       <g>

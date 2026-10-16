@@ -38,6 +38,11 @@ export interface Teammate {
   greeting: string;
   /** Things to ask them, offered on a new conversation. At most MAX_STARTERS. */
   starters: string[];
+  /**
+   * Leads the team: takes whole requests and hands the parts to the other
+   * teammates. Leads aren't handed work themselves; everyone else can be.
+   */
+  leads: boolean;
   created: number;
   updated: number;
   /** TEAMMATE_PROMPT_VERSION the agent was last compiled with. */
@@ -67,11 +72,11 @@ function recolor(id: string, c: string) {
   return LEGACY_COLORS[c] ?? c;
 }
 
-export const ACCESSORIES = ["none", "antenna", "glasses", "headset", "cap", "sprout"] as const;
+export const ACCESSORIES = ["none", "antenna", "glasses", "headset", "cap", "sprout", "bowtie"] as const;
 export type Accessory = (typeof ACCESSORIES)[number];
 
 /** Bump when the base prompt changes; stale agents are recompiled on load. */
-export const TEAMMATE_PROMPT_VERSION = 3;
+export const TEAMMATE_PROMPT_VERSION = 5;
 
 export const MAX_STARTERS = 4;
 
@@ -135,6 +140,7 @@ function normalize(id: string, t: Partial<Teammate> | undefined): Teammate | nul
     voice: t.voice === undefined ? (starter?.voice ?? "") : str(t.voice),
     greeting: t.greeting === undefined ? (starter?.greeting ?? "") : str(t.greeting).trim(),
     starters: Array.isArray(t.starters) ? t.starters.filter((x): x is string => typeof x === "string" && !!x.trim()).slice(0, MAX_STARTERS) : (starter?.starters ?? []),
+    leads: typeof t.leads === "boolean" ? t.leads : (starter?.leads ?? false),
     created: num(t.created, 0),
     updated: num(t.updated, 0),
     compiled: num(t.compiled, 0),
@@ -217,11 +223,26 @@ export function listNames(names: string[]) {
 
 /**
  * Otto's starting team. Offered from the empty Agents screen and never created
- * on its own: adding one writes to the machine, so the user decides.
+ * on its own: adding one writes to the machine, so the user decides. Juno
+ * comes first: on a fresh machine the lead is who a new session starts with.
  */
 export const STARTER_TEAM: Omit<Teammate, "created" | "updated" | "compiled" | "face">[] = [
   {
+    id: "juno",
+    name: "Juno",
+    job: "Chief of staff",
+    color: "#44444c",
+    accessory: "bowtie",
+    leads: true,
+    tagline: "Takes the whole job, hands each part to the right teammate, and brings it back as one answer.",
+    voice: "Composed and decisive. Say who's on what before they start, keep the user posted only on what matters, and lead the report with the outcome. Give credit by name. Never bury a problem.",
+    greeting: "What should the team take on?",
+    starters: ["Find out why signups dropped and draft a note to the team", "Research our three closest competitors and brief me in one page", "Triage the open bugs and get the worst one fixed", "What could the team take off my plate this week?"],
+    instructions: "Lead the team. Break each request into parts, hand each part to the teammate whose job it is, and check their work before you report.\nReport as one answer: what got done, by whom, and what still needs me.",
+  },
+  {
     id: "piper",
+    leads: false,
     name: "Piper",
     job: "Product performance",
     color: "#0ea5b7",
@@ -234,6 +255,7 @@ export const STARTER_TEAM: Omit<Teammate, "created" | "updated" | "compiled" | "
   },
   {
     id: "scout",
+    leads: false,
     name: "Scout",
     job: "Research and briefs",
     color: "#7c5cff",
@@ -246,6 +268,7 @@ export const STARTER_TEAM: Omit<Teammate, "created" | "updated" | "compiled" | "
   },
   {
     id: "relay",
+    leads: false,
     name: "Relay",
     job: "Inbox and drafts",
     color: "#e0559b",
@@ -258,6 +281,7 @@ export const STARTER_TEAM: Omit<Teammate, "created" | "updated" | "compiled" | "
   },
   {
     id: "patch",
+    leads: false,
     name: "Patch",
     job: "Code and fixes",
     color: "#b455e0",
@@ -279,15 +303,20 @@ export const STARTER_TEAM: Omit<Teammate, "created" | "updated" | "compiled" | "
  * has (model, permissions, steps…) and overwrites only what identity owns.
  */
 export function compileAgent(t: Teammate, prev: AgentConfig = {}): AgentConfig {
-  const next: AgentConfig = { ...prev, description: describe(t), system: teammatePrompt(t), color: t.color.toLowerCase() };
-  if (!next.mode) next.mode = "primary";
-  return next;
+  // Anyone but a lead can be handed work (OpenCode offers "all" agents to the
+  // subagent tool). A lead stays primary so nobody delegates back up to it.
+  const mode = t.leads ? "primary" : prev.mode === "subagent" ? "subagent" : "all";
+  return { ...prev, description: describe(t), system: teammatePrompt(t), color: t.color.toLowerCase(), mode };
 }
 
-/** One line other agents and menus see. */
-export function describe(t: Pick<Teammate, "name" | "job">) {
+/**
+ * How other agents see a teammate: OpenCode lists it in the subagent tool,
+ * which is how a lead decides who gets what.
+ */
+export function describe(t: Pick<Teammate, "name" | "job"> & Partial<Pick<Teammate, "tagline">>) {
   const job = t.job.trim();
-  return job ? `${t.name}, ${job}` : t.name;
+  const tagline = t.tagline?.trim();
+  return [job ? `${t.name}, ${job}.` : `${t.name}.`, tagline].filter(Boolean).join(" ");
 }
 
 /**
@@ -295,7 +324,7 @@ export function describe(t: Pick<Teammate, "name" | "job">) {
  * built-in coding prompt, so this carries the working rules too: Otto's
  * teammates are general-purpose (coding is one job among many).
  */
-export function teammatePrompt(t: Pick<Teammate, "id" | "name" | "job" | "instructions"> & Partial<Pick<Teammate, "tagline" | "voice">>) {
+export function teammatePrompt(t: Pick<Teammate, "id" | "name" | "job" | "instructions"> & Partial<Pick<Teammate, "tagline" | "voice" | "leads">>) {
   const job = t.job.trim();
   const standing = t.instructions.trim();
   const tagline = t.tagline?.trim();
@@ -304,6 +333,7 @@ export function teammatePrompt(t: Pick<Teammate, "id" | "name" | "job" | "instru
     `You are ${t.name}, an AI teammate working in Otto.${job ? ` Your job: ${job}.` : ""}${tagline ? ` ${tagline}` : ""}`,
     `You run on a machine the user owns, with the tools available to you. The user talks to you from the Otto app on a laptop or phone, and may close it while you work; keep going until the task is done or you need them.`,
     BASE_PROMPT,
+    t.leads ? LEAD_PROMPT : TEAM_PROMPT,
     memoryPrompt(t.id),
     voice ? `# Personality\nThis is who you are with the user. Keep it in every reply, without overdoing it.\n\n${voice}` : "",
     standing
@@ -313,6 +343,23 @@ export function teammatePrompt(t: Pick<Teammate, "id" | "name" | "job" | "instru
     .filter(Boolean)
     .join("\n\n");
 }
+
+/** For a lead: how to run the team. */
+const LEAD_PROMPT = `# Leading the team
+You lead a team of AI teammates. They're listed in your subagent tool, each with their job; hand one of them work by calling that tool with their id as \`agent\`.
+- Take the whole request. Work out what needs doing, then give each part to the teammate whose job it is. Do quick things yourself; a one-line lookup isn't worth a handoff.
+- Before handing off, tell the user in a sentence who's taking what.
+- Write each brief so it stands alone, since they can't see this conversation: the goal, the context and constraints they need, what done looks like, and what to send back.
+- Run independent briefs at the same time (several subagent calls in one step) and wait for them; don't set \`background\` unless the user wants to keep talking while a long job runs. Chain dependent ones, passing on what you learned.
+- Check what comes back before you use it, the way a lead reads a report: for gaps, errors and missed asks, not by redoing the work. If a result is thin, wrong or off the brief, send it back to the same teammate with what's missing (pass their sessionID to continue).
+- Report once, when the results are in: no progress notes, no repeating partial results. Outcome first, then who did what (by name), what's left, and anything that needs the user.
+- Teammates you hand work to can't hand it on, and they ask the user directly when they need approval or an answer. If someone is waiting on the user, say so.
+- When no one on the team fits a part, do it yourself or say so, and suggest the kind of teammate the user could add.`;
+
+/** For everyone else: they may be handed work by a lead. */
+const TEAM_PROMPT = `# Your team
+You're part of a team of AI teammates, and a lead may hand you work. When a task arrives as a brief from a teammate rather than from the user, do it fully and end with a complete report: they pass it on, and they can't see your tool calls.
+Other teammates may be listed in your subagent tool. Hand them work only when the user asks you to; otherwise do the work yourself.`;
 
 /**
  * How a teammate uses the memory plugin's tools. Scopes keep each teammate's

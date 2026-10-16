@@ -53,7 +53,11 @@ export function AgentsTab({ compact }: { compact: boolean }) {
   const addStarters = useTeammates((s) => s.addStarters);
   const noTeammates = roster !== null && Object.keys(roster).length === 0;
   // Starters this machine doesn't have yet (new ones arrive with updates).
-  const missing = useMemo(() => (roster ? STARTER_TEAM.filter((t) => !roster[t.id]) : []), [roster]);
+  const agentIds = useChat((s) => s.agents.map((a) => a.id).join(" "));
+  const missing = useMemo(() => {
+    const theirs = new Set(agentIds.split(" "));
+    return roster ? STARTER_TEAM.filter((t) => !roster[t.id] && !theirs.has(t.id)) : [];
+  }, [roster, agentIds]);
   const editorRef = useRef<HTMLDivElement>(null);
 
   // A different agent opens at its top, not wherever the last one was left.
@@ -75,7 +79,7 @@ export function AgentsTab({ compact }: { compact: boolean }) {
     const t = q.trim().toLowerCase();
     return Object.values(roster ?? {})
       .filter((m) => !t || `${m.id} ${m.name} ${m.job}`.toLowerCase().includes(t))
-      .sort((a, b) => a.created - b.created || a.name.localeCompare(b.name));
+      .sort((a, b) => Number(b.leads) - Number(a.leads) || a.created - b.created || a.name.localeCompare(b.name));
   }, [roster, q]);
   const list = useMemo(() => {
     const ids = new Set([...agents.map((a) => a.id), ...Object.keys(cfgAgents)].filter((id) => !roster?.[id] && isOfferedAgent(id)));

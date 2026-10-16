@@ -36,6 +36,7 @@ interface Draft {
   voice: string;
   /** Always MAX_STARTERS slots; empty ones are dropped on save. */
   starters: string[];
+  leads: boolean;
   model: ModelValue | null;
   steps: string;
   disabled: boolean;
@@ -54,6 +55,7 @@ function draftOf(t?: Teammate, cfg?: AgentConfig): Draft {
     greeting: t?.greeting ?? "",
     voice: t?.voice ?? "",
     starters: Array.from({ length: MAX_STARTERS }, (_, i) => t?.starters[i] ?? ""),
+    leads: t?.leads ?? false,
     model: modelStringToRef(cfg?.model),
     steps: cfg?.steps ? String(cfg.steps) : "",
     disabled: !!cfg?.disabled,
@@ -92,7 +94,7 @@ export function TeammateEditor({ teammate, cfg, onDone }: { teammate?: Teammate;
     if (!name) return;
     setSaving(true);
     const ok = await save(
-      { id, name, job: d.job.trim(), instructions: d.instructions.trim(), color: d.color, face: d.face, accessory: d.accessory, tagline: d.tagline.trim(), greeting: d.greeting.trim(), voice: d.voice.trim(), starters: d.starters.map((x) => x.trim()).filter(Boolean) },
+      { id, name, job: d.job.trim(), instructions: d.instructions.trim(), color: d.color, face: d.face, accessory: d.accessory, tagline: d.tagline.trim(), greeting: d.greeting.trim(), voice: d.voice.trim(), starters: d.starters.map((x) => x.trim()).filter(Boolean), leads: d.leads },
       {
         model: modelRefToString(d.model) ?? null,
         steps: d.steps ? Math.max(1, parseInt(d.steps, 10) || 0) || null : null,
@@ -202,7 +204,7 @@ export function TeammateEditor({ teammate, cfg, onDone }: { teammate?: Teammate;
               {showPrompt && (
                 <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.18 }} className="overflow-hidden">
                   <pre className="scroll-quiet mt-2 max-h-[320px] overflow-auto whitespace-pre-wrap rounded-lg bg-sunken px-3.5 py-3 font-mono text-[12px] leading-relaxed text-ink-2">
-                    {teammatePrompt({ id: id || "teammate", name: name || "your teammate", job: d.job, instructions: d.instructions, tagline: d.tagline, voice: d.voice })}
+                    {teammatePrompt({ id: id || "teammate", name: name || "your teammate", job: d.job, instructions: d.instructions, tagline: d.tagline, voice: d.voice, leads: d.leads })}
                   </pre>
                   <p className="mt-1.5 text-[12px] text-faint">Otto writes this as the agent's prompt on your machine. Project instructions (AGENTS.md) still apply on top.</p>
                 </motion.div>
@@ -214,6 +216,9 @@ export function TeammateEditor({ teammate, cfg, onDone }: { teammate?: Teammate;
             <ModelSelect value={d.model} onChange={(m) => set({ model: m })} inheritLabel="Use the session's model" />
           </div>
           <Rows>
+            <Row label="Leads the team" hint="Splits requests up and hands the parts to your other teammates. Nobody hands work to a lead.">
+              <Toggle on={d.leads} onChange={(v) => set({ leads: v })} label="Leads the team" />
+            </Row>
             <Row label="Max steps per turn">
               <input
                 type="number"
