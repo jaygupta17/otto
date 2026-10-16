@@ -6,6 +6,7 @@ import { create } from "zustand";
 import { OpenCode, OpenCodeError, type ServerInfo } from "../lib/opencode/client";
 import { startEventStream, type StreamStatus } from "../lib/opencode/events";
 import { reviveBoat } from "../lib/providers/provision";
+import { ensureBrowserKit } from "../lib/providers/boatBrowser";
 import { BoxdError, reviveBoxd } from "../lib/providers/boxd";
 import { E2BError, keepE2BAwake, reviveE2B } from "../lib/providers/e2b";
 import { DAYTONA_EXTRA_HEADERS, DAYTONA_PREVIEW_HEADER, DaytonaError, keepDaytonaAwake, reviveDaytona } from "../lib/providers/daytona";
@@ -117,6 +118,8 @@ export const useConnection = create<State>((set, get) => ({
       if (!info) throw new Error(ws.provider === "custom" ? `Can't reach this server. Is it running and reachable?${lastError ? ` (${lastError})` : ""}` : "Can't reach your agent server.");
 
       set({ client, info, status: "ready", detail: undefined });
+      // Boat machines get the agent's browser; older setups pick it up here.
+      if (ws.provider === "boat") void ensureBrowserKit(client).catch((e) => console.warn("browser kit:", e));
       keepAwake?.();
       keepAwake = null;
       if ((ws.provider === "e2b" || ws.provider === "daytona") && ws.sandboxId) {

@@ -174,6 +174,17 @@ export class BoatClient {
     );
   }
 
+  /**
+   * A signed-in URL for the live desktop (Moonlight stream). Null while Boat
+   * is still preparing it; ask
+   * again in a couple of seconds. It must be opened within 10 minutes, so ask
+   * on every page load. Secret-bearing: never log it.
+   */
+  async stream(id: string, signal?: AbortSignal): Promise<string | null> {
+    const r = await this.request<{ desktopUrl?: string | null; provisioning?: boolean }>("POST", `/sandboxes/${id}/desktop`, {}, undefined, signal);
+    return r.desktopUrl ?? null;
+  }
+
   /** Expose a port on Boat's HTTPS proxy. Returns the full (possibly token-gated) URL. */
   async host(id: string, port: number, title: string): Promise<string> {
     try {

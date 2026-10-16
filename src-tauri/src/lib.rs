@@ -57,6 +57,17 @@ pub fn run() {
             }
             Ok(())
         })
+        // macOS: closing the window (⌘W, red button) hides it like other Mac apps;
+        // clicking the Dock icon brings it back. ⌘Q still quits.
+        .on_window_event(|_window, _event| {
+            #[cfg(target_os = "macos")]
+            if let tauri::WindowEvent::CloseRequested { api, .. } = _event {
+                if _window.label() == "main" {
+                    api.prevent_close();
+                    let _ = _window.hide();
+                }
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             secrets::secret_get,
             secrets::secret_set,
@@ -70,6 +81,17 @@ pub fn run() {
             local::local_stop_server,
             dev_log
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Otto");
+        .build(tauri::generate_context!())
+        .expect("error while building Otto")
+        .run(|_app, _event| {
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = _event {
+                use tauri::Manager;
+                if let Some(w) = _app.get_webview_window("main") {
+                    let _ = w.show();
+                    let _ = w.unminimize();
+                    let _ = w.set_focus();
+                }
+            }
+        });
 }

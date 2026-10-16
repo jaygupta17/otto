@@ -31,6 +31,10 @@ export type {
   CommandInfo,
 };
 
+/** Boat's HTTPS proxy, and the cookie it reads the access token from. */
+const BOAT_PROXY = /\.on\.(boat|ascii)\.dev$/;
+const BOAT_COOKIE = "_port_auth";
+
 export interface ServerEndpoint {
   /** Origin (and optional path prefix) of the OpenCode server, no trailing slash. */
   baseUrl: string;
@@ -94,8 +98,26 @@ export class OpenCode {
         u.searchParams.set(k, String(v));
       }
     }
-    if (this.endpoint.gateToken && !this.endpoint.gateHeader) u.searchParams.set("_token", this.endpoint.gateToken);
+    if (this.endpoint.gateToken && !this.endpoint.gateHeader && !this.boatGate()) u.searchParams.set("_token", this.endpoint.gateToken);
     return u.toString();
+  }
+
+  /**
+   * Boat's proxy answers every `?_token=` request with a redirect that sets
+   * its `_port_auth` cookie (and a redirected POST comes back as a GET), so
+   * on Boat URLs the token goes in that cookie instead.
+   */
+  private boatGate() {
+    return !!this.endpoint.gateToken && !this.endpoint.gateHeader && BOAT_PROXY.test(new URL(this.endpoint.baseUrl).hostname);
+  }
+
+  /** The proxy's gate token as a header, when it isn't in the query. */
+  private gateHeaders(): Record<string, string> {
+    const token = this.endpoint.gateToken;
+    if (!token) return {};
+    if (this.endpoint.gateHeader) return { [this.endpoint.gateHeader]: token };
+    if (this.boatGate()) return { Cookie: `${BOAT_COOKIE}=${token}` };
+    return {};
   }
 
   headers(extra?: Record<string, string>): Record<string, string> {
@@ -103,7 +125,7 @@ export class OpenCode {
       Authorization: `Basic ${btoa(`opencode:${this.endpoint.password}`)}`,
       Accept: "application/json",
       ...this.endpoint.extraHeaders,
-      ...(this.endpoint.gateToken && this.endpoint.gateHeader ? { [this.endpoint.gateHeader]: this.endpoint.gateToken } : {}),
+      ...this.gateHeaders(),
       ...extra,
     };
   }
@@ -220,6 +242,10 @@ export class OpenCode {
   interrupt(id: string) {
     return this.request<unknown>("POST", `/api/session/${id}/interrupt`);
   }
+  /** Admit a synthetic message; with `resume: false` it waits for the next turn instead of starting one. */
+  synthetic(id: string, input: { text: string; description?: string; metadata?: Record<string, unknown>; resume?: boolean }) {
+    return this.request<unknown>("POST", `/api/session/${id}/synthetic`, { body: input });
+  }
   async fork(id: string, before?: string | null) {
     const r = await this.request<{ data: SessionInfo }>("POST", `/api/session/${id}/fork`, { body: { before: before ?? null } });
     return r.data;
@@ -268,6 +294,11 @@ export class OpenCode {
     const r = await this.request<{ data: Record<string, unknown> }>("GET", "/api/session/active");
     return Object.keys(r?.data ?? {});
   }
+  /** Questions waiting for an answer (the agent's `question` tool and others), across sessions. */
+  async pendingForms<T = unknown>(): Promise<T[]> {
+    const r = await this.request<{ data: T[] } | T[]>("GET", "/api/form");
+    return Array.isArray(r) ? r : (r.data ?? []);
+  }
   async pendingPermissions() {
     const r = await this.request<{ data: PermissionRequestLite[] } | PermissionRequestLite[]>("GET", "/api/permission/request");
     return Array.isArray(r) ? r : r.data;
@@ -285,16 +316,61 @@ export class OpenCode {
     return Array.isArray(r) ? r : r.data;
   }
   /**
+   * Sub-folders of an absolute path, for the folder browser. Inside `home`
+   * (a location) the fs API answers; elsewhere (or if it refuses) the shell does.
+   */
+  async listFolders(path: string, home?: string | null): Promise<{ name: string; path: string }[]> {
+    const base = path.replace(/\/+$/, "") || "/";
+    const join = (n: string) => `${base === "/" ? "" : base}/${n}`;
+    const inside = home && (base === home.replace(/\/$/, "") || base.startsWith(home.replace(/\/$/, "") + "/"));
+    if (inside) {
+      try {
+        const list = await this.listDir(base, home!);
+        return list
+          .filter((e) => e.type === "directory")
+          .map((e) => {
+            const name = e.path.replace(/\/$/, "").split("/").pop()!;
+            return { name, path: join(name) };
+          });
+      } catch {
+        /* fall through to the shell */
+      }
+    }
+    const q = `'${base.replace(/'/g, `'\\''`)}'`;
+    const r = await this.exec(`[ -d ${q} ] || { echo __OTTO_NOT_FOUND__; exit 44; }; find ${q} -mindepth 1 -maxdepth 1 -type d 2>/dev/null | head -n 2000`, { timeoutMs: 20_000 });
+    if (r.exit === 44 || r.output.startsWith("__OTTO_NOT_FOUND__")) throw new OpenCodeError(404, "NotFound", `No folder at ${path}`);
+    return r.output
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .map((full) => ({ name: full.split("/").pop()!, path: full }));
+  }
+
+  /**
    * Read a file. Absolute paths are sent as-is (`/api/fs/read//abs/path`);
    * relative paths resolve against `directory` (or the server's cwd).
    */
   async readFile(path: string, directory?: string): Promise<string> {
     const abs = path.startsWith("/");
+    const rel = abs && directory && path.startsWith(directory.replace(/\/$/, "") + "/");
+    if (abs && !rel) return this.readViaShell(path);
+    const r = await this.readFileBytes(path, directory);
+    return new TextDecoder().decode(r.bytes ?? new Uint8Array());
+  }
+
+  /**
+   * Read a file's raw bytes (images, PDFs, anything binary). `bytes` is null
+   * when the file is bigger than `maxBytes` (only its size comes back then).
+   * Outside a location it goes through the shell (base64), capped at ~140 KB.
+   */
+  async readFileBytes(path: string, directory?: string, opts: { maxBytes?: number } = {}): Promise<{ bytes: Uint8Array | null; mime: string; size: number; truncated?: boolean }> {
+    const max = opts.maxBytes ?? Infinity;
+    const abs = path.startsWith("/");
     const rel = abs && directory && path.startsWith(directory.replace(/\/$/, "") + "/") ? path.slice(directory.replace(/\/$/, "").length + 1) : null;
     // The fs API only serves files inside a location. Anything else (config
     // files, ~/.otto) is read through the shell, which doesn't boot a new
     // location (and its MCP servers) just to read one file.
-    if (abs && !rel) return this.readViaShell(path);
+    if (abs && !rel) return this.readBytesViaShell(path, max);
     const target = rel ?? (abs ? path : path.replace(/^\.\//, ""));
     const encoded = target.split("/").map(encodeURIComponent).join("/");
     // An absolute target keeps its leading "/", producing `/api/fs/read//abs/path`, which the server expects.
@@ -312,7 +388,28 @@ export class OpenCode {
       }
       throw new OpenCodeError(res.status, "ReadError", msg || `Couldn't open ${path}`);
     }
-    return res.text();
+    const mime = (res.headers.get("content-type") ?? "").split(";")[0].trim();
+    const length = Number(res.headers.get("content-length") ?? NaN);
+    if (Number.isFinite(length) && length > max) {
+      void res.body?.cancel().catch(() => {});
+      return { bytes: null, mime, size: length };
+    }
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    return { bytes, mime, size: bytes.byteLength };
+  }
+
+  private async readBytesViaShell(path: string, max: number) {
+    const q = `'${path.replace(/'/g, `'\\''`)}'`;
+    const cap = Math.min(max, 140_000);
+    const r = await this.exec(`if [ -f ${q} ]; then wc -c < ${q}; head -c ${cap} < ${q} | base64 | tr -d '\\n'; else echo __OTTO_NOT_FOUND__; exit 44; fi`);
+    if (r.exit === 44 || r.output.startsWith("__OTTO_NOT_FOUND__")) throw new OpenCodeError(404, "FileNotFound", `File not found: ${path}`);
+    if (r.exit !== 0) throw new OpenCodeError(500, "ReadError", r.output.slice(0, 200) || `Couldn't read ${path}`);
+    const [first, ...rest] = r.output.split("\n");
+    const size = Number(first.trim()) || 0;
+    if (size > max) return { bytes: null, mime: "", size };
+    const bin = atob(rest.join("").trim());
+    const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+    return { bytes, mime: "", size, truncated: bytes.byteLength < size };
   }
 
   private async readViaShell(path: string): Promise<string> {
@@ -391,7 +488,7 @@ export class OpenCode {
   socketHeaders(): Record<string, string> {
     return {
       ...this.endpoint.extraHeaders,
-      ...(this.endpoint.gateToken && this.endpoint.gateHeader ? { [this.endpoint.gateHeader]: this.endpoint.gateToken } : {}),
+      ...this.gateHeaders(),
     };
   }
 
@@ -455,7 +552,7 @@ export interface PtyInfo {
 }
 
 export interface FsEntry {
-  /** Relative to the listed directory; directories end with "/". */
+  /** Relative to the location root (not the listed folder); directories end with "/". */
   path: string;
   type: "file" | "directory";
 }
