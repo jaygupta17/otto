@@ -185,6 +185,23 @@ button {
   border-radius: 6px;
 }
 
+/* Transparent-image backdrop. */
+.checker {
+  background-color: var(--surface-sunken);
+  background-image:
+    linear-gradient(45deg, var(--checker, rgb(127 127 127 / 0.12)) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--checker, rgb(127 127 127 / 0.12)) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--checker, rgb(127 127 127 / 0.12)) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--checker, rgb(127 127 127 / 0.12)) 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+}
+
+/* Containers focused programmatically (dialogs, panes) don't need a ring. */
+[tabindex="-1"]:focus-visible {
+  outline: none;
+}
+
 input[type="range"] {
   accent-color: var(--text);
 }
@@ -254,9 +271,10 @@ html[data-touch] #root {
   height: var(--app-h, 100%);
 }
 
-/* A tall bottom sheet that still fits above the keyboard. */
+/* Fills a phone page's body (Sheet): a flex column with its own scrolling. */
 .h-sheet {
-  height: min(86dvh, calc(var(--app-h, 100dvh) - var(--safe-t) - 48px));
+  flex: 1 1 0%;
+  min-height: 0;
 }
 
 /* ------------------------------------------------------------------ */
@@ -752,4 +770,28 @@ html[data-touch] #root {
       0 0 0 3px var(--active),
       0 1px 4px rgb(0 0 0 / 0.3);
   }
+}
+
+/* ---- Tool rows ---------------------------------------------------------- */
+
+/* Scroll shadows: a fade at whichever edge has more to scroll. */
+.scroll-fade-top { mask-image: linear-gradient(to bottom, transparent, black 18px); }
+.scroll-fade-bottom { mask-image: linear-gradient(to top, transparent, black 18px); }
+.scroll-fade-top.scroll-fade-bottom { mask-image: linear-gradient(to bottom, transparent, black 18px, black calc(100% - 18px), transparent); }
+
+/* Revealed line in the file viewer. */
+.line-flash { animation: line-flash 1.6s ease-out; }
+@keyframes line-flash {
+  from { background: color-mix(in srgb, var(--info) 28%, transparent); }
+  to { background: transparent; }
+}
+
+/* Diff rows. */
+.diff-add { background: color-mix(in srgb, var(--ok) 13%, transparent); }
+.diff-del { background: color-mix(in srgb, var(--danger) 13%, transparent); }
+.diff-add .diff-sign { color: var(--ok); }
+.diff-del .diff-sign { color: var(--danger); }
+
+@media (prefers-reduced-motion: reduce) {
+  .line-flash { animation: none; }
 }

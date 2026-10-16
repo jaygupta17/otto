@@ -105,7 +105,7 @@ export function Select<T extends string>({
         <ChevronDown size={14} className={`shrink-0 text-faint transition-transform duration-150 ${open ? "rotate-180" : ""}`} />
       </button>
       <Popover open={open} onClose={() => setOpen(false)} anchor={anchor.current} width={width ?? Math.max(180, anchor.current?.offsetWidth ?? 180)}>
-        <div ref={list} role="listbox" className="scroll-quiet overflow-y-auto p-1" style={{ maxHeight }} onKeyDown={onKey}>
+        <div ref={list} role="listbox" className="scroll-quiet overflow-y-auto p-1" style={{ maxHeight: `min(${maxHeight}px, var(--pop-max, ${maxHeight}px))` }} onKeyDown={onKey}>
           {options.map((o, i) => {
             const on = o.value === value;
             return (

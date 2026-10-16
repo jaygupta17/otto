@@ -1,7 +1,7 @@
 /**
  * Promise-based confirm and prompt dialogs, so an action can ask
  * `if (await confirmDialog({...}))` without owning any UI state.
- * A bottom sheet on phones, a small centered dialog elsewhere.
+ * A small centered dialog, on phones too.
  */
 import { useEffect, useRef, useState } from "react";
 import { create } from "zustand";

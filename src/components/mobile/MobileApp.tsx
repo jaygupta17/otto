@@ -6,6 +6,7 @@ import { sortedSessions, useChat } from "../../state/chat";
 import { useConnection } from "../../state/connection";
 import { useActiveWorkspace, useWorkspaces } from "../../state/workspaces";
 import { useUI, backdropSettings, type PanelSurface } from "../../state/ui";
+import { useComputer } from "../../state/computer";
 import { basename, timeAgo } from "../../lib/format";
 import { deleteSession, renameSession } from "../../lib/actions";
 import { useNow } from "../../hooks/useNow";
@@ -21,41 +22,44 @@ import { Popover, MenuItem } from "../ui/Popover";
 import { AgentClock } from "../ui/AgentClock";
 import { Backdrop } from "../ui/Backdrop";
 import { InboxTray } from "../chat/SessionExtras";
+import { AskDock } from "../chat/Asks";
 import { ChatScrim } from "../ui/ChatScrim";
 import { AppGlyph } from "../ui/Mark";
 import { ConnectionBanner } from "../shell/Home";
 import { FilesPanel } from "../files/FilesPanel";
-import { Editor } from "../files/Editor";
+import { EditorBody } from "../files/Editor";
 import { SchedulesView } from "../schedules/SchedulesView";
 import { statusText } from "../shell/Sidebar";
+import { SessionHistory } from "../chat/SessionHistory";
 
 /** Phone layout: a two-level stack (sessions → session) with swipe-back. */
 export function MobileApp() {
   const activeId = useChat((s) => s.activeId);
   const view = useUI((s) => s.view);
   const setView = useUI((s) => s.setView);
-  const [newOpen, setNewOpen] = useState(false);
-  const pushed = !!activeId || view === "schedules";
+  const draftOpen = useUI((s) => s.draftOpen);
+  const setDraftOpen = useUI((s) => s.setDraftOpen);
+  const pushed = !!activeId || draftOpen || view === "schedules";
   const bd = backdropSettings(useUI((s) => s.backdrop));
   useBack(view === "schedules", () => setView("chat"));
   useBack(!!activeId && view !== "schedules", () => useChat.getState().open(null));
+  useBack(draftOpen && view !== "schedules", () => setDraftOpen(false));
 
   // Same materials as desktop (styles.css → Materials): the photo sits behind
   // every screen and each screen frosts over it instead of painting a solid fill.
   return (
     <div className="relative h-full w-full overflow-hidden bg-bg">
       {bd.on && <Backdrop />}
-      <SessionsScreen onNew={() => setNewOpen(true)} dimmed={pushed} />
+      <SessionsScreen onNew={() => setDraftOpen(true)} dimmed={pushed} />
       <AnimatePresence>
         {view === "schedules" ? (
           <motion.div key="schedules" initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }} transition={{ type: "spring", stiffness: 380, damping: 40 }} className="surface-panel absolute inset-0 z-10 shadow-pop">
             <SchedulesView compact onBack={() => setView("chat")} />
           </motion.div>
         ) : (
-          activeId && <SessionScreen key={activeId} sessionId={activeId} />
+          draftOpen ? <DraftScreen key="draft" /> : activeId && <SessionScreen key={activeId} sessionId={activeId} />
         )}
       </AnimatePresence>
-      <NewSessionSheet open={newOpen} onClose={() => setNewOpen(false)} />
     </div>
   );
 }
@@ -225,7 +229,11 @@ function SessionScreen({ sessionId }: { sessionId: string }) {
   const [menu, setMenu] = useState(false);
   const [files, setFiles] = useState(false);
   const [tool, setTool] = useState<PanelSurface | null>(null);
-  // Links tapped in chat or a terminal open in the browser sheet.
+  const closeFiles = () => {
+    const ui = useUI.getState();
+    for (const f of ui.editorFiles) ui.closeEditorFile(f);
+  };
+  // Links tapped in chat or a terminal open in the Browser page.
   const browserN = useUI((s) => s.browserRequest?.n);
   const seenN = useRef(browserN);
   useEffect(() => {
@@ -234,6 +242,15 @@ function SessionScreen({ sessionId }: { sessionId: string }) {
       setTool("browser");
     }
   }, [browserN]);
+  // So does taking control of the agent's screen (a handoff card's button).
+  const takenN = useComputer((s) => s.opened);
+  const seenTaken = useRef(takenN);
+  useEffect(() => {
+    if (takenN !== seenTaken.current) {
+      seenTaken.current = takenN;
+      setTool("browser");
+    }
+  }, [takenN]);
   const activeFile = useUI((s) => s.activeFile);
   const moreRef = useRef<HTMLButtonElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
@@ -277,6 +294,7 @@ function SessionScreen({ sessionId }: { sessionId: string }) {
               {status !== "ready" && ` · ${statusText(status).toLowerCase()}`}
             </div>
           </div>
+          <SessionHistory sessionId={sessionId} phone />
           <button onClick={() => setFiles(true)} className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-hover" aria-label="Files">
             <FolderTree size={19} />
           </button>
@@ -311,41 +329,91 @@ function SessionScreen({ sessionId }: { sessionId: string }) {
       >
         <div className="panel-fade h-6 bg-gradient-to-b from-transparent to-[var(--bg-panel)]" />
         <div className="panel-fill pointer-events-auto pb-2">
+          <AskDock sessionId={sessionId} />
           <InboxTray sessionId={sessionId} />
           <Composer sessionId={sessionId} compact placeholder="Message your agent" />
         </div>
       </div>
 
-      <Sheet open={files && !activeFile} onClose={() => setFiles(false)} compact>
-        <div className="h-sheet">{session && <FilesPanel root={session.location.directory} />}</div>
+      {/* Pages stack: a file opened from Files goes back to Files. A phone has no tabs, so back closes them all. */}
+      <Sheet open={files} onClose={() => setFiles(false)} compact title={basename(session?.location.directory ?? "") || "Files"}>
+        <div className="h-sheet">{session && <FilesPanel root={session.location.directory} bare />}</div>
       </Sheet>
-      <Sheet open={!!tool} onClose={() => setTool(null)} compact>
+      <Sheet open={!!tool} onClose={() => setTool(null)} compact bare>
         <div className="flex h-sheet flex-col">
           <PanelChrome value={{ docked: false, onClose: () => setTool(null) }}>
             {tool && <SurfaceBody surface={tool} root={session?.location.directory ?? null} sessionId={sessionId} />}
           </PanelChrome>
         </div>
       </Sheet>
-      <Sheet open={!!activeFile} onClose={() => useUI.getState().closeEditorFile(activeFile!)} compact>
-        <div className="h-sheet">{session && activeFile && <Editor root={session.location.directory} />}</div>
+      <Sheet open={!!activeFile} onClose={closeFiles} compact title={activeFile ? basename(activeFile) : undefined}>
+        <div className="flex h-sheet flex-col">{session && activeFile && <EditorBody root={session.location.directory} />}</div>
       </Sheet>
     </motion.div>
   );
 }
 
-function NewSessionSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+/**
+ * A new session on the phone: the same screen as a session, empty until the
+ * first message. Sending closes the draft and opens the session it made.
+ */
+function DraftScreen() {
+  const open = useChat((s) => s.open);
+  const ws = useActiveWorkspace();
+  const drag = useDragControls();
+  const setDraftOpen = useUI((s) => s.setDraftOpen);
+  const close = () => setDraftOpen(false);
   return (
-    <Sheet open={open} onClose={onClose} compact title="New session">
-      <div className="px-4 pb-6">
-        <div className="mb-3 flex justify-center pt-2">
-          <AppGlyph size={36} />
+    <motion.div
+      initial={{ x: "100%" }}
+      animate={{ x: 0 }}
+      exit={{ x: "100%" }}
+      transition={{ type: "spring", stiffness: 380, damping: 40 }}
+      drag="x"
+      dragControls={drag}
+      dragListener={false}
+      dragConstraints={{ left: 0, right: 0 }}
+      dragElastic={{ left: 0, right: 0.9 }}
+      onDragEnd={(_, info) => {
+        if (info.offset.x > 110 || info.velocity.x > 500) close();
+      }}
+      className="chat-surface on-scrim absolute inset-0 z-10 flex flex-col shadow-pop"
+    >
+      <ChatScrim />
+      <div className="absolute inset-y-0 left-0 z-30 w-5 touch-none" onPointerDown={(e) => drag.start(e)} />
+      <header className="safe-top relative z-20 shrink-0">
+        <div className="flex h-[60px] items-center gap-2 border-b border-line px-3">
+          <button onClick={close} className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-hover" aria-label="Back">
+            <ChevronLeft size={22} />
+          </button>
+          <div className="min-w-0 flex-1 text-center">
+            <div className="truncate text-[16px] font-semibold">New session</div>
+            {/* The folder picker sits under the composer; say only where it runs. */}
+            <div className="truncate text-[12.5px] text-muted">{ws?.name}</div>
+          </div>
+          <SessionHistory sessionId={null} phone />
         </div>
-        <div className="mb-5 text-center text-[20px] font-semibold">What are we building?</div>
-        <Composer sessionId={null} compact autoFocus placeholder="Describe the task" onSent={onClose} />
-        <div className="mt-2 flex items-center px-1">
-          <ProjectPicker />
+      </header>
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-6 pb-6 text-center">
+        <AppGlyph size={36} />
+        <div className="mt-5 text-[20px] font-semibold">What are we building?</div>
+      </div>
+      <div className="safe-bottom relative z-10 px-3">
+        <div className="panel-fill pb-2">
+          <Composer
+            sessionId={null}
+            compact
+            placeholder="Describe the task"
+            onSent={(id) => {
+              setDraftOpen(false);
+              open(id);
+            }}
+          />
+          <div className="mt-2 flex items-center px-1">
+            <ProjectPicker />
+          </div>
         </div>
       </div>
-    </Sheet>
+    </motion.div>
   );
 }

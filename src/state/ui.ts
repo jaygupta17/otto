@@ -72,10 +72,10 @@ export interface Toast {
 }
 
 /** Tools in the right-hand panel, opened from the rail at the window's edge. */
-export type PanelSurface = "files" | "terminal" | "browser" | "context" | "project";
+export type PanelSurface = "files" | "terminal" | "browser" | "context" | "project" | "memory";
 
 /** Width each surface opens at until the user drags it (px). */
-export const PANEL_DEFAULT_WIDTH: Record<PanelSurface, number> = { files: 640, terminal: 600, browser: 620, context: 360, project: 540 };
+export const PANEL_DEFAULT_WIDTH: Record<PanelSurface, number> = { files: 640, terminal: 600, browser: 620, context: 360, project: 540, memory: 420 };
 
 interface UIState {
   theme: ThemePref;
@@ -104,7 +104,9 @@ interface UIState {
   /** Files open in the editor panel (absolute paths), in tab order. */
   editorFiles: string[];
   activeFile: string | null;
-  openInEditor(path: string): void;
+  /** A line to reveal in an open file (`n` changes on every request so the same line can be revealed twice). */
+  editorLine: { path: string; line: number; n: number } | null;
+  openInEditor(path: string, line?: number): void;
   closeEditorFile(path: string): void;
   paletteOpen: boolean;
   setPalette(v: boolean): void;
@@ -113,6 +115,9 @@ interface UIState {
   /** Main-area page on desktop / pushed screen on phones. */
   view: "chat" | "schedules";
   setView(v: "chat" | "schedules"): void;
+  /** A new session on the phone, pushed like a session. Desktop drafts live on the home screen. */
+  draftOpen: boolean;
+  setDraftOpen(v: boolean): void;
   backdrop: Backdrop;
   setBackdrop(b: Partial<Backdrop>): void;
   /** The user's saved backgrounds (photos and fills). */
@@ -190,6 +195,7 @@ export const useUI = create<UIState>((set, get) => ({
   toasts: [],
   editorFiles: [],
   activeFile: null,
+  editorLine: null,
   paletteOpen: false,
   shortcutsOpen: false,
   setPalette(v) {
@@ -198,9 +204,14 @@ export const useUI = create<UIState>((set, get) => ({
   setShortcuts(v) {
     set({ shortcutsOpen: v });
   },
-  openInEditor(path) {
+  openInEditor(path, line) {
     const files = get().editorFiles;
-    set({ editorFiles: files.includes(path) ? files : [...files, path].slice(-12), activeFile: path, panel: "files" });
+    set({
+      editorFiles: files.includes(path) ? files : [...files, path].slice(-12),
+      activeFile: path,
+      panel: "files",
+      editorLine: line && line > 0 ? { path, line, n: (get().editorLine?.n ?? 0) + 1 } : get().editorLine,
+    });
   },
   closeEditorFile(path) {
     const files = get().editorFiles;
@@ -210,6 +221,10 @@ export const useUI = create<UIState>((set, get) => ({
     set({ editorFiles: next, activeFile: active });
   },
   view: "chat",
+  draftOpen: false,
+  setDraftOpen(v) {
+    set({ draftOpen: v });
+  },
   setView(v) {
     set({ view: v });
   },

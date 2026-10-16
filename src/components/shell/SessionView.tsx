@@ -4,12 +4,15 @@ import { useChat } from "../../state/chat";
 import { useUI } from "../../state/ui";
 import { Thread } from "../chat/Thread";
 import { Composer } from "../chat/Composer";
+import { SessionHistory } from "../chat/SessionHistory";
 import { IconButton } from "../ui/Button";
 import { basename, money } from "../../lib/format";
 import { useTrafficLights } from "../../hooks/useChrome";
 import { ConnectionBanner } from "./Home";
 import { ChatScrim } from "../ui/ChatScrim";
 import { InboxTray } from "../chat/SessionExtras";
+import { AskDock } from "../chat/Asks";
+import { kbd } from "../../hooks/useShortcuts";
 
 /** Desktop session pane: header, thread, floating composer. */
 export function SessionView({ sessionId }: { sessionId: string }) {
@@ -35,7 +38,7 @@ export function SessionView({ sessionId }: { sessionId: string }) {
       <header className={`drag relative z-10 flex h-[52px] shrink-0 items-center gap-2 pr-3 ${!sidebarOpen && mac ? "pl-[84px]" : "pl-3"}`} data-tauri-drag-region>
         {!sidebarOpen && (
           <>
-            <IconButton label="Show sidebar (⌘B)" className="no-drag" onClick={() => toggleSidebar(true)}>
+            <IconButton label={`Show sidebar (${kbd("⌘B")})`} className="no-drag" onClick={() => toggleSidebar(true)}>
               <PanelLeft size={17} />
             </IconButton>
             <IconButton label="New session" className="no-drag" onClick={() => open(null)}>
@@ -56,6 +59,7 @@ export function SessionView({ sessionId }: { sessionId: string }) {
             )}
           </div>
         </div>
+        <SessionHistory sessionId={sessionId} />
       </header>
 
       <Thread sessionId={sessionId} bottomInset={inset} />
@@ -65,6 +69,7 @@ export function SessionView({ sessionId }: { sessionId: string }) {
         <div className="panel-fill pointer-events-auto px-5 pb-4 sm:px-8">
           <div className="mx-auto w-full max-w-[760px]">
             <ConnectionBanner />
+            <AskDock sessionId={sessionId} />
             <InboxTray sessionId={sessionId} />
             <Composer sessionId={sessionId} autoFocus placeholder="Reply, or steer the agent…" />
           </div>

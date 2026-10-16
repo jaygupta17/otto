@@ -1,3 +1,4 @@
+import { usePage } from "../ui/Sheet";
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowLeft, ArrowRight, Check, ChevronDown, Eye, EyeOff, ExternalLink, KeyRound, Laptop, Server, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -124,9 +125,11 @@ const SLEEP = [
 ];
 
 /**
- * First-run flow (full screen) and "Add workspace" flow (embedded in a sheet).
+ * First-run flow (full screen) and "Add workspace" flow (embedded in a dialog, or a page on phones).
  */
 export function Onboarding({ embedded = false, onDone, onCancel }: { embedded?: boolean; onDone?: () => void; onCancel?: () => void }) {
+  // A phone page has its own back button.
+  const inPage = !!usePage();
   const [screen, setScreen] = useState<Screen>("providers");
   const [dir, setDir] = useState(1);
   const go = (s: Screen, d = 1) => {
@@ -395,7 +398,7 @@ export function Onboarding({ embedded = false, onDone, onCancel }: { embedded?: 
   if (embedded) {
     return (
       <div className="relative px-6 pt-5 pb-6">
-        {onCancel && screen !== "setup" && (
+        {onCancel && screen !== "setup" && !inPage && (
           <button onClick={onCancel} className="absolute top-4 right-4 grid h-8 w-8 place-items-center rounded-full text-muted hover:bg-hover hover:text-ink" aria-label="Close">
             <X size={17} />
           </button>

@@ -4,15 +4,19 @@
  * context panel: one surface at a time, its own remembered width, a resize
  * handle on the left edge, and an "expand" mode that covers the chat.
  */
-import { BookOpen, FolderTree, Gauge, Globe, Maximize2, Minimize2, SquareTerminal, X } from "lucide-react";
+import { BackButton, usePage } from "../ui/Sheet";
+import { BookOpen, Bookmark, FolderTree, Gauge, Globe, Maximize2, Minimize2, SquareTerminal, X } from "lucide-react";
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { useUI, PANEL_DEFAULT_WIDTH, type PanelSurface } from "../../state/ui";
 import { useTerminals } from "../../state/terminals";
+import { useHandoff } from "../../state/computer";
 import { IconButton } from "../ui/Button";
 import { FilesSurface, ContextSurface } from "./Surfaces";
 import { TerminalSurface } from "./TerminalSurface";
 import { BrowserSurface } from "./BrowserSurface";
 import { ProjectSurface } from "./ProjectSurface";
+import { MemorySurface } from "./MemorySurface";
+import { kbd } from "../../hooks/useShortcuts";
 
 export const SURFACES: { id: PanelSurface; label: string; keys: string; icon: (size: number) => ReactNode }[] = [
   { id: "files", label: "Files", keys: "⌘⇧E", icon: (s) => <FolderTree size={s} /> },
@@ -20,6 +24,7 @@ export const SURFACES: { id: PanelSurface; label: string; keys: string; icon: (s
   { id: "browser", label: "Browser", keys: "⌘⇧B", icon: (s) => <Globe size={s} /> },
   { id: "context", label: "Context", keys: "⌘⇧I", icon: (s) => <Gauge size={s} /> },
   { id: "project", label: "Project", keys: "⌘⇧J", icon: (s) => <BookOpen size={s} /> },
+  { id: "memory", label: "Memory", keys: "⌘⇧M", icon: (s) => <Bookmark size={s} /> },
 ];
 
 const MIN_W = 300;
@@ -27,11 +32,11 @@ const MIN_W = 300;
 const MIN_CHAT = 360;
 
 // ---------------------------------------------------------------------------
-// Chrome shared by every surface (desktop panel or phone sheet)
+// Chrome shared by every surface (desktop panel or phone page)
 // ---------------------------------------------------------------------------
 
 interface Chrome {
-  /** Docked in the desktop panel (vs. a phone sheet). */
+  /** Docked in the desktop panel (vs. a phone page). */
   docked: boolean;
   onClose(): void;
 }
@@ -46,6 +51,16 @@ export function PanelHeader({ children, actions }: { children: ReactNode; action
   const { docked, onClose } = useContext(ChromeCtx);
   const expanded = useUI((s) => s.panelExpanded);
   const setExpanded = useUI((s) => s.setPanelExpanded);
+  // On a phone page: back on the left, as on every page, and no close.
+  const page = usePage();
+  if (page)
+    return (
+      <div className="flex h-[60px] shrink-0 items-center gap-2 border-b border-line pr-3 pl-3">
+        <BackButton onClick={page.back} />
+        <div className="flex min-w-0 flex-1 items-center gap-2">{children}</div>
+        {actions && <div className="flex shrink-0 items-center gap-0.5">{actions}</div>}
+      </div>
+    );
   return (
     <div className={`${docked ? "drag h-[52px]" : "h-12"} flex shrink-0 items-center gap-1 border-b border-line pr-2 pl-3`} data-tauri-drag-region>
       <div className="flex min-w-0 flex-1 items-center gap-2" data-tauri-drag-region>
@@ -90,7 +105,7 @@ export function PanelEmpty({ icon, title, body, children }: { icon: ReactNode; t
   );
 }
 
-/** One surface's body, for both the panel and phone sheets. */
+/** One surface's body, for both the panel and phone pages. */
 export function SurfaceBody({ surface, root, sessionId }: { surface: PanelSurface; root: string | null; sessionId: string | null }) {
   switch (surface) {
     case "files":
@@ -103,6 +118,8 @@ export function SurfaceBody({ surface, root, sessionId }: { surface: PanelSurfac
       return <ContextSurface sessionId={sessionId} />;
     case "project":
       return <ProjectSurface root={root} />;
+    case "memory":
+      return <MemorySurface root={root} />;
   }
 }
 
@@ -207,12 +224,14 @@ export function RightRail() {
   const toggle = useUI((s) => s.togglePanel);
   const terms = useTerminals((s) => s.tabs.length);
   const browsing = useUI((s) => !!s.browserRequest);
+  // The agent is waiting for the person to take over its screen.
+  const waiting = !!useHandoff(null);
   return (
     <nav aria-label="Tools" className="surface-sidebar relative z-[1] flex h-full w-11 shrink-0 flex-col items-center gap-1 border-l border-line pt-2">
       {SURFACES.map((s) => {
         const on = panel === s.id;
         const badge = s.id === "terminal" && terms > 0 ? String(terms) : null;
-        const dot = s.id === "browser" && browsing && !on;
+        const dot = s.id === "browser" && (waiting || browsing) && !on;
         return (
           <div key={s.id} className="group relative">
             <button
@@ -229,7 +248,7 @@ export function RightRail() {
             </button>
             {/* Tooltip on the left, like OpenChamber's rail. */}
             <span className="pointer-events-none absolute top-1/2 right-full z-50 mr-2 -translate-y-1/2 whitespace-nowrap rounded-md border border-line bg-surface-solid px-2 py-1 text-[12px] text-ink opacity-0 shadow-md transition-opacity delay-300 group-hover:opacity-100">
-              {s.label} <span className="ml-1 text-faint">{s.keys}</span>
+              {s.label} <span className="ml-1 text-faint">{kbd(s.keys)}</span>
             </span>
           </div>
         );
