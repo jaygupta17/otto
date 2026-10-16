@@ -817,8 +817,9 @@ function flush() {
               time: { ...sessions[sid].time, updated: e.created ?? Date.now() },
             };
           }
-          if (e.type === "session.execution.succeeded") alerts.push({ kind: "finished", sessionId: sid, title: titleOf(sid), body: "Finished. Your turn." });
-          else if (e.type === "session.execution.failed") {
+          // A delegated part finishing isn't your turn: the lead carries on and reports for it.
+          if (!parents[sid] && e.type === "session.execution.succeeded") alerts.push({ kind: "finished", sessionId: sid, title: titleOf(sid), body: "Finished. Your turn." });
+          else if (!parents[sid] && e.type === "session.execution.failed") {
             const msg = ((d.error as { message?: string } | undefined)?.message ?? "").split("\n")[0].trim();
             alerts.push({ kind: "failed", sessionId: sid, title: titleOf(sid), body: msg ? `Stopped: ${msg.length > 120 ? `${msg.slice(0, 118)}…` : msg}` : "Stopped with an error." });
           }
