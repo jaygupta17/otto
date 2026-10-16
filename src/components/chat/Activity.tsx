@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from "motion/react";
 import {
   AlertTriangle,
+  ArrowUpRight,
   BookOpen,
   Bookmark,
   Brain,
@@ -96,7 +97,7 @@ const ToolRun = memo(function ToolRun({ blocks, live }: { blocks: Block[]; live:
   const running = blocks.some((b) => (b.kind === "tool" && isLive(b)) || (b.kind === "reasoning" && b.streaming));
   const open = userOpen ?? (live || running);
   const failed = blocks.filter(toolFailed).length;
-  // "Worked for 1m 12s" leads; what was done follows quietly. Thinking alone reads as "Thought".
+  // "Worked 1m 12s" leads; what was done follows quietly. Thinking alone reads as "Thought".
   const actions = useMemo(() => blocks.filter((b) => b.kind === "tool"), [blocks]);
   const detail = actions.length ? summarizeTools(actions) : "";
   const first = Math.min(...blocks.map((b) => (b.kind === "tool" || b.kind === "reasoning" ? b.started : Infinity)));
@@ -111,20 +112,18 @@ const ToolRun = memo(function ToolRun({ blocks, live }: { blocks: Block[]; live:
         onClick={() => setUserOpen(!open)}
         className="group -ml-1 flex max-w-full items-center gap-1.5 rounded-md px-1 py-1 text-[14px] text-muted transition-colors hover:text-ink"
       >
-        <motion.span animate={{ rotate: open ? 90 : 0 }} transition={{ duration: 0.18, ease }} className="text-faint group-hover:text-ink">
-          <ChevronRight size={15} />
-        </motion.span>
-        {running && <AgentClock size={12} />}
-        <span className="shrink-0 text-ink-2 group-hover:text-ink">
-          {verb}
-          {Number.isFinite(took) && took >= 1000 && <span className="tabular-nums"> for {duration(took)}</span>}
-        </span>
+        {running && <AgentClock size={12} className="mr-0.5" />}
+        <span className={`shrink-0 ${running ? "shimmer" : "text-ink-2 group-hover:text-ink"}`}>{verb}</span>
+        {Number.isFinite(took) && took >= 1000 && <span className="shrink-0 text-faint tabular-nums">{duration(took)}</span>}
         {detail && <span className="min-w-0 truncate text-faint">· {detail.charAt(0).toLowerCase() + detail.slice(1)}</span>}
         {failed > 0 && (
-          <span className="ml-1 inline-flex items-center gap-1 rounded-md bg-danger-soft px-1.5 py-px text-[12px] font-medium text-danger" title={`${failed} failed`}>
-            <AlertTriangle size={11} /> {failed}
+          <span className="ml-1 inline-flex items-center gap-1 text-[12.5px] text-danger" title={`${failed} failed`}>
+            <AlertTriangle size={12} /> {failed}
           </span>
         )}
+        <motion.span animate={{ rotate: open ? 90 : 0 }} transition={{ duration: 0.18, ease }} className="shrink-0 text-faint group-hover:text-ink">
+          <ChevronRight size={14} />
+        </motion.span>
       </button>
       <AnimatePresence initial={false}>
         {open && (
@@ -269,7 +268,7 @@ const ToolRow = memo(function ToolRow({ b, step }: { b: ToolBlock; step?: Browse
               </>
             )}
           </span>
-          <span className={`shrink-0 ${failed ? "text-danger" : active ? "text-ink" : "text-ink-2"}`}>{label.verb}</span>
+          <span className={`shrink-0 ${failed ? "text-danger" : active ? "shimmer" : "text-ink-2"}`}>{label.verb}</span>
           {label.path ? (
             <PathLabel path={label.path} className="text-[13.5px]" />
           ) : files.length > 1 ? (
@@ -339,19 +338,32 @@ const ToolRow = memo(function ToolRow({ b, step }: { b: ToolBlock; step?: Browse
 // ---------------------------------------------------------------------------
 
 /**
- * Who a task went to: a teammate's face (wearing the task's state) and name,
- * or a plain agent's colour dot.
+ * Who a task went to. A teammate's face wears the task's state, so it is the
+ * spinner, the check and the alert at once; a plain agent gets the clock while
+ * it works and its colour dot otherwise.
  */
 function Assignee({ agent, state = "idle" }: { agent?: string; state?: FaceState }) {
   const t = useTeammate(agent);
   const name = useAgentName(agent);
   return (
     <>
-      {t ? <TeammateFace seed={t.face} color={t.color} accessory={t.accessory} size={22} state={state} /> : <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: agentColor(agent) }} />}
-      <span className="min-w-0 truncate font-medium text-ink">{name || "Subagent"}</span>
+      {t ? (
+        <TeammateFace seed={t.face} color={t.color} accessory={t.accessory} size={20} state={state} />
+      ) : state === "working" ? (
+        <AgentClock size={12} />
+      ) : (
+        <span className="grid h-5 w-5 shrink-0 place-items-center">
+          <span className="h-2 w-2 rounded-full" style={{ background: agentColor(agent) }} />
+        </span>
+      )}
+      <span className="shrink-0 font-medium text-ink">{name || "Subagent"}</span>
     </>
   );
 }
+
+/** Small icon actions that wait at the end of a row until you reach for it (always shown on touch). */
+const rowAction =
+  "grid h-6 w-6 shrink-0 place-items-center rounded-md text-faint opacity-0 transition-opacity group-hover/agent:opacity-100 group-focus-within/agent:opacity-100 hover:bg-hover hover:text-ink focus-visible:opacity-100 [@media(hover:none)]:opacity-100";
 
 /** Is `sid` the child or a descendant of it (a subagent's own subagents ask through it)? */
 function within(parents: Record<string, string>, sid: string, child: string) {
@@ -372,9 +384,11 @@ function useLatestStep(child: string | undefined): { b: ToolBlock; steps: number
 }
 
 /**
- * A delegated task as a card: who's on it, how it stands, what it's doing
- * right now, and its result. Stopping tells the parent agent first that it
- * was the user, so the cancellation doesn't read as a failure to retry.
+ * A delegated task as one line: the teammate's face, their name, and what
+ * they're doing right now, shimmering while it's live. It opens into the
+ * brief and the result; their conversation and Stop wait at the end of the
+ * line. Stopping tells the parent agent first that it was the user, so the
+ * cancellation doesn't read as a failure to retry.
  */
 const SubagentRow = memo(function SubagentRow({ b }: { b: ToolBlock }) {
   const [open, setOpen] = useState(false);
@@ -396,6 +410,7 @@ const SubagentRow = memo(function SubagentRow({ b }: { b: ToolBlock }) {
     (st) => !!child && (Object.values(st.permissions).some((p) => within(st.parents, p.sessionID, child)) || Object.values(st.forms).some((f) => within(st.parents, f.sessionID, child))),
   );
   const stopSubagent = useChat((st) => st.stopSubagent);
+  const name = useAgentName(s.agent) || "Subagent";
   const [stopping, setStopping] = useState(false);
 
   const { phase, output, error, ended } = subagentPhase(b, { childBusy, report, stopped: stopped || stopping });
@@ -403,7 +418,7 @@ const SubagentRow = memo(function SubagentRow({ b }: { b: ToolBlock }) {
   const now = useNow(running);
   const took = (ended ?? (running ? now : b.ended ?? b.started)) - b.started;
 
-  // A running child's conversation, so the card can say what it's doing now.
+  // A running child's conversation, so the line can say what it's doing now.
   useEffect(() => {
     if (!child || !running) return;
     const t = useChat.getState().timelines[child];
@@ -411,23 +426,25 @@ const SubagentRow = memo(function SubagentRow({ b }: { b: ToolBlock }) {
   }, [child, running]);
   const latest = useLatestStep(child);
   const step = latest?.b ? toolLabel(latest.b) : null;
+  const doing = step ? [step.verb, step.path ? step.path.split("/").pop() : step.target].filter(Boolean).join(" ") : "";
 
-  const status = asking
-    ? "Needs you"
-    : phase === "running"
-      ? s.background && !isLive(b)
-        ? "Running in background"
-        : "Working"
-      : phase === "background"
-        ? "Started in background"
-        : phase === "stopped"
-          ? "Stopped"
-          : phase === "error"
-            ? "Failed"
-            : "Done";
-  const tone = asking ? "text-info" : phase === "error" ? "text-danger" : "text-faint";
-  const teammate = !!useTeammate(s.agent);
   const face: FaceState = asking ? "needs" : running ? "working" : phase === "done" ? "done" : "idle";
+  // One phrase carries the state: live work shimmers, a stop is struck through, trouble takes the status hue.
+  const line = asking ? (
+    <span className="min-w-0 truncate text-info">needs you</span>
+  ) : running ? (
+    <span className="shimmer min-w-0 truncate">{doing || s.description || "Working"}</span>
+  ) : phase === "background" ? (
+    <span className="min-w-0 truncate text-muted">
+      {s.description} <span className="text-faint">· in the background</span>
+    </span>
+  ) : phase === "error" ? (
+    <span className="min-w-0 truncate text-danger">couldn't finish{s.description ? ` · ${s.description}` : ""}</span>
+  ) : phase === "stopped" ? (
+    <span className="min-w-0 truncate text-faint line-through decoration-line-strong">{s.description || "Stopped"}</span>
+  ) : (
+    <span className="min-w-0 truncate text-muted">{s.description}</span>
+  );
 
   const stop = async () => {
     if (!child || !sid) return;
@@ -440,66 +457,39 @@ const SubagentRow = memo(function SubagentRow({ b }: { b: ToolBlock }) {
   };
 
   return (
-    <div className={`my-2 overflow-hidden rounded-xl border bg-raised ${asking ? "border-info/50" : "border-line"}`}>
-      <div className="flex min-w-0 items-center gap-2 px-3 py-2">
-        <button aria-expanded={open} onClick={() => setOpen((v) => !v)} className="flex min-w-0 flex-1 items-center gap-2 text-left text-[14px]">
-          <motion.span animate={{ rotate: open ? 90 : 0 }} transition={{ duration: 0.18, ease }} className="shrink-0 text-faint">
+    <div className="group/agent my-1">
+      <div className="-ml-1 flex min-w-0 items-center gap-0.5 rounded-md">
+        <button
+          aria-expanded={open}
+          onClick={() => setOpen((v) => !v)}
+          title={s.description}
+          className="group/line flex min-w-0 items-center gap-2 rounded-md px-1 py-1 text-left text-[14px]"
+        >
+          <Assignee agent={s.agent} state={face} />
+          {line}
+          {took > 1500 && <span className="shrink-0 text-[12.5px] text-faint tabular-nums">{duration(took)}</span>}
+          <motion.span animate={{ rotate: open ? 90 : 0 }} transition={{ duration: 0.18, ease }} className="shrink-0 text-faint group-hover/line:text-ink">
             <ChevronRight size={14} />
           </motion.span>
-          <Assignee agent={s.agent} state={face} />
-          <span className="min-w-0 shrink-[8] truncate text-muted">{s.description ?? ""}</span>
         </button>
-        <span className={`flex shrink-0 items-center gap-1.5 text-[12px] tabular-nums ${tone}`}>
-          {running && !asking && !teammate && <AgentClock size={11} />}
-          {/* A teammate's face already says it's working; the time is enough. */}
-          {!(teammate && status === "Working") && <span className="max-sm:max-w-[84px] max-sm:truncate">{status}</span>}
-          {took > 1500 && <span>{duration(took)}</span>}
-        </span>
         {child && running && (
-          <button
-            aria-label="Stop subagent"
-            title="Stop this subagent"
-            disabled={stopping}
-            onClick={() => void stop()}
-            className="flex h-6 shrink-0 items-center gap-1 rounded-md px-1.5 text-[12px] text-danger hover:bg-danger-soft disabled:opacity-50"
-          >
+          <button aria-label={`Stop ${name}`} title={stopping ? "Stopping" : `Stop ${name}`} disabled={stopping} onClick={() => void stop()} className={`${rowAction} hover:!text-danger disabled:opacity-50`}>
             <Square size={10} className="fill-current" />
-            <span className="hidden sm:inline">{stopping ? "Stopping" : "Stop"}</span>
           </button>
         )}
         {child && (
-          <button
-            aria-label="Open the subagent's conversation"
-            onClick={() => openSubagent(child, s.agent, s.description)}
-            className="flex h-6 shrink-0 items-center gap-1 rounded-md px-1.5 text-[12px] text-muted hover:bg-hover hover:text-ink"
-          >
-            Open <SquareArrowOutUpRight size={11} />
+          <button aria-label={`Open ${name}'s conversation`} title={`Open ${name}'s conversation`} onClick={() => openSubagent(child, s.agent, s.description)} className={rowAction}>
+            <ArrowUpRight size={14} />
           </button>
         )}
       </div>
 
-      {/* What it's doing right now (or that it's waiting on you). */}
-      {running && (asking || step) && (
-        <div className="-mt-1 flex min-w-0 items-center gap-2 px-3 pb-2 pl-[38px] text-[12.5px] text-muted">
-          {asking ? (
-            <span className="text-info">Waiting for your approval or answer below</span>
-          ) : step && latest?.b ? (
-            <>
-              <span className="shrink-0 text-faint">{iconFor(latest.b, 12)}</span>
-              <span className="shrink-0 text-ink-2">{step.verb}</span>
-              {step.path ? <PathLabel path={step.path} /> : <span className="min-w-0 truncate">{step.target}</span>}
-              {latest.steps > 1 && <span className="ml-auto shrink-0 text-faint">{latest.steps} steps</span>}
-            </>
-          ) : null}
-        </div>
-      )}
-
       <AnimatePresence initial={false}>
         {open && (
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2, ease }} className="overflow-hidden">
-            <div className="space-y-2.5 border-t border-line px-3 py-2.5">
+            <div className="ml-[9px] space-y-2.5 border-l border-line py-1.5 pl-4">
               {s.prompt && (
-                <Section title="Task" actions={<CopyButton text={s.prompt} label="Copy task" />}>
+                <Section title="Brief" actions={<CopyButton text={s.prompt} label="Copy brief" />}>
                   <ProseBox text={s.prompt} />
                 </Section>
               )}
@@ -508,10 +498,8 @@ const SubagentRow = memo(function SubagentRow({ b }: { b: ToolBlock }) {
                   <ProseBox text={output} />
                 </Section>
               )}
-              {phase === "stopped" && (
-                <div className="text-[12.5px] text-faint">{stopped ? "You stopped this subagent. The agent was told it was you, not a failure." : "Stopped before it finished."}</div>
-              )}
-              {phase === "background" && <div className="text-[12.5px] text-faint">Runs in the background; its report lands here when it's done.</div>}
+              {phase === "stopped" && <div className="text-[12.5px] text-faint">{stopped ? `You stopped ${name}. They were told it was you, not a failure.` : "Stopped before it finished."}</div>}
+              {phase === "background" && <div className="text-[12.5px] text-faint">The report lands here when it's done.</div>}
               {error && <ErrorBlock text={error} />}
             </div>
           </motion.div>
@@ -525,23 +513,29 @@ const SubagentRow = memo(function SubagentRow({ b }: { b: ToolBlock }) {
 export const SubagentReport = memo(function SubagentReport({ msg }: { msg: Extract<UIMessage, { kind: "subagent" }> }) {
   const failed = msg.state === "error" || msg.state === "failed";
   const stopped = msg.state === "interrupted" || msg.state === "cancelled";
+  const name = useAgentName(msg.agent) || "Subagent";
   return (
-    <div className="my-3 overflow-hidden rounded-xl border border-line bg-raised">
-      <div className="flex min-w-0 items-center gap-2 border-b border-line px-3 py-2 text-[13.5px]">
-        <Assignee agent={msg.agent} state={failed || stopped ? "idle" : "done"} />
-        <span className={`shrink-0 ${failed ? "text-danger" : "text-muted"}`}>{failed ? "failed" : stopped ? "stopped" : "reported back"}</span>
-        {msg.description && <span className="min-w-0 shrink-[8] truncate text-faint">· {msg.description}</span>}
-        <div className="ml-auto flex shrink-0 items-center">
-          {msg.text && <CopyButton text={msg.text} label="Copy report" />}
-          {msg.childID && (
-            <button onClick={() => openSubagent(msg.childID!, msg.agent, msg.description)} className="flex h-6 shrink-0 items-center gap-1 rounded-md px-1.5 text-[12px] text-muted hover:bg-hover hover:text-ink">
-              Open <SquareArrowOutUpRight size={11} />
-            </button>
-          )}
+    <div className="group/agent my-3">
+      <div className="-ml-1 flex min-w-0 items-center gap-0.5">
+        <div className="flex min-w-0 items-center gap-2 px-1 py-1 text-[14px]">
+          <Assignee agent={msg.agent} state={failed || stopped ? "idle" : "done"} />
+          <span className={`min-w-0 truncate ${failed ? "text-danger" : stopped ? "text-faint line-through decoration-line-strong" : "text-muted"}`}>
+            {failed ? `couldn't finish${msg.description ? ` · ${msg.description}` : ""}` : msg.description}
+          </span>
         </div>
+        {msg.text && (
+          <span className="opacity-0 transition-opacity group-hover/agent:opacity-100 group-focus-within/agent:opacity-100 [@media(hover:none)]:opacity-100">
+            <CopyButton text={msg.text} label="Copy report" />
+          </span>
+        )}
+        {msg.childID && (
+          <button aria-label={`Open ${name}'s conversation`} title={`Open ${name}'s conversation`} onClick={() => openSubagent(msg.childID!, msg.agent, msg.description)} className={rowAction}>
+            <ArrowUpRight size={14} />
+          </button>
+        )}
       </div>
       {msg.text && (
-        <div className="p-2">
+        <div className="ml-[9px] border-l border-line py-1 pl-4">
           <ProseBox text={msg.text} />
         </div>
       )}
@@ -557,8 +551,8 @@ const ThoughtRow = memo(function ThoughtRow({ b }: { b: ReasonBlock }) {
       <span className="absolute top-[14px] -left-4 h-px w-3 bg-line" />
       <button aria-expanded={open || b.streaming} onClick={() => setOpen((v) => !v)} className="flex w-full items-center gap-2 rounded-md py-1 text-left text-[14px] hover:bg-hover">
         <span className="grid h-5 w-5 place-items-center text-muted">{b.streaming ? <AgentClock size={12} /> : <Brain size={15} />}</span>
-        <span className={b.streaming ? "text-ink" : "text-ink-2"}>{b.streaming ? "Thinking" : "Thought process"}</span>
-        {secs > 0 && <span className="text-[12px] text-faint">{secs}s</span>}
+        <span className={b.streaming ? "shimmer" : "text-ink-2"}>{b.streaming ? "Thinking" : "Thought"}</span>
+        {secs > 0 && <span className="text-faint tabular-nums">{secs}s</span>}
       </button>
       <AnimatePresence initial={false}>
         {(open || b.streaming) && b.text && (

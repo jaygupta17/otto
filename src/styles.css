@@ -903,7 +903,32 @@ html[data-touch] #root {
   animation: spin 0.9s linear infinite;
 }
 
+/* Live text: a soft light sweeps through words that are happening right now
+   ("Working", "Running grep"), so nothing else has to say they're live. */
+.shimmer {
+  --sh: var(--muted);
+  color: transparent;
+  background: linear-gradient(90deg, var(--sh) 0%, var(--sh) 38%, var(--text) 50%, var(--sh) 62%, var(--sh) 100%);
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: shimmer 2.4s linear infinite;
+}
+@keyframes shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0% 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .shimmer {
+    animation: none;
+    color: var(--text-2);
+    background: none;
+  }
   .agent-clock > i,
   .tf *,
   .tf .tf-hand {

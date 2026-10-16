@@ -7,7 +7,7 @@ import { useConnection } from "../../state/connection";
 import { AgentPicker, ModelPicker } from "./Pickers";
 import { Spinner } from "../ui/AgentClock";
 import { toast } from "../../state/ui";
-import { useTeammates } from "../../state/teammates";
+import { useAgentName, useTeammates } from "../../state/teammates";
 import { cycleAgent } from "../../lib/actions";
 import { ContextMeter } from "./SessionExtras";
 import type { FsEntry } from "../../lib/opencode/client";
@@ -34,6 +34,7 @@ export function Composer({ sessionId, placeholder = "Do anything…", autoFocus 
   const draft = useChat((s) => s.drafts[draftKey] ?? "");
   const setDraft = useChat((s) => s.setDraft);
   const busy = useChat((s) => (sessionId ? !!s.busy[sessionId] : false));
+  const doer = useAgentName(useChat((s) => (sessionId ? s.sessions[sessionId]?.agent : undefined))) || "the agent";
   const delivery = useChat((s) => s.delivery);
   const setDeliveryMode = useChat((s) => s.setDeliveryMode);
   const shellMode = !!sessionId && draft.startsWith("!");
@@ -249,7 +250,7 @@ export function Composer({ sessionId, placeholder = "Do anything…", autoFocus 
           ref={ta}
           rows={1}
           value={draft}
-          placeholder={!ready ? "Connecting…" : busy ? (delivery === "steer" ? "Steer the agent…" : "Queue a follow-up…") : needsAgent ? "Add a teammate to start" : placeholder}
+          placeholder={!ready ? "Connecting…" : busy ? (delivery === "steer" ? `Steer ${doer}…` : `Queue a follow-up for ${doer}…`) : needsAgent ? "Add a teammate to start" : placeholder}
           onChange={(e) => {
             setDraft(draftKey, e.target.value);
             void updateSuggest(e.target.value, e.target.selectionStart);
@@ -287,7 +288,8 @@ export function Composer({ sessionId, placeholder = "Do anything…", autoFocus 
             <AgentPicker sessionId={sessionId} />
           )}
           <div className="ml-auto flex min-w-0 items-center gap-1">
-            {busy && sessionId && (
+            {/* Steer or queue only matters once there's something to send; until then the placeholder says which. */}
+            {busy && sessionId && draft.trim() && (
               <button
                 onClick={() => setDeliveryMode(delivery === "steer" ? "queue" : "steer")}
                 title={delivery === "steer" ? "Steer: the agent reads your message after its current step. Click to queue it for after the run instead." : "Queue: the agent reads your message when the run finishes. Click to steer instead."}
