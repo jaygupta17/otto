@@ -44,6 +44,8 @@ interface State {
   forms: Record<string, FormLite>;
   /** Subagent session → the session that spawned it. Their asks surface in the parent chat. */
   parents: Record<string, string>;
+  /** Subagent session → the agent doing it, so a teammate shows as busy while it works for another. */
+  delegated: Record<string, string>;
   agents: AgentInfo[];
   models: ModelInfo[];
   defaultModel: ModelRef | null;
@@ -117,6 +119,7 @@ export const useChat = create<State>((set, get) => ({
   permissions: {},
   forms: {},
   parents: {},
+  delegated: {},
   agents: [],
   models: [],
   defaultModel: null,
@@ -248,7 +251,7 @@ export const useChat = create<State>((set, get) => ({
   reset() {
     queue = [];
     pendingWhileLoading.clear();
-    set({ client: null, sessions: {}, sessionsLoaded: false, sessionsError: undefined, busy: {}, retrying: {}, unread: {}, timelines: {}, permissions: {}, forms: {}, parents: {}, agents: [], models: [], defaultModel: null, homeDir: null, activeId: null, pickedModel: null, pickedAgent: null, projectDir: null });
+    set({ client: null, sessions: {}, sessionsLoaded: false, sessionsError: undefined, busy: {}, retrying: {}, unread: {}, timelines: {}, permissions: {}, forms: {}, parents: {}, delegated: {}, agents: [], models: [], defaultModel: null, homeDir: null, activeId: null, pickedModel: null, pickedAgent: null, projectDir: null });
   },
 
   async bootstrap(client) {
@@ -385,9 +388,11 @@ export const useChat = create<State>((set, get) => ({
       }
       pendingWhileLoading.delete(id);
       const kids = childSessions(id, messages);
+      const doers = childAgents(messages);
       set((s) => ({
         timelines: { ...s.timelines, [id]: { messages, loaded: true, loading: false, older: r.cursor.next ?? null } },
         parents: Object.keys(kids).every((k) => s.parents[k] === kids[k]) ? s.parents : { ...s.parents, ...kids },
+        delegated: Object.keys(doers).every((k) => s.delegated[k] === doers[k]) ? s.delegated : { ...s.delegated, ...doers },
       }));
       void inferChildren(id);
     } catch (e) {
@@ -673,8 +678,8 @@ function flush() {
   queue = [];
   if (!events.length) return;
   const st = useChat.getState();
-  let { sessions, busy, retrying, unread, timelines, permissions, forms, parents } = st;
-  const touched = { sessions: false, busy: false, retrying: false, unread: false, timelines: false, permissions: false, forms: false, parents: false };
+  let { sessions, busy, retrying, unread, timelines, permissions, forms, parents, delegated } = st;
+  const touched = { sessions: false, busy: false, retrying: false, unread: false, timelines: false, permissions: false, forms: false, parents: false, delegated: false };
   const finished: string[] = [];
   const alerts: Parameters<typeof dispatchAlerts>[0] = [];
   // Alerts for a subagent's asks open (and are named after) the chat the user started.
@@ -693,6 +698,7 @@ function flush() {
       if (k === "permissions") permissions = { ...permissions };
       if (k === "forms") forms = { ...forms };
       if (k === "parents") parents = { ...parents };
+      if (k === "delegated") delegated = { ...delegated };
     }
   };
 
@@ -710,6 +716,10 @@ function flush() {
           // Subagent sessions stay out of the main list; remember whose they are.
           mut("parents");
           parents[d.sessionID as string] = d.parentID as string;
+          if (typeof d.agent === "string") {
+            mut("delegated");
+            delegated[d.sessionID as string] = d.agent;
+          }
           break;
         }
         mut("sessions");
@@ -848,6 +858,14 @@ function flush() {
           mut("parents");
           parents[child] = sid;
         }
+        if (sid && typeof child === "string" && child !== sid && !delegated[child]) {
+          const block = timelines[sid]?.messages.flatMap((m) => ("blocks" in m ? m.blocks : [])).find((b) => b.kind === "tool" && b.id === d.id);
+          const agent = block?.kind === "tool" ? (block.input as { agent?: unknown } | undefined)?.agent : undefined;
+          if (typeof agent === "string") {
+            mut("delegated");
+            delegated[child] = agent;
+          }
+        }
         break;
       }
       case "permission.asked":
@@ -899,6 +917,7 @@ function flush() {
   if (touched.permissions) patch.permissions = permissions;
   if (touched.forms) patch.forms = forms;
   if (touched.parents) patch.parents = parents;
+  if (touched.delegated) patch.delegated = delegated;
   useChat.setState(patch);
   if (unknown.length) learnParents(unknown);
   for (const id of finished) scheduleReconcile(id);
@@ -963,6 +982,22 @@ function childSessions(parent: string, messages: UIMessage[]): Record<string, st
   return out;
 }
 
+/** Child session → the agent its subagent call went to. */
+function childAgents(messages: UIMessage[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const m of messages) {
+    if (m.kind === "subagent" && m.childID && m.agent) out[m.childID] = m.agent;
+    if (m.kind !== "assistant") continue;
+    for (const b of m.blocks) {
+      if (b.kind !== "tool") continue;
+      const child = b.metadata?.sessionID ?? b.metadata?.sessionId;
+      const agent = (b.input as { agent?: unknown } | undefined)?.agent;
+      if (typeof child === "string" && typeof agent === "string") out[child] = agent;
+    }
+  }
+  return out;
+}
+
 /**
  * A running subagent call names its child session only in live progress
  * events, so a snapshot taken mid-run (reload, reconnect) lacks it. Find it
@@ -1005,7 +1040,9 @@ async function inferChildren(parent: string) {
     );
     const parents = { ...st.parents };
     for (const c of Object.values(found)) parents[c] = parent;
-    return { timelines: { ...st.timelines, [parent]: { ...t, messages } }, parents };
+    const delegated = { ...st.delegated };
+    for (const k of kids) if (k.agent && Object.values(found).includes(k.id)) delegated[k.id] = k.agent;
+    return { timelines: { ...st.timelines, [parent]: { ...t, messages } }, parents, delegated };
   });
 }
 

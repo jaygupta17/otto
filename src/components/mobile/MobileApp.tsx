@@ -378,7 +378,7 @@ function SessionScreen({ sessionId }: { sessionId: string }) {
  */
 function TeamStrip({ onNew }: { onNew: () => void }) {
   const roster = useTeammates((s) => s.byId);
-  const team = useMemo(() => Object.values(roster ?? {}).sort((a, b) => a.created - b.created), [roster]);
+  const team = useMemo(() => Object.values(roster ?? {}).sort((a, b) => Number(b.leads) - Number(a.leads) || a.created - b.created), [roster]);
   if (!team.length) return null;
   return (
     <div className="scroll-quiet mt-5 flex snap-x gap-1 overflow-x-auto px-3 pb-1" role="list" aria-label="Teammates">
@@ -392,10 +392,11 @@ function TeamStrip({ onNew }: { onNew: () => void }) {
 function TeamFace({ id, onNew }: { id: string; onNew: () => void }) {
   const t = useTeammate(id)!;
   const state = useChat((st): FaceState => {
-    const mine = Object.values(st.sessions).filter((x) => x.agent === id);
-    if (mine.some((x) => Object.values(st.permissions).some((p) => p.sessionID === x.id) || Object.values(st.forms).some((f) => f.sessionID === x.id))) return "needs";
-    if (mine.some((x) => st.busy[x.id])) return "working";
-    return mine.some((x) => st.unread[x.id]) ? "done" : "idle";
+    // Its own sessions, plus parts of a lead's job it's doing.
+    const mine = [...Object.values(st.sessions).filter((x) => x.agent === id).map((x) => x.id), ...Object.keys(st.delegated).filter((c) => st.delegated[c] === id)];
+    if (mine.some((x) => Object.values(st.permissions).some((p) => p.sessionID === x) || Object.values(st.forms).some((f) => f.sessionID === x))) return "needs";
+    if (mine.some((x) => st.busy[x])) return "working";
+    return mine.some((x) => st.unread[x]) ? "done" : "idle";
   });
   return (
     <motion.button

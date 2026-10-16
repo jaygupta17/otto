@@ -219,7 +219,7 @@ function SessionList({ query, onNavigate }: { query: string; onNavigate?: () => 
     const loose = list.filter((s) => !pinned.includes(s.id));
 
     // Searching is a flat list. Otherwise each agent gets a row: teammates in the order they joined, then other agents that have sessions.
-    const teammates = Object.values(roster ?? {}).sort((a, b) => a.created - b.created || a.name.localeCompare(b.name));
+    const teammates = Object.values(roster ?? {}).sort((a, b) => Number(b.leads) - Number(a.leads) || a.created - b.created || a.name.localeCompare(b.name));
     const teamIds = new Set(teammates.map((t) => t.id));
     const byAgent = new Map<string, SessionInfo[]>();
     const rest: SessionInfo[] = [];

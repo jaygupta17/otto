@@ -48,6 +48,8 @@ import { openSubagent } from "../../state/subagent";
 import { useMemory } from "../../state/memory";
 import { agentColor } from "../../lib/agentColor";
 import { AgentClock } from "../ui/AgentClock";
+import { TeammateFace, type FaceState } from "../ui/TeammateFace";
+import { useAgentName, useTeammate } from "../../state/teammates";
 import { ErrorBlock, ProseBox, ToolBody } from "./ToolBody";
 import { ImageStrip } from "./ImageStrip";
 import { browserSteps, type BrowserStep } from "../../lib/browserSteps";
@@ -336,7 +338,20 @@ const ToolRow = memo(function ToolRow({ b, step }: { b: ToolBlock; step?: Browse
 // Subagents
 // ---------------------------------------------------------------------------
 
-const cap = (s?: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : "Subagent");
+/**
+ * Who a task went to: a teammate's face (wearing the task's state) and name,
+ * or a plain agent's colour dot.
+ */
+function Assignee({ agent, state = "idle" }: { agent?: string; state?: FaceState }) {
+  const t = useTeammate(agent);
+  const name = useAgentName(agent);
+  return (
+    <>
+      {t ? <TeammateFace seed={t.face} color={t.color} accessory={t.accessory} size={22} state={state} /> : <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: agentColor(agent) }} />}
+      <span className="min-w-0 truncate font-medium text-ink">{name || "Subagent"}</span>
+    </>
+  );
+}
 
 /** Is `sid` the child or a descendant of it (a subagent's own subagents ask through it)? */
 function within(parents: Record<string, string>, sid: string, child: string) {
@@ -411,6 +426,8 @@ const SubagentRow = memo(function SubagentRow({ b }: { b: ToolBlock }) {
             ? "Failed"
             : "Done";
   const tone = asking ? "text-info" : phase === "error" ? "text-danger" : "text-faint";
+  const teammate = !!useTeammate(s.agent);
+  const face: FaceState = asking ? "needs" : running ? "working" : phase === "done" ? "done" : "idle";
 
   const stop = async () => {
     if (!child || !sid) return;
@@ -429,13 +446,13 @@ const SubagentRow = memo(function SubagentRow({ b }: { b: ToolBlock }) {
           <motion.span animate={{ rotate: open ? 90 : 0 }} transition={{ duration: 0.18, ease }} className="shrink-0 text-faint">
             <ChevronRight size={14} />
           </motion.span>
-          <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: agentColor(s.agent) }} />
-          <span className="shrink-0 font-medium text-ink">{cap(s.agent)}</span>
-          <span className="min-w-0 truncate text-muted">{s.description ?? ""}</span>
+          <Assignee agent={s.agent} state={face} />
+          <span className="min-w-0 shrink-[8] truncate text-muted">{s.description ?? ""}</span>
         </button>
         <span className={`flex shrink-0 items-center gap-1.5 text-[12px] tabular-nums ${tone}`}>
-          {running && !asking && <AgentClock size={11} />}
-          <span className="max-sm:max-w-[84px] max-sm:truncate">{status}</span>
+          {running && !asking && !teammate && <AgentClock size={11} />}
+          {/* A teammate's face already says it's working; the time is enough. */}
+          {!(teammate && status === "Working") && <span className="max-sm:max-w-[84px] max-sm:truncate">{status}</span>}
           {took > 1500 && <span>{duration(took)}</span>}
         </span>
         {child && running && (
@@ -511,10 +528,9 @@ export const SubagentReport = memo(function SubagentReport({ msg }: { msg: Extra
   return (
     <div className="my-3 overflow-hidden rounded-xl border border-line bg-raised">
       <div className="flex min-w-0 items-center gap-2 border-b border-line px-3 py-2 text-[13.5px]">
-        <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: agentColor(msg.agent) }} />
-        <span className="shrink-0 font-medium">{cap(msg.agent)}</span>
+        <Assignee agent={msg.agent} state={failed || stopped ? "idle" : "done"} />
         <span className={`shrink-0 ${failed ? "text-danger" : "text-muted"}`}>{failed ? "failed" : stopped ? "stopped" : "reported back"}</span>
-        {msg.description && <span className="min-w-0 truncate text-faint">· {msg.description}</span>}
+        {msg.description && <span className="min-w-0 shrink-[8] truncate text-faint">· {msg.description}</span>}
         <div className="ml-auto flex shrink-0 items-center">
           {msg.text && <CopyButton text={msg.text} label="Copy report" />}
           {msg.childID && (

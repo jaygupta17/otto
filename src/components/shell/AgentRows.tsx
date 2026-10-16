@@ -5,7 +5,7 @@ import type { SessionInfo } from "@opencode/client";
 import { asksFor, useChat } from "../../state/chat";
 import { timeAgo } from "../../lib/format";
 import { AgentMark } from "../ui/TeammateFace";
-import { useTeammate } from "../../state/teammates";
+import { useAgentName, useTeammate } from "../../state/teammates";
 import { AgentClock } from "../ui/AgentClock";
 import { SessionRow } from "./SessionRow";
 
@@ -38,9 +38,19 @@ const AgentRow = memo(function AgentRow({ group: g, now, onNavigate }: { group: 
   const busyCount = useChat((s) => g.sessions.reduce((n, x) => n + (s.busy[x.id] ? 1 : 0), 0));
   const asking = useChat((s) => g.sessions.some((x) => Object.values(s.permissions).some((p) => asksFor(s.parents, p.sessionID, x.id)) || Object.values(s.forms).some((f) => asksFor(s.parents, f.sessionID, x.id))));
   const unread = useChat((s) => g.sessions.some((x) => !!s.unread[x.id]));
+  // Work handed over by a lead runs in the lead's thread, but it's still this teammate doing it.
+  const helping = useChat((s) => Object.keys(s.delegated).filter((c) => s.delegated[c] === g.id && s.busy[c]).length);
+  const helpAsks = useChat((s) => Object.values(s.permissions).some((p) => s.delegated[p.sessionID] === g.id) || Object.values(s.forms).some((f) => s.delegated[f.sessionID] === g.id));
+  const lead = useChat((s) => {
+    const c = Object.keys(s.delegated).find((k) => s.delegated[k] === g.id && s.busy[k]);
+    return c ? s.sessions[s.parents[c]]?.agent : undefined;
+  });
+  const leadName = useAgentName(lead);
   // A teammate's face carries its state itself; plain agents keep the clock.
   const face = !!useTeammate(g.id);
-  const state = asking ? "needs" : busyCount ? "working" : unread ? "done" : "idle";
+  const working = busyCount + helping;
+  const needs = asking || helpAsks;
+  const state = needs ? "needs" : working ? "working" : unread ? "done" : "idle";
   const onActive = useChat((s) => g.sessions.some((x) => x.id === s.activeId));
   const [all, setAll] = useState(false);
 
@@ -51,7 +61,7 @@ const AgentRow = memo(function AgentRow({ group: g, now, onNavigate }: { group: 
 
   const latest = g.sessions[0];
   const shown = all ? g.sessions : g.sessions.slice(0, SHOWN);
-  const preview = latest ? latest.title || "New session" : g.job || "No sessions yet";
+  const preview = helping && !busyCount && leadName ? `On a task for ${leadName}` : latest ? latest.title || "New session" : g.job || "No sessions yet";
 
   // New work starts in the agent's current session; with none yet, a fresh draft.
   function openAgent() {
@@ -90,20 +100,20 @@ const AgentRow = memo(function AgentRow({ group: g, now, onNavigate }: { group: 
         >
           <AgentMark id={g.id} size={22} state={state} />
           <span className="min-w-0 flex-1">
-            <span className={`block truncate text-[13px] ${onActive || unread || asking ? "font-medium text-ink" : ""}`}>{g.name}</span>
+            <span className={`block truncate text-[13px] ${onActive || unread || needs ? "font-medium text-ink" : ""}`}>{g.name}</span>
             <span className="block truncate text-[12px] text-faint">{preview}</span>
           </span>
         </button>
-        <span className="flex shrink-0 items-center gap-1.5 text-[12px] tabular-nums group-hover:hidden" title={busyCount ? "Working" : asking ? "Needs you" : undefined}>
-          {busyCount > 0 && (
+        <span className="flex shrink-0 items-center gap-1.5 text-[12px] tabular-nums group-hover:hidden" title={working ? "Working" : needs ? "Needs you" : undefined}>
+          {working > 0 && (
             <span className="flex items-center gap-1 text-muted">
               {!face && <AgentClock size={12} />}
-              {busyCount > 1 && busyCount}
+              {working > 1 && working}
             </span>
           )}
-          {asking && <span className="flex items-center gap-1 text-info">Needs you</span>}
-          {!busyCount && !asking && unread && !face && <span className="h-1.5 w-1.5 rounded-full bg-ink" />}
-          {!busyCount && !asking && latest && <span className="text-faint">{timeAgo(latest.time.updated, now)}</span>}
+          {needs && <span className="flex items-center gap-1 text-info">Needs you</span>}
+          {!working && !needs && unread && !face && <span className="h-1.5 w-1.5 rounded-full bg-ink" />}
+          {!working && !needs && latest && <span className="text-faint">{timeAgo(latest.time.updated, now)}</span>}
         </span>
         <button
           type="button"

@@ -6,6 +6,8 @@ import { agentColor } from "../../lib/agentColor";
 import { Sheet } from "../ui/Sheet";
 import { Button } from "../ui/Button";
 import { AgentClock } from "../ui/AgentClock";
+import { TeammateFace } from "../ui/TeammateFace";
+import { useAgentName, useTeammate } from "../../state/teammates";
 import { Thread } from "./Thread";
 import { AskDock } from "./Asks";
 
@@ -25,7 +27,8 @@ export function SubagentHost({ compact }: { compact: boolean }) {
     if (id) void useChat.getState().loadTimeline(id, true);
   }, [id]);
 
-  const name = open?.agent ? open.agent.charAt(0).toUpperCase() + open.agent.slice(1) : "Subagent";
+  const teammate = useTeammate(open?.agent);
+  const name = useAgentName(open?.agent) || "Subagent";
   return (
     <Sheet
       open={!!open}
@@ -34,12 +37,12 @@ export function SubagentHost({ compact }: { compact: boolean }) {
       wide
       title={
         <div className="flex min-w-0 items-center gap-2 text-left">
-          <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: agentColor(open?.agent) }} />
+          {teammate ? <TeammateFace seed={teammate.face} color={teammate.color} accessory={teammate.accessory} size={26} state={busy ? "working" : "idle"} /> : <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: agentColor(open?.agent) }} />}
           <span className="shrink-0">{name}</span>
           {open?.title && <span className="min-w-0 truncate font-normal text-muted">{open.title}</span>}
           {busy && (
             <span className="ml-auto flex shrink-0 items-center gap-2">
-              <AgentClock size={12} />
+              {!teammate && <AgentClock size={12} />}
               <Button size="sm" variant="ghost" icon={<Square size={12} />} onClick={() => id && void (parent ? stopSubagent(parent, id, open?.title) : interrupt(id))}>
                 Stop
               </Button>
