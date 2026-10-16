@@ -16,7 +16,7 @@ import { ModelSelect, type ModelValue } from "./ModelSelect";
 import { TeammateEditor } from "./TeammateEditor";
 import { useTeammates } from "../../state/teammates";
 import { TeammateFace } from "../ui/TeammateFace";
-import { isOfferedAgent, listNames, STARTER_TEAM, type Teammate } from "../../lib/teammates";
+import { hash, isOfferedAgent, listNames, STARTER_TEAM, type Teammate } from "../../lib/teammates";
 import { MEMORY_TOOLS, isMemoryTool } from "../../lib/memory";
 
 const MEMORY_ALL = "memory_*";
@@ -52,6 +52,8 @@ export function AgentsTab({ compact }: { compact: boolean }) {
   const roster = useTeammates((s) => s.byId);
   const addStarters = useTeammates((s) => s.addStarters);
   const noTeammates = roster !== null && Object.keys(roster).length === 0;
+  // Starters this machine doesn't have yet (new ones arrive with updates).
+  const missing = useMemo(() => (roster ? STARTER_TEAM.filter((t) => !roster[t.id]) : []), [roster]);
   const editorRef = useRef<HTMLDivElement>(null);
 
   // A different agent opens at its top, not wherever the last one was left.
@@ -123,12 +125,8 @@ export function AgentsTab({ compact }: { compact: boolean }) {
           </div>
           {/* Phone layout has no editor pane to hold the offer, so it sits in the list. */}
           {compact && noTeammates && (
-            <div className="mt-3 rounded-2xl border border-line px-4 py-3">
-              <div className="text-[13.5px] font-medium">Start with Otto's team</div>
-              <div className="mt-0.5 text-[12.5px] text-muted">{listNames(STARTER_TEAM.map((t) => t.name))} each have a job and their own memory, model and permissions.</div>
-              <Button size="sm" variant="primary" className="mt-3" onClick={() => void addStarters()}>
-                {`Add ${listNames(STARTER_TEAM.map((t) => t.name))}`}
-              </Button>
+            <div className="mt-3">
+              <MeetTheTeam onAdd={addStarters} compact />
             </div>
           )}
           {team.length > 0 && (
@@ -148,6 +146,17 @@ export function AgentsTab({ compact }: { compact: boolean }) {
                   />
                 ))}
               </div>
+              {missing.length > 0 && !q.trim() && (
+                <button onClick={() => void addStarters()} className="mt-1 flex w-full items-center gap-2.5 rounded-xl px-2 py-1.5 text-left text-muted transition-colors hover:bg-hover hover:text-ink">
+                  <span className="flex shrink-0 -space-x-2">
+                    {missing.slice(0, 3).map((t) => (
+                      <TeammateFace key={t.id} seed={hash(t.id)} color={t.color} accessory={t.accessory} size={26} />
+                    ))}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-[13px]">Add {listNames(missing.map((t) => t.name))}</span>
+                  <Plus size={14} className="shrink-0" />
+                </button>
+              )}
               <div className="mb-1 mt-4 px-2.5 text-[12px] font-medium text-faint">Agents</div>
             </>
           )}
@@ -199,12 +208,7 @@ export function AgentsTab({ compact }: { compact: boolean }) {
               ) : selected ? (
                 <AgentEditor key={selected} id={selected} info={agents.find((a) => a.id === selected)} cfg={cfgAgents[selected]} origin={originOf(selected, cfgAgents[selected], agents.find((a) => a.id === selected))} onDone={(id) => setSelected(id)} />
               ) : noTeammates ? (
-                <Empty
-                  icon={<Bot size={20} />}
-                  title="Start with Otto's team"
-                  body={`${listNames(STARTER_TEAM.map((t) => t.name))} each have a job, standing instructions, and their own model and permissions. Add them to this machine, then change anything.`}
-                  action={<Button variant="primary" onClick={() => void addStarters()}>{`Add ${listNames(STARTER_TEAM.map((t) => t.name))}`}</Button>}
-                />
+                <MeetTheTeam onAdd={addStarters} compact={false} />
               ) : (
                 <Empty icon={<Bot size={20} />} title="Pick a teammate" body="Teammates have a name, a job and standing instructions, and keep their own model and permissions." />
               )}
@@ -226,10 +230,46 @@ function originOf(id: string, cfg?: AgentConfig, info?: AgentInfo): Origin {
   return info ? "file" : "custom";
 }
 
+/** Otto's starter team, introduced by face before anyone is added. */
+function MeetTheTeam({ onAdd, compact }: { onAdd: () => Promise<boolean>; compact: boolean }) {
+  const [adding, setAdding] = useState(false);
+  return (
+    <div className={compact ? "rounded-2xl border border-line p-4" : "mx-auto max-w-[520px] py-8"}>
+      <h3 className={`font-semibold tracking-[-0.01em] ${compact ? "text-[15px]" : "text-[20px]"}`}>Meet Otto's team</h3>
+      <p className="mt-1 text-[13px] text-muted">Each has a job, a way of working and a memory of their own. Add them to this machine, then change anything.</p>
+      <ul className={`mt-4 grid gap-2 ${compact ? "" : "sm:grid-cols-2"}`}>
+        {STARTER_TEAM.map((t) => (
+          <li key={t.id} className="flex items-start gap-3 rounded-xl border border-line px-3 py-3">
+            <TeammateFace seed={hash(t.id)} color={t.color} accessory={t.accessory} size={44} label={t.name} />
+            <div className="min-w-0">
+              <div className="text-[13.5px] font-medium text-ink">
+                {t.name} <span className="font-normal text-muted">· {t.job}</span>
+              </div>
+              <div className="mt-0.5 text-[12.5px] leading-snug text-muted">{t.tagline}</div>
+            </div>
+          </li>
+        ))}
+      </ul>
+      <Button
+        variant="primary"
+        className="mt-4"
+        disabled={adding}
+        onClick={async () => {
+          setAdding(true);
+          await onAdd();
+          setAdding(false);
+        }}
+      >
+        {adding ? <Spinner size={13} /> : `Add ${listNames(STARTER_TEAM.map((t) => t.name))}`}
+      </Button>
+    </div>
+  );
+}
+
 function TeammateRow({ t, active, disabled, onClick }: { t: Teammate; active: boolean; disabled: boolean; onClick: () => void }) {
   return (
     <button onClick={onClick} className={`flex w-full items-center gap-2.5 rounded-xl px-2 py-1.5 text-left transition-colors ${active ? "bg-active" : "hover:bg-hover"}`}>
-      <TeammateFace seed={t.face} color={t.color} size={26} />
+      <TeammateFace seed={t.face} color={t.color} accessory={t.accessory} size={26} />
       <span className="min-w-0 flex-1">
         <span className={`block truncate text-[13.5px] ${disabled ? "text-faint line-through" : "text-ink"}`}>{t.name}</span>
         {t.job && <span className="block truncate text-[12px] text-muted">{t.job}</span>}

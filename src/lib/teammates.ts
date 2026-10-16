@@ -28,6 +28,16 @@ export interface Teammate {
   color: string;
   /** Seed for the generated face. */
   face: number;
+  /** What they wear: a hint at the job, readable at a glance. */
+  accessory: Accessory;
+  /** One line on what they do for you, in plain words. Shown under the name. */
+  tagline: string;
+  /** How they talk and work: tone, habits, what they won't do. Goes into the prompt. */
+  voice: string;
+  /** What they say when you open a new conversation with them. */
+  greeting: string;
+  /** Things to ask them, offered on a new conversation. At most MAX_STARTERS. */
+  starters: string[];
   created: number;
   updated: number;
   /** TEAMMATE_PROMPT_VERSION the agent was last compiled with. */
@@ -43,13 +53,27 @@ export interface TeammatesFile {
 
 /**
  * Body colours. Each status hue already has a job (amber working, blue needs
- * you, green done, red failed), so teammates stay off them: deep, flat
- * colours that carry white features in light and dark.
+ * you, green done, red failed), so teammates stay off them: vivid colours
+ * that carry white features in light and dark.
  */
-export const TEAMMATE_COLORS = ["#3a3a42", "#5b6577", "#6a5acd", "#9b4dca", "#7e3f6f", "#13807f", "#8f5640", "#6f7a3a"] as const;
+export const TEAMMATE_COLORS = ["#44444c", "#64748b", "#7c5cff", "#b455e0", "#e0559b", "#0ea5b7", "#a0694c", "#62804f"] as const;
+/** The first palette, mapped to its successor so existing teammates brighten with everyone else. */
+const LEGACY_COLORS: Record<string, string> = { "#3a3a42": "#44444c", "#5b6577": "#64748b", "#6a5acd": "#7c5cff", "#9b4dca": "#b455e0", "#7e3f6f": "#e0559b", "#13807f": "#0ea5b7", "#8f5640": "#a0694c", "#6f7a3a": "#62804f" };
+
+/** Starters still wearing their first colour take their current one. */
+const STARTER_FIRST: Record<string, string> = { piper: "#13807f", scout: "#6a5acd", relay: "#8f5640" };
+function recolor(id: string, c: string) {
+  if (STARTER_FIRST[id] === c) return STARTER_TEAM.find((s) => s.id === id)?.color ?? c;
+  return LEGACY_COLORS[c] ?? c;
+}
+
+export const ACCESSORIES = ["none", "antenna", "glasses", "headset", "cap", "sprout"] as const;
+export type Accessory = (typeof ACCESSORIES)[number];
 
 /** Bump when the base prompt changes; stale agents are recompiled on load. */
-export const TEAMMATE_PROMPT_VERSION = 2;
+export const TEAMMATE_PROMPT_VERSION = 3;
+
+export const MAX_STARTERS = 4;
 
 export const EMPTY_FILE: TeammatesFile = { version: 1, teammates: {} };
 
@@ -97,13 +121,20 @@ function normalize(id: string, t: Partial<Teammate> | undefined): Teammate | nul
   if (!t || typeof t !== "object" || !/^[a-z0-9][a-z0-9_-]*$/.test(id)) return null;
   const str = (v: unknown) => (typeof v === "string" ? v : "");
   const num = (v: unknown, d: number) => (typeof v === "number" && Number.isFinite(v) ? v : d);
+  const starter = STARTER_TEAM.find((s) => s.id === id);
   return {
     id,
     name: str(t.name).trim() || titleCase(id),
     job: str(t.job).trim(),
     instructions: str(t.instructions),
-    color: /^#[0-9a-f]{6}$/i.test(str(t.color)) ? str(t.color) : TEAMMATE_COLORS[hash(id) % TEAMMATE_COLORS.length],
+    color: /^#[0-9a-f]{6}$/i.test(str(t.color)) ? recolor(id, str(t.color).toLowerCase()) : TEAMMATE_COLORS[hash(id) % TEAMMATE_COLORS.length],
     face: num(t.face, hash(id)) >>> 0,
+    accessory: (ACCESSORIES as readonly string[]).includes(str(t.accessory)) ? (t.accessory as Accessory) : (starter?.accessory ?? "none"),
+    // Missing (not emptied) on teammates from before personas: starters get theirs.
+    tagline: t.tagline === undefined ? (starter?.tagline ?? "") : str(t.tagline).trim(),
+    voice: t.voice === undefined ? (starter?.voice ?? "") : str(t.voice),
+    greeting: t.greeting === undefined ? (starter?.greeting ?? "") : str(t.greeting).trim(),
+    starters: Array.isArray(t.starters) ? t.starters.filter((x): x is string => typeof x === "string" && !!x.trim()).slice(0, MAX_STARTERS) : (starter?.starters ?? []),
     created: num(t.created, 0),
     updated: num(t.updated, 0),
     compiled: num(t.compiled, 0),
@@ -193,22 +224,49 @@ export const STARTER_TEAM: Omit<Teammate, "created" | "updated" | "compiled" | "
     id: "piper",
     name: "Piper",
     job: "Product performance",
-    color: "#13807f",
+    color: "#0ea5b7",
+    accessory: "antenna",
+    tagline: "Watches your product's vital signs and tells you what moved.",
+    voice: "Calm and exact. Lead with the number and what changed, then why. Say how sure you are and what would make you surer. No hype, no filler, no charts when one sentence will do.",
+    greeting: "What should I keep an eye on?",
+    starters: ["Why did checkout conversion drop this week?", "Brief me on yesterday's numbers in two minutes", "Compare API latency before and after the last deploy", "Which endpoints got slower this month?"],
     instructions: "Watch checkout and API performance. When something regresses, find the change that caused it and say how sure you are.\nKeep reports short: what changed, the impact, what to do.",
   },
   {
     id: "scout",
     name: "Scout",
     job: "Research and briefs",
-    color: "#6a5acd",
+    color: "#7c5cff",
+    accessory: "glasses",
+    tagline: "Digs into any question and comes back with an answer you can check.",
+    voice: "Curious and a little skeptical. Answer first, then the evidence, then what's still unknown. Say plainly when sources disagree, and never pass a guess off as a finding.",
+    greeting: "What do you want to know?",
+    starters: ["Brief me on a competitor in five bullets", "Find three sources that disagree on this, and say why", "Turn this paper into a one-page summary", "What's the strongest case against our plan?"],
     instructions: "Answer research questions end to end. Check each claim against a second source before you rely on it.\nLead with the answer, then the evidence, then what's still unknown. Link every claim to where it came from.",
   },
   {
     id: "relay",
     name: "Relay",
     job: "Inbox and drafts",
-    color: "#8f5640",
+    color: "#e0559b",
+    accessory: "headset",
+    tagline: "Keeps your inbox moving and drafts replies in your voice.",
+    voice: "Warm and brief. Write the way the user writes: their length, their greeting, their sign-off. Suggest, don't decide. A short draft beats a long one.",
+    greeting: "Who do we need to get back to?",
+    starters: ["What needs a reply from me today?", "Draft a polite no to this meeting", "Summarise this thread and suggest a reply", "Follow up on anything waiting more than three days"],
     instructions: "Keep the inbox moving. Say which messages need a reply and why, and draft replies in the user's own voice.\nNever send anything yourself. Show the draft first and wait for a yes.",
+  },
+  {
+    id: "patch",
+    name: "Patch",
+    job: "Code and fixes",
+    color: "#b455e0",
+    accessory: "cap",
+    tagline: "Fixes bugs and ships small features, with tests.",
+    voice: "Direct and careful. Read before you change anything, keep diffs small, and run the tests. Say what you changed, how you checked it, and what you didn't get to.",
+    greeting: "What's broken?",
+    starters: ["Find and fix the failing test", "Explain how this project fits together", "Add tests for the trickiest function here", "Review my uncommitted changes"],
+    instructions: "Fix bugs and build small features in the project you're given. Find the cause before changing code, keep the change small, and run the tests.\nWhen you're done, list what changed, how you checked it, and anything left to do.",
   },
 ];
 
@@ -237,14 +295,17 @@ export function describe(t: Pick<Teammate, "name" | "job">) {
  * built-in coding prompt, so this carries the working rules too: Otto's
  * teammates are general-purpose (coding is one job among many).
  */
-export function teammatePrompt(t: Pick<Teammate, "id" | "name" | "job" | "instructions">) {
+export function teammatePrompt(t: Pick<Teammate, "id" | "name" | "job" | "instructions"> & Partial<Pick<Teammate, "tagline" | "voice">>) {
   const job = t.job.trim();
   const standing = t.instructions.trim();
+  const tagline = t.tagline?.trim();
+  const voice = t.voice?.trim();
   return [
-    `You are ${t.name}, an AI teammate working in Otto.${job ? ` Your job: ${job}.` : ""}`,
+    `You are ${t.name}, an AI teammate working in Otto.${job ? ` Your job: ${job}.` : ""}${tagline ? ` ${tagline}` : ""}`,
     `You run on a machine the user owns, with the tools available to you. The user talks to you from the Otto app on a laptop or phone, and may close it while you work; keep going until the task is done or you need them.`,
     BASE_PROMPT,
     memoryPrompt(t.id),
+    voice ? `# Personality\nThis is who you are with the user. Keep it in every reply, without overdoing it.\n\n${voice}` : "",
     standing
       ? `# Standing instructions\nThese come from the user and apply to every conversation. Where they conflict with the guidance above, follow them.\n\n${standing}`
       : "",
