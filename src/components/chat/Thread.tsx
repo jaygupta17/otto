@@ -1,18 +1,23 @@
 import { AnimatePresence, motion } from "motion/react";
-import { AlertCircle, ArrowDown, Check, ChevronRight, Copy, GitFork, Pencil, Redo2, RotateCw, ShieldQuestion, SquareTerminal, Layers, Info, Undo2 } from "lucide-react";
-import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { AlertCircle, ArrowDown, Check, ChevronRight, Copy, GitFork, Pencil, Redo2, RotateCw, SquareTerminal, Layers, Info, Undo2 } from "lucide-react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { tokensPerSecond, type Block, type UIMessage } from "../../lib/opencode/projection";
 import { clock, duration } from "../../lib/format";
 import { useNow } from "../../hooks/useNow";
-import { revertIndex, useChat, type FormLite } from "../../state/chat";
+import { revertIndex, useChat } from "../../state/chat";
 import { useUI } from "../../state/ui";
-import { agentColor } from "../../lib/agentColor";
-import type { PermissionRequestLite } from "../../lib/opencode/client";
-import { describePermission } from "../../lib/asks";
+import { AgentMark } from "../ui/TeammateFace";
+import { useAgentName } from "../../state/teammates";
 import { Markdown } from "./Markdown";
-import { ActivityGroup } from "./Activity";
+import { ActivityGroup, SubagentReport } from "./Activity";
+import { ScreenCard } from "./ScreenCard";
+import { ChangedFiles } from "./ChangedFiles";
+import { usesScreen } from "../../lib/browserSteps";
+import { isStopError } from "../../lib/opencode/tools";
+import { ThreadSession } from "./ToolParts";
 import { AgentClock, Spinner } from "../ui/AgentClock";
 import { Button } from "../ui/Button";
+import { layerOpen } from "../../lib/layers";
 
 type Assistant = Extract<UIMessage, { kind: "assistant" }>;
 type Item =
@@ -20,18 +25,35 @@ type Item =
   | { type: "turn"; key: string; msgs: UIMessage[]; start: number }
   | { type: "notice"; key: string; msg: UIMessage };
 
+/** Subagents a call in this timeline started: their reports fold into that call's card. */
+function claimedChildren(messages: UIMessage[]) {
+  const ids = new Set<string>();
+  for (const m of messages) {
+    if (m.kind !== "assistant") continue;
+    for (const b of m.blocks) {
+      const child = b.kind === "tool" ? (b.metadata?.sessionID ?? b.metadata?.sessionId) : undefined;
+      if (typeof child === "string") ids.add(child);
+    }
+  }
+  return ids;
+}
+
 function buildItems(messages: UIMessage[]): Item[] {
   const items: Item[] = [];
   let turn: Extract<Item, { type: "turn" }> | null = null;
   let lastUserTime = 0;
+  const claimed = claimedChildren(messages);
   for (const m of messages) {
     // Sent mid-run and not read yet: shown in the tray above the composer.
     if (m.kind === "user" && m.pending && m.delivery) continue;
+    // The note telling the agent a stop was the user's; the card already says so.
+    if (m.kind === "stopped") continue;
+    if (m.kind === "subagent" && m.childID && claimed.has(m.childID)) continue;
     if (m.kind === "user") {
       turn = null;
       lastUserTime = m.time;
       items.push({ type: "user", key: m.id, msg: m });
-    } else if (m.kind === "assistant" || m.kind === "shell" || (m.kind === "notice" && m.tone === "error")) {
+    } else if (m.kind === "assistant" || m.kind === "shell" || m.kind === "subagent" || (m.kind === "notice" && m.tone === "error")) {
       if (!turn) {
         turn = { type: "turn", key: `turn-${m.id}`, msgs: [], start: lastUserTime || m.time };
         items.push(turn);
@@ -48,8 +70,6 @@ export function Thread({ sessionId, bottomInset = 0 }: { sessionId: string; bott
   const timeline = useChat((s) => s.timelines[sessionId]);
   const busy = useChat((s) => !!s.busy[sessionId]);
   const retry = useChat((s) => s.retrying[sessionId]);
-  const permissions = useChat((s) => s.permissions);
-  const forms = useChat((s) => s.forms);
   const loadOlder = useChat((s) => s.loadOlder);
   const reload = useChat((s) => s.loadTimeline);
 
@@ -57,8 +77,6 @@ export function Thread({ sessionId, bottomInset = 0 }: { sessionId: string; bott
   const cut = useMemo(() => revertIndex(timeline?.messages ?? [], revert), [timeline?.messages, revert]);
   const items = useMemo(() => buildItems((timeline?.messages ?? []).slice(0, cut)), [timeline?.messages, cut]);
   const hidden = (timeline?.messages.length ?? 0) - cut;
-  const asks = useMemo(() => Object.values(permissions).filter((p) => p.sessionID === sessionId), [permissions, sessionId]);
-  const sessionForms = useMemo(() => Object.values(forms).filter((f) => f.sessionID === sessionId), [forms, sessionId]);
 
   const scroller = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
@@ -111,6 +129,28 @@ export function Thread({ sessionId, bottomInset = 0 }: { sessionId: string; bott
   const userAt = useRef(0);
   const markUser = () => (userAt.current = performance.now());
 
+  // PageUp / PageDown scroll the conversation from anywhere that isn't a text field
+  // (the composer included: it's one paragraph, paging it is useless).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "PageUp" && e.key !== "PageDown") return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement;
+      // With a sheet open, only the thread inside it (a subagent's) pages.
+      if (layerOpen() && !scroller.current?.contains(t)) return;
+      const field = t.isContentEditable || t.matches?.("input, textarea, select");
+      if (field && !t.hasAttribute("data-composer")) return;
+      if (!field && t !== document.body && !scroller.current?.contains(t)) return;
+      const el = scroller.current;
+      if (!el) return;
+      e.preventDefault();
+      markUser();
+      el.scrollBy({ top: (e.key === "PageDown" ? 1 : -1) * el.clientHeight * 0.85, behavior: "smooth" });
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   const onScroll = () => {
     const el = scroller.current;
     if (!el) return;
@@ -121,10 +161,31 @@ export function Thread({ sessionId, bottomInset = 0 }: { sessionId: string; bott
     if (el.scrollTop < 200 && timeline?.older && !timeline.loading) void loadOlder(sessionId);
   };
 
+  // The user message after each item (fork point), in one pass instead of a scan per turn.
+  const nextUsers = useMemo(() => {
+    const out: (string | null)[] = new Array(items.length);
+    let next: string | null = null;
+    for (let i = items.length - 1; i >= 0; i--) {
+      out[i] = next;
+      if (items[i].type === "user") next = items[i].key;
+    }
+    return out;
+  }, [items]);
+
+  // The agent's screen shows once, at the end of the latest turn that worked on it.
+  const screenAt = useMemo(() => {
+    for (let i = items.length - 1; i >= 0; i--) {
+      const it = items[i];
+      if (it.type === "turn" && it.msgs.some((m) => m.kind === "assistant" && m.blocks.some(usesScreen))) return i;
+    }
+    return -1;
+  }, [items]);
+
   const lastIsTurn = items.length > 0 && items[items.length - 1].type === "turn";
   const awaitingFirst = busy && !lastIsTurn;
 
   return (
+    <ThreadSession.Provider value={sessionId}>
     <div className="relative min-h-0 flex-1">
       <div
         ref={scroller}
@@ -135,7 +196,10 @@ export function Thread({ sessionId, bottomInset = 0 }: { sessionId: string; bott
         onTouchCancel={() => (touching.current = false)}
         onPointerDown={markUser}
         onKeyDown={markUser}
-        className="scroll-quiet absolute inset-0 overflow-y-auto overscroll-contain">
+        tabIndex={0}
+        role="region"
+        aria-label="Conversation"
+        className="scroll-quiet absolute inset-0 overflow-y-auto overscroll-contain outline-none">
         <div ref={content} className="mx-auto w-full max-w-[760px] px-5 pt-6 sm:px-8" style={{ paddingBottom: bottomInset + 32 }}>
           {timeline?.loading && !timeline.loaded && <ThreadSkeleton />}
           {timeline?.error && !timeline.loaded && (
@@ -156,19 +220,10 @@ export function Thread({ sessionId, bottomInset = 0 }: { sessionId: string; bott
             if (it.type === "user") return <UserBubble key={it.key} msg={it.msg} sessionId={sessionId} />;
             if (it.type === "notice") return <NoticeRow key={it.key} msg={it.msg} />;
             const live = busy && i === items.length - 1;
-            const nextUser = items.slice(i + 1).find((x) => x.type === "user");
-            return <Turn key={it.key} msgs={it.msgs} live={live} start={it.start} retry={live ? retry : undefined} sessionId={sessionId} forkBefore={nextUser?.key ?? null} />;
+            return <Turn key={it.key} msgs={it.msgs} live={live} screen={i === screenAt} start={it.start} retry={live ? retry : undefined} sessionId={sessionId} forkBefore={nextUsers[i]} />;
           })}
           {revert && hidden > 0 && <RevertBar sessionId={sessionId} files={revert.files?.length ?? 0} count={(timeline?.messages ?? []).slice(cut).filter((m) => m.kind === "user").length} />}
           {awaitingFirst && <Working start={lastUserTimeOf(items)} seed={String(lastUserTimeOf(items))} />}
-          <AnimatePresence>
-            {asks.map((p) => (
-              <PermissionCard key={p.id} req={p} />
-            ))}
-            {sessionForms.map((f) => (
-              <FormCard key={f.id} form={f} />
-            ))}
-          </AnimatePresence>
         </div>
       </div>
       <AnimatePresence>
@@ -190,6 +245,7 @@ export function Thread({ sessionId, bottomInset = 0 }: { sessionId: string; bott
         )}
       </AnimatePresence>
     </div>
+    </ThreadSession.Provider>
   );
 }
 
@@ -273,7 +329,7 @@ function RevertBar({ sessionId, count, files }: { sessionId: string; count: numb
   );
 }
 
-type Segment = { kind: "text"; key: string; text: string; streaming: boolean } | { kind: "activity"; key: string; blocks: Block[] } | { kind: "error"; key: string; text: string } | { kind: "shell"; key: string; msg: Extract<UIMessage, { kind: "shell" }> };
+type Segment = { kind: "text"; key: string; text: string; streaming: boolean } | { kind: "activity"; key: string; blocks: Block[] } | { kind: "error"; key: string; text: string } | { kind: "shell"; key: string; msg: Extract<UIMessage, { kind: "shell" }> } | { kind: "subagent"; key: string; msg: Extract<UIMessage, { kind: "subagent" }> };
 
 function segmentsOf(msgs: UIMessage[]): Segment[] {
   const segs: Segment[] = [];
@@ -286,6 +342,11 @@ function segmentsOf(msgs: UIMessage[]): Segment[] {
     if (m.kind === "shell") {
       flushRun(m.id);
       segs.push({ kind: "shell", key: m.id, msg: m });
+      continue;
+    }
+    if (m.kind === "subagent") {
+      flushRun(m.id);
+      segs.push({ kind: "subagent", key: m.id, msg: m });
       continue;
     }
     if (m.kind === "notice") {
@@ -303,7 +364,8 @@ function segmentsOf(msgs: UIMessage[]): Segment[] {
         run.push({ ...b, key: `${m.id}:${b.key}` });
       }
     }
-    if (m.error) {
+    // A stop isn't a failure: the "Stopped" divider already says it.
+    if (m.error && !isStopError(m.error)) {
       flushRun(m.id);
       segs.push({ kind: "error", key: `${m.id}-err`, text: m.error });
     }
@@ -312,12 +374,15 @@ function segmentsOf(msgs: UIMessage[]): Segment[] {
   return segs;
 }
 
-const Turn = memo(function Turn({ msgs, live, start, retry, sessionId, forkBefore }: { msgs: UIMessage[]; live: boolean; start: number; retry?: { attempt: number; message: string; next: number }; sessionId: string; forkBefore: string | null }) {
+type TurnProps = { msgs: UIMessage[]; live: boolean; screen: boolean; start: number; retry?: { attempt: number; message: string; next: number }; sessionId: string; forkBefore: string | null };
+
+const Turn = memo(function Turn({ msgs, live, screen, start, retry, sessionId, forkBefore }: TurnProps) {
   const segs = useMemo(() => segmentsOf(msgs), [msgs]);
   const assistants = msgs.filter((m): m is Assistant => m.kind === "assistant");
   const end = assistants.reduce((acc, m) => Math.max(acc, m.completed ?? 0), 0);
   const text = segs.filter((s) => s.kind === "text").map((s) => (s as { text: string }).text).join("\n\n");
   const model = assistants.find((m) => m.model)?.model;
+  const blocks = useMemo(() => msgs.flatMap((m) => (m.kind === "assistant" ? m.blocks : [])), [msgs]);
 
   return (
     <div className="group/turn mb-6">
@@ -330,8 +395,11 @@ const Turn = memo(function Turn({ msgs, live, start, retry, sessionId, forkBefor
           );
         if (s.kind === "activity") return <ActivityGroup key={s.key} blocks={s.blocks} live={live && i === segs.length - 1} />;
         if (s.kind === "shell") return <ShellCard key={s.key} msg={s.msg} />;
+        if (s.kind === "subagent") return <SubagentReport key={s.key} msg={s.msg} />;
         return <ErrorCard key={s.key} text={s.text} />;
       })}
+      {screen && <ScreenCard blocks={blocks} live={live} sessionId={sessionId} />}
+      {!live && <ChangedFiles blocks={blocks} />}
       {live ? (
         <Working start={start} seed={String(start)} retry={retry} />
       ) : (
@@ -339,7 +407,20 @@ const Turn = memo(function Turn({ msgs, live, start, retry, sessionId, forkBefor
       )}
     </div>
   );
-});
+}, sameTurn);
+
+/**
+ * buildItems makes fresh `msgs` arrays every frame; the messages inside are
+ * stable unless they changed. Compare them one by one so only the turn that's
+ * streaming re-renders.
+ */
+function sameTurn(a: TurnProps, b: TurnProps) {
+  if (a.live !== b.live || a.screen !== b.screen || a.start !== b.start || a.retry !== b.retry || a.sessionId !== b.sessionId || a.forkBefore !== b.forkBefore) return false;
+  if (a.msgs === b.msgs) return true;
+  if (a.msgs.length !== b.msgs.length) return false;
+  for (let i = 0; i < a.msgs.length; i++) if (a.msgs[i] !== b.msgs[i]) return false;
+  return true;
+}
 
 function Working({ start, retry }: { start: number; seed?: string; retry?: { attempt: number; message: string; next: number } }) {
   const now = useNow(true);
@@ -376,6 +457,7 @@ function turnSpeed(steps: Assistant[]): number | null {
 function TurnFooter({ text, took, model, agent, speed, onFork }: { text: string; took: number; model?: string; agent?: string; speed: number | null; onFork: () => void }) {
   const [copied, setCopied] = useState(false);
   const info = useChat((s) => (agent ? s.agents.find((a) => a.id === agent) : undefined));
+  const agentName = useAgentName(agent);
   return (
     <div className="mt-1 flex h-7 min-w-0 items-center gap-1 text-[12px] whitespace-nowrap text-faint opacity-0 transition-opacity duration-200 group-hover/turn:opacity-100 max-[760px]:opacity-100">
       <button
@@ -391,8 +473,8 @@ function TurnFooter({ text, took, model, agent, speed, onFork }: { text: string;
       </button>
       {agent && (
         <span className="flex items-center gap-1.5 px-1">
-          <span className="h-1.5 w-1.5 rounded-full" style={{ background: agentColor(agent, info?.color) }} />
-          {info?.name ?? agent}
+          <AgentMark id={agent} color={info?.color} size={14} />
+          {agentName}
         </span>
       )}
       {model && <span className="min-w-0 truncate px-1">· {model}</span>}
@@ -406,8 +488,6 @@ function TurnFooter({ text, took, model, agent, speed, onFork }: { text: string;
 }
 
 function ErrorCard({ text }: { text: string }) {
-  // OpenCode's free models only accept OpenCode's own system prompt. An agent
-  // with custom instructions replaces it, so Zen refuses that agent.
   const freeTier = /free tier/i.test(text);
   return (
     <div className="selectable my-3 flex items-start gap-2.5 rounded-2xl border border-danger/25 bg-danger-soft px-3.5 py-2.5 text-[14px] text-ink">
@@ -416,7 +496,7 @@ function ErrorCard({ text }: { text: string }) {
         {text}
         {freeTier && (
           <div className="mt-1 text-[13px] text-ink-2">
-            OpenCode's free models only work with agents that keep OpenCode's built-in prompt. This agent has its own instructions, so switch to Build or Plan, pick a model from a provider, or{" "}
+            OpenCode's free models sometimes don't answer. Pick a model from a connected provider, or{" "}
             <button className="underline underline-offset-2 hover:text-ink" onClick={() => useUI.getState().openSettings("providers")}>
               connect a provider
             </button>
@@ -479,145 +559,6 @@ function ShellCard({ msg }: { msg: Extract<UIMessage, { kind: "shell" }> }) {
       </div>
       {msg.output && <pre className="selectable scroll-quiet max-h-60 overflow-auto px-3 py-2 font-mono text-[12px] whitespace-pre-wrap text-muted">{msg.output}</pre>}
     </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Asks
-// ---------------------------------------------------------------------------
-
-function PermissionCard({ req }: { req: PermissionRequestLite }) {
-  const reply = useChat((s) => s.replyPermission);
-  const { verb, command, targets } = describePermission(req);
-  const [all, setAll] = useState(false);
-  const [sent, setSent] = useState(false);
-  const shown = all ? targets : targets.slice(0, 4);
-  const answer = (r: "once" | "always" | "reject") => {
-    setSent(true);
-    void reply(req, r);
-  };
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 10, scale: 0.98 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: 6, scale: 0.98 }}
-      transition={{ type: "spring", stiffness: 420, damping: 32 }}
-      className="my-4 overflow-hidden rounded-2xl border border-info/40 bg-raised"
-    >
-      <div className="flex items-start gap-2.5 px-4 pt-3">
-        <ShieldQuestion size={16} className="mt-0.5 shrink-0 text-info" />
-        <div className="min-w-0 flex-1">
-          <div className="text-[12px] font-medium text-info">Needs your approval</div>
-          <div className="mt-0.5 text-[14.5px] font-semibold text-ink">{verb}</div>
-        </div>
-      </div>
-      <div className="space-y-2 px-4 pt-2.5">
-        {command && (
-          <pre className="selectable scroll-quiet max-h-[40vh] overflow-auto rounded-lg bg-sunken px-3 py-2.5 font-mono text-[12.5px] leading-relaxed break-words whitespace-pre-wrap text-ink">
-            {command}
-          </pre>
-        )}
-        {shown.length > 0 && (
-          <ul className="selectable space-y-1 rounded-lg bg-sunken px-3 py-2 font-mono text-[12.5px] leading-snug text-ink-2">
-            {shown.map((t) => (
-              <li key={t} className="break-all">
-                {t}
-              </li>
-            ))}
-            {targets.length > shown.length && (
-              <li>
-                <button className="font-sans text-[12px] text-muted underline-offset-2 hover:text-ink hover:underline" onClick={() => setAll(true)}>
-                  Show {targets.length - shown.length} more
-                </button>
-              </li>
-            )}
-          </ul>
-        )}
-        {req.message && <div className="selectable text-[13px] leading-relaxed break-words text-ink-2">{req.message}</div>}
-        {req.save?.length ? (
-          <div className="text-[12px] leading-relaxed break-words text-muted">
-            Always allow covers <span className="font-mono text-ink-2">{req.save.join(", ")}</span>
-          </div>
-        ) : null}
-      </div>
-      {/* Phones: full-width buttons, the safe answer last. */}
-      <div className="mt-3 flex flex-col-reverse gap-2 px-3 pb-3 sm:flex-row sm:justify-end">
-        <Button variant="ghost" disabled={sent} className="h-10 w-full sm:h-7 sm:w-auto" size="sm" onClick={() => answer("reject")}>
-          Deny
-        </Button>
-        <Button variant="secondary" disabled={sent} className="h-10 w-full sm:h-7 sm:w-auto" size="sm" onClick={() => answer("always")}>
-          Always allow
-        </Button>
-        <Button variant="primary" disabled={sent} className="h-10 w-full sm:h-7 sm:w-auto" size="sm" onClick={() => answer("once")}>
-          Allow once
-        </Button>
-      </div>
-    </motion.div>
-  );
-}
-
-function FormCard({ form }: { form: FormLite }) {
-  const reply = useChat((s) => s.replyForm);
-  const visible = form.fields.filter((f) => !f.hidden);
-  const [values, setValues] = useState<Record<string, unknown>>(() => Object.fromEntries(visible.filter((f) => f.default !== undefined).map((f) => [f.key, f.default])));
-  const set = (k: string, v: unknown) => setValues((p) => ({ ...p, [k]: v }));
-  const ready = visible.every((f) => !f.required || (values[f.key] !== undefined && values[f.key] !== "" && !(Array.isArray(values[f.key]) && (values[f.key] as unknown[]).length === 0)));
-
-  return (
-    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }} className="my-4 overflow-hidden rounded-2xl border border-info/40 bg-raised">
-      <div className="px-4 pt-3 text-[12px] font-medium text-info">The agent has a question</div>
-      <div className="selectable px-4 pt-0.5 text-[15px] leading-snug font-semibold break-words whitespace-pre-wrap">{form.title}</div>
-      <div className="space-y-4 px-4 py-3">
-        {visible.map((f) => (
-          <div key={f.key}>
-            {(f.title || visible.length > 1) && <div className="selectable mb-1 text-[13px] font-medium break-words text-ink-2">{f.title ?? f.key}</div>}
-            {f.description && <div className="selectable mb-2 text-[12.5px] leading-relaxed break-words whitespace-pre-wrap text-muted">{f.description}</div>}
-            {f.options?.length ? (
-              <div className="flex flex-wrap gap-1.5">
-                {f.options.map((o) => {
-                  const multi = f.type === "multiselect";
-                  const cur = values[f.key];
-                  const on = multi ? Array.isArray(cur) && cur.includes(o.value) : cur === o.value;
-                  return (
-                    <button
-                      key={o.value}
-                      onClick={() => set(f.key, multi ? (on ? (cur as string[]).filter((x) => x !== o.value) : [...((cur as string[]) ?? []), o.value]) : o.value)}
-                      className={`max-w-full rounded-lg border px-3 py-2 text-left text-[13px] leading-snug break-words transition-colors sm:py-1.5 ${on ? "border-ink bg-ink text-bg" : "border-line-strong bg-raised text-ink hover:bg-hover"}`}
-                    >
-                      {o.label ?? o.value}
-                    </button>
-                  );
-                })}
-              </div>
-            ) : f.type === "boolean" ? (
-              <div className="flex gap-1.5">
-                {[true, false].map((v) => (
-                  <button key={String(v)} onClick={() => set(f.key, v)} className={`rounded-lg border px-3 py-1.5 text-[13px] ${values[f.key] === v ? "border-ink bg-ink text-bg" : "border-line-strong bg-raised hover:bg-hover"}`}>
-                    {v ? "Yes" : "No"}
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <input
-                className="field h-10 w-full rounded-lg px-3 text-[16px] outline-none sm:h-9 sm:text-[14px]"
-                type={f.type === "number" || f.type === "integer" ? "number" : "text"}
-                placeholder={f.placeholder}
-                value={(values[f.key] as string) ?? ""}
-                onChange={(e) => set(f.key, f.type === "number" || f.type === "integer" ? Number(e.target.value) : e.target.value)}
-              />
-            )}
-          </div>
-        ))}
-      </div>
-      <div className="flex flex-col-reverse gap-2 px-3 pb-3 sm:flex-row sm:justify-end">
-        <Button size="sm" variant="ghost" className="h-10 w-full sm:h-7 sm:w-auto" onClick={() => reply(form, null)}>
-          Skip
-        </Button>
-        <Button size="sm" variant="primary" className="h-10 w-full sm:h-7 sm:w-auto" disabled={!ready} onClick={() => reply(form, values)}>
-          Send
-        </Button>
-      </div>
-    </motion.div>
   );
 }
 

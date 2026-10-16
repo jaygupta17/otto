@@ -7,9 +7,12 @@ import { useConnection } from "../../state/connection";
 import { AgentPicker, ModelPicker } from "./Pickers";
 import { Spinner } from "../ui/AgentClock";
 import { toast } from "../../state/ui";
+import { useTeammates } from "../../state/teammates";
 import { cycleAgent } from "../../lib/actions";
 import { ContextMeter } from "./SessionExtras";
 import type { FsEntry } from "../../lib/opencode/client";
+import { isMod } from "../../hooks/useShortcuts";
+import { layerOpen } from "../../lib/layers";
 
 /** App-level commands, handled here rather than by the server. */
 const BUILTIN: { name: string; description: string; needsSession: boolean }[] = [
@@ -35,6 +38,11 @@ export function Composer({ sessionId, placeholder = "Do anything…", autoFocus 
   const setDeliveryMode = useChat((s) => s.setDeliveryMode);
   const shellMode = !!sessionId && draft.startsWith("!");
   const send = useChat((s) => s.send);
+  const pickedAgent = useChat((s) => s.pickedAgent);
+  const sessionAgent = useChat((s) => (sessionId ? s.sessions[sessionId]?.agent : undefined));
+  const roster = useTeammates((s) => s.byId);
+  // Teammates are the agents: a draft needs one before it can be sent.
+  const needsAgent = !sessionAgent && !pickedAgent && roster !== null;
   const interrupt = useChat((s) => s.interrupt);
   const client = useChat((s) => s.client);
   const projectDir = useChat((s) => s.projectDir);
@@ -66,7 +74,8 @@ export function Composer({ sessionId, placeholder = "Do anything…", autoFocus 
     const onKey = (e: globalThis.KeyboardEvent) => {
       const target = e.target as HTMLElement;
       const typing = target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
-      if ((e.key === "l" && (e.metaKey || e.ctrlKey)) || (!typing && e.key === "/" && !e.metaKey)) {
+      if (layerOpen()) return;
+      if ((e.key.toLowerCase() === "l" && isMod(e) && !e.shiftKey && !e.altKey) || (!typing && e.key === "/" && !e.metaKey && !e.ctrlKey && !e.altKey)) {
         e.preventDefault();
         ta.current?.focus();
       }
@@ -117,7 +126,7 @@ export function Composer({ sessionId, placeholder = "Do anything…", autoFocus 
 
   async function submit() {
     const text = draft.trim();
-    if (!text || sending || !ready) return;
+    if (!text || sending || !ready || needsAgent) return;
     const cmd = /^\/(\S+)\s*([\s\S]*)$/.exec(text);
     setSending(true);
     setDraft(draftKey, "");
@@ -195,7 +204,7 @@ export function Composer({ sessionId, placeholder = "Do anything…", autoFocus 
     }
   }
 
-  const canSend = !!draft.trim() && ready && !sending;
+  const canSend = !!draft.trim() && ready && !sending && !needsAgent;
   const showStop = busy && !draft.trim();
 
   return (
@@ -240,12 +249,14 @@ export function Composer({ sessionId, placeholder = "Do anything…", autoFocus 
           ref={ta}
           rows={1}
           value={draft}
-          placeholder={!ready ? "Connecting…" : busy ? (delivery === "steer" ? "Steer the agent…" : "Queue a follow-up…") : placeholder}
+          placeholder={!ready ? "Connecting…" : busy ? (delivery === "steer" ? "Steer the agent…" : "Queue a follow-up…") : needsAgent ? "Add a teammate to start" : placeholder}
           onChange={(e) => {
             setDraft(draftKey, e.target.value);
             void updateSuggest(e.target.value, e.target.selectionStart);
           }}
           onKeyDown={onKeyDown}
+          aria-label="Message"
+          data-composer
           onFocus={() => setFocused(true)}
           onBlur={() => {
             setFocused(false);
@@ -285,7 +296,7 @@ export function Composer({ sessionId, placeholder = "Do anything…", autoFocus 
                 {delivery === "steer" ? "Steer" : "Queue"}
               </button>
             )}
-            {sessionId && <ContextMeter sessionId={sessionId} />}
+            {sessionId && <ContextMeter sessionId={sessionId} compact={compact} />}
             <ModelPicker sessionId={sessionId} compact={compact} />
             <AnimatePresence mode="wait" initial={false}>
               {showStop ? (

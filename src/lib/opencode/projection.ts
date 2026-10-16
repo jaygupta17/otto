@@ -7,6 +7,7 @@
  *   tool:<callID>
  */
 import type { SessionMessageInfo, V2Event } from "@opencode/client";
+import { stopNoteChild } from "./tools";
 
 export type ToolStatus = "streaming" | "running" | "completed" | "error";
 
@@ -74,7 +75,31 @@ export type UIMessage =
     }
   | { kind: "notice"; id: string; tone: "info" | "error" | "ok"; text: string; time: number }
   | { kind: "shell"; id: string; command: string; status: string; output?: string; exit?: number | string; time: number }
-  | { kind: "compaction"; id: string; status: string; summary?: string; time: number };
+  | { kind: "compaction"; id: string; status: string; summary?: string; time: number }
+  /** A subagent's report, delivered back into the parent session. */
+  | { kind: "subagent"; id: string; childID?: string; agent?: string; state?: string; description?: string; text: string; time: number }
+  /** The user stopped this subagent (a note to the model; never rendered). */
+  | { kind: "stopped"; id: string; childID: string; time: number };
+
+const SUBAGENT_ENVELOPE = /^\s*<subagent\b[^>]*>\n?([\s\S]*?)\n?<\/subagent>\s*$/;
+
+/** Synthetic messages from a finished subagent become report cards; any other synthetic stays hidden (it's for the model). */
+function fromSynthetic(id: string, text: string, metadata: Json | undefined, description: string | undefined, time: number): UIMessage | null {
+  const stopped = stopNoteChild(metadata);
+  if (stopped) return { kind: "stopped", id, childID: stopped, time };
+  if (metadata?.source !== "subagent") return null;
+  const str = (v: unknown) => (typeof v === "string" && v ? v : undefined);
+  return {
+    kind: "subagent",
+    id,
+    childID: str(metadata.childID) ?? str(metadata.sessionID),
+    agent: str(metadata.agent),
+    state: str(metadata.state) ?? str(metadata.status),
+    description: description ?? str(metadata.description),
+    text: (SUBAGENT_ENVELOPE.exec(text)?.[1] ?? text).trim(),
+    time,
+  };
+}
 
 type Json = Record<string, unknown>;
 
@@ -168,6 +193,8 @@ function fromRest(m: SessionMessageInfo): UIMessage | null {
     case "model-switched":
     case "agent-switched":
       return null;
+    case "synthetic":
+      return fromSynthetic(m.id, m.text, m.metadata as Json | undefined, m.description, m.time.created);
     case "idle":
       if (m.outcome === "interrupted") return { kind: "notice", id: m.id, tone: "info", text: "Stopped", time: m.time.created };
       return null;
@@ -408,6 +435,12 @@ export function applyEvent(msgs: UIMessage[], e: V2Event): UIMessage[] {
       next[i] = { ...(msgs[i] as Extract<UIMessage, { kind: "shell" }>), status: sh.status ?? "exited", exit: sh.exit, output };
       return next;
     }
+    case "session.synthetic": {
+      const id = (e as { id?: string }).id ?? `synthetic:${created}`;
+      if (msgs.some((m) => m.id === id)) return msgs;
+      const u = fromSynthetic(id, (d.text as string) ?? "", d.metadata as Json | undefined, d.description as string | undefined, created);
+      return u ? [...msgs, u] : msgs;
+    }
     case "session.compaction.started": {
       const id = (d.inputID as string) ?? (e as { id: string }).id;
       if (msgs.some((m) => m.id === id)) return msgs;
@@ -440,101 +473,4 @@ export function eventSessionID(e: V2Event): string | undefined {
   return (d?.sessionID as string | undefined) ?? undefined;
 }
 
-// ---------------------------------------------------------------------------
-// Summaries used by the UI ("Edited 1 file · read 2 files · ran 3 commands")
-// ---------------------------------------------------------------------------
-
-export type ToolCategory = "read" | "edit" | "search" | "run" | "web" | "task" | "think" | "other";
-
-export function toolCategory(name: string): ToolCategory {
-  const n = name.toLowerCase();
-  if (/(^|_)(read|view|cat|open)/.test(n)) return "read";
-  if (/(write|edit|patch|apply|create|replace|multiedit)/.test(n)) return "edit";
-  if (/(grep|glob|search|find|list|ls|codesearch)/.test(n)) return "search";
-  if (/(bash|shell|exec|run|command|terminal)/.test(n)) return "run";
-  if (/(web|fetch|http|browse|url)/.test(n)) return "web";
-  if (/(task|agent|subagent|delegate)/.test(n)) return "task";
-  if (/(todo|plan|think)/.test(n)) return "think";
-  return "other";
-}
-
-const PHRASE: Record<ToolCategory, [string, string]> = {
-  read: ["read", "file"],
-  edit: ["edited", "file"],
-  search: ["searched", "time"],
-  run: ["ran", "command"],
-  web: ["fetched", "page"],
-  task: ["delegated", "task"],
-  think: ["planned", "step"],
-  other: ["used", "tool"],
-};
-
-export function summarizeTools(blocks: Block[]): string {
-  const counts = new Map<ToolCategory, number>();
-  let thoughts = 0;
-  for (const b of blocks) {
-    if (b.kind === "tool") counts.set(toolCategory(b.name), (counts.get(toolCategory(b.name)) ?? 0) + 1);
-    else if (b.kind === "reasoning") thoughts += 1;
-  }
-  const order: ToolCategory[] = ["edit", "read", "search", "run", "web", "task", "think", "other"];
-  const parts: string[] = [];
-  if (thoughts) parts.push(`Thought ${thoughts === 1 ? "once" : `${thoughts} times`}`);
-  for (const c of order) {
-    const n = counts.get(c);
-    if (!n) continue;
-    const [verb, noun] = PHRASE[c];
-    const phrase = c === "search" ? `${verb} ${n === 1 ? "once" : `${n} times`}` : `${verb} ${n} ${noun}${n === 1 ? "" : "s"}`;
-    parts.push(phrase);
-  }
-  const s = parts.join(" · ");
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
-/** Short label for a single tool call, e.g. "Read  Hero.tsx". */
-export function toolLabel(b: Extract<Block, { kind: "tool" }>): { verb: string; target: string } {
-  const input = (b.input ?? safeJson(b.inputText)) as Json | undefined;
-  const pick = (...keys: string[]) => {
-    for (const k of keys) {
-      const v = input?.[k];
-      if (typeof v === "string" && v) return v;
-    }
-    return "";
-  };
-  const cat = toolCategory(b.name);
-  const base = (p: string) => p.split("/").filter(Boolean).pop() ?? p;
-  switch (cat) {
-    case "read":
-      return { verb: "Read", target: base(pick("path", "filePath", "file", "uri")) };
-    case "edit":
-      return { verb: /write|create/.test(b.name) ? "Write" : "Edit", target: base(pick("path", "filePath", "file")) };
-    case "search": {
-      const pattern = pick("pattern", "query", "glob", "regex");
-      const where = pick("path", "directory", "cwd");
-      return { verb: b.name.toLowerCase().includes("glob") ? "Find" : b.name.toLowerCase().includes("list") ? "List" : "Search", target: [pattern, where && `in ${where}`].filter(Boolean).join(" ") };
-    }
-    case "run":
-      return { verb: "Run", target: pick("command", "cmd", "script", "code") };
-    case "web":
-      return { verb: "Fetch", target: pick("url", "query") };
-    case "task":
-      return { verb: "Delegate", target: pick("description", "prompt", "agent") };
-    case "think":
-      return { verb: "Plan", target: pick("title", "description") };
-    default:
-      return { verb: titleCase(b.name), target: pick("path", "query", "command", "description", "url") };
-  }
-}
-
-function titleCase(s: string) {
-  return s.replace(/[_-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
-export function safeJson(s?: string): Json | undefined {
-  if (!s) return undefined;
-  try {
-    const v = JSON.parse(s);
-    return v && typeof v === "object" ? (v as Json) : undefined;
-  } catch {
-    return undefined;
-  }
-}
+export { summarizeTools, toolCategory, toolLabel, type ToolCategory } from "./tools";

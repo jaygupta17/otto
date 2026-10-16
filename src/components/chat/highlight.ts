@@ -68,12 +68,45 @@ export function langFromPath(path: string): string {
   return EXT[ext] ?? "text";
 }
 
-export async function highlight(code: string, lang: string): Promise<string | null> {
+/** Above this, highlighting blocks the UI for too long; callers show plain text. */
+export const HIGHLIGHT_LIMIT = 150_000;
+
+// LRU by total size: recently used blocks stay, big files don't pin memory.
+const CACHE_BUDGET = 6_000_000;
+let cacheSize = 0;
+const inflight = new Map<string, Promise<string | null>>();
+
+function remember(key: string, html: string) {
+  cache.set(key, html);
+  cacheSize += key.length + html.length;
+  for (const [k, v] of cache) {
+    if (cacheSize <= CACHE_BUDGET) break;
+    cache.delete(k);
+    cacheSize -= k.length + v.length;
+  }
+}
+
+/** Let the browser paint / handle input before a long synchronous highlight. */
+const idle = () => new Promise<void>((r) => ("requestIdleCallback" in window ? requestIdleCallback(() => r(), { timeout: 300 }) : setTimeout(r, 16)));
+
+export function highlight(code: string, lang: string): Promise<string | null> {
   const l = ALIASES[lang?.toLowerCase()] ?? (lang?.toLowerCase() || "text");
   const key = `${l}\u0000${code}`;
   const hit = cache.get(key);
-  if (hit) return hit;
-  if (code.length > 200_000) return null;
+  if (hit) {
+    cache.delete(key);
+    cache.set(key, hit);
+    return Promise.resolve(hit);
+  }
+  if (code.length > HIGHLIGHT_LIMIT) return Promise.resolve(null);
+  const pending = inflight.get(key);
+  if (pending) return pending;
+  const p = run(code, l, key).finally(() => inflight.delete(key));
+  inflight.set(key, p);
+  return p;
+}
+
+async function run(code: string, l: string, key: string): Promise<string | null> {
   if (!hl) {
     hl = import("shiki/bundle/web").then((m) => m.createHighlighter({ themes: ["github-light-default", "github-dark-default"], langs: [] }) as Promise<HL>);
   }
@@ -86,8 +119,8 @@ export async function highlight(code: string, lang: string): Promise<string | nu
       return null;
     }
   }
+  if (code.length > 20_000) await idle();
   const html = h.codeToHtml(code, { lang: loaded.has(l) ? l : "text", themes: { light: "github-light-default", dark: "github-dark-default" }, defaultColor: false });
-  if (cache.size > 400) cache.clear();
-  cache.set(key, html);
+  remember(key, html);
   return html;
 }

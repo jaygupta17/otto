@@ -1,8 +1,11 @@
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowRightToLine, CornerDownRight, FileDiff as FileDiffIcon, Gauge, Layers, X } from "lucide-react";
+import { ArrowRightToLine, CornerDownRight, FileDiff as FileDiffIcon, Gauge, Layers, SquarePen, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { revertIndex, useChat } from "../../state/chat";
 import { useUI } from "../../state/ui";
+import { useExtensions } from "../../state/extensions";
+import { useMemory } from "../../state/memory";
+import { freshThread } from "../../lib/actions";
 import { contextTokens, tokensPerSecond, type UIMessage } from "../../lib/opencode/projection";
 import type { FileDiff } from "../../lib/opencode/client";
 import { compactNumber, money } from "../../lib/format";
@@ -60,20 +63,35 @@ export function useUsage(sessionId: string) {
     const all = messages ?? [];
     const visible = all.slice(0, revertIndex(all, session?.revert));
     const steps = visible.filter((m): m is Assistant => m.kind === "assistant");
+    // The context window as of the latest step, counted from the last compaction.
     let last: Assistant | undefined;
-    let compactedAfter = false;
+    let first: Assistant | undefined;
+    let compacted = false;
+    let compacting = false;
+    let turnsSince = 0;
     for (let i = visible.length - 1; i >= 0; i--) {
       const m = visible[i];
-      if (m.kind === "compaction" && m.status === "completed") compactedAfter = true;
-      if (m.kind === "assistant" && m.tokens) {
-        last = m;
-        break;
+      if (m.kind === "compaction") {
+        if (m.status === "running") compacting = true;
+        if (m.status === "completed") {
+          compacted = !last;
+          break;
+        }
+        continue;
+      }
+      if (m.kind === "user" && !m.pending) turnsSince++;
+      if (m.kind === "assistant" && m.tokens && contextTokens(m.tokens)) {
+        last ??= m;
+        first = m;
       }
     }
     const ref = last?.model ?? session?.model;
     const info = ref ? models.find((m) => m.providerID === ref.providerID && m.id === ref.id) : undefined;
     const limit = info?.limit.context ?? 0;
-    const used = compactedAfter ? 0 : contextTokens(last?.tokens);
+    const used = contextTokens(last?.tokens);
+    // How much each turn has added, after the first step (system prompt, tools).
+    const growth = turnsSince >= 3 && first && last && first !== last ? (used - contextTokens(first.tokens)) / (turnsSince - 1) : 0;
+    const turnsLeft = growth > 0 && limit > used ? Math.floor((limit - used) / growth) : null;
     let outTok = 0;
     let secs = 0;
     for (const m of steps) {
@@ -87,6 +105,10 @@ export function useUsage(sessionId: string) {
       used,
       limit,
       pct: limit ? Math.min(1, used / limit) : 0,
+      /** Compacted since the last step: the window was just emptied. */
+      compacted,
+      compacting,
+      turnsLeft,
       tokens: session?.tokens,
       cost: session?.cost ?? 0,
       turns: visible.filter((m) => m.kind === "user").length,
@@ -96,38 +118,72 @@ export function useUsage(sessionId: string) {
   }, [messages, session, models]);
 }
 
-function Ring({ pct, size = 16 }: { pct: number; size?: number }) {
-  const r = (size - 3) / 2;
+/** From here the meter asks for a decision (blue): compact or start fresh. */
+const FULL = 0.8;
+
+const pctLabel = (pct: number) => (pct > 0 && pct < 0.01 ? "<1%" : `${Math.round(pct * 100)}%`);
+
+/** Neutral while there's room; blue ("needs you") once it's nearly full. */
+function Ring({ pct, size = 18 }: { pct: number; size?: number }) {
+  const w = 2.5;
+  const r = (size - w) / 2;
   const c = 2 * Math.PI * r;
-  const tone = pct > 0.85 ? "var(--danger)" : pct > 0.6 ? "var(--text-2)" : "var(--muted)";
+  const tone = pct >= FULL ? "var(--info)" : "var(--text-2)";
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90" aria-hidden>
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--border-strong)" strokeWidth={2} />
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={tone} strokeWidth={2} strokeLinecap="round" strokeDasharray={`${c * Math.max(pct, 0.02)} ${c}`} />
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="shrink-0 -rotate-90" aria-hidden>
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--border-strong)" strokeWidth={w} />
+      {pct > 0 && (
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          stroke={tone}
+          strokeWidth={w}
+          strokeLinecap="round"
+          strokeDasharray={`${c * Math.max(pct, 0.04)} ${c}`}
+          className="transition-[stroke-dasharray] duration-200 ease-out"
+        />
+      )}
     </svg>
   );
 }
 
-/** Context-window meter for the composer; opens the usage card. */
-export function ContextMeter({ sessionId }: { sessionId: string }) {
+/**
+ * Context-window meter for the composer: a ring and the percentage, blue once
+ * it's nearly full. Opens the usage card (a popover, on phones too), which
+ * offers to compact or start a fresh thread.
+ */
+export function ContextMeter({ sessionId, compact = false }: { sessionId: string; compact?: boolean }) {
   const u = useUsage(sessionId);
   const anchor = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
-  if (!u.limit || !u.used) return null;
+  if (!u.limit || (!u.used && !u.compacted && !u.compacting)) return null;
+  const full = u.pct >= FULL;
+  // Phones are tight: the number shows once it starts to matter.
+  const showPct = !u.compacting && !u.compacted && (!compact || u.pct >= 0.5);
+  const title = u.compacting
+    ? "Compacting the conversation…"
+    : u.compacted
+      ? "Context compacted. It refills as the conversation goes on."
+      : `Context ${pctLabel(u.pct)} full · ${compactNumber(u.used)} of ${compactNumber(u.limit)} tokens${full ? ". Compact or start a fresh thread." : ""}`;
+  const card = <UsageCard sessionId={sessionId} phone={compact} onDone={() => setOpen(false)} />;
   return (
     <>
       <button
         ref={anchor}
         onClick={() => setOpen((v) => !v)}
-        title={`Context: ${compactNumber(u.used)} of ${compactNumber(u.limit)} tokens`}
-        aria-label="Context usage"
-        className="flex h-8 items-center gap-1.5 rounded-md px-1.5 text-[12px] text-muted tabular-nums transition-colors hover:bg-hover hover:text-ink"
+        title={title}
+        aria-label={`Context usage: ${u.compacting ? "compacting" : u.compacted ? "compacted" : `${pctLabel(u.pct)} full`}`}
+        aria-expanded={open}
+        className={`flex h-8 shrink-0 items-center gap-1.5 rounded-md px-1.5 text-[12px] font-medium tabular-nums transition-colors hover:bg-hover ${full ? "text-info" : "text-muted hover:text-ink"} ${open ? "bg-hover" : ""}`}
       >
-        <Ring pct={u.pct} />
-        {u.pct >= 0.5 && <span>{Math.round(u.pct * 100)}%</span>}
+        {u.compacting ? <Spinner size={16} /> : <Ring pct={u.compacted ? 0 : u.pct} />}
+        {showPct && <span>{pctLabel(u.pct)}</span>}
       </button>
-      <Popover open={open} onClose={() => setOpen(false)} anchor={anchor.current} placement="top-end" width={300}>
-        <UsageCard sessionId={sessionId} onDone={() => setOpen(false)} />
+      {/* A small card, so a popover by the meter on phones too, not a page. */}
+      <Popover open={open} onClose={() => setOpen(false)} anchor={anchor.current} placement="top-end" width={Math.min(320, window.innerWidth - 16)} label="Context usage">
+        {card}
       </Popover>
     </>
   );
@@ -150,23 +206,80 @@ export function SessionInfoButton({ sessionId }: { sessionId: string }) {
   );
 }
 
-export function UsageCard({ sessionId, onDone }: { sessionId: string; onDone?: () => void }) {
+export function UsageCard({ sessionId, phone = false, onDone }: { sessionId: string; phone?: boolean; onDone?: () => void }) {
   const u = useUsage(sessionId);
   const compact = useChat((s) => s.compact);
   const busy = useChat((s) => !!s.busy[sessionId]);
+  const autoCompact = useExtensions((s) => (s.config as { compaction?: { auto?: boolean } } | null)?.compaction?.auto !== false);
+  const remembers = useMemory((s) => s.installed === true);
   const t = u.tokens;
+  const full = u.pct >= FULL;
+  const known = !!u.limit;
+  const headline = !known
+    ? "Context"
+    : u.compacting
+      ? "Compacting…"
+      : u.compacted
+        ? "Compacted"
+        : `${pctLabel(u.pct)} of context used`;
+  const note = !known
+    ? "This model doesn't report its context size."
+    : u.compacting
+      ? "Summarizing older messages to make room."
+      : u.compacted
+        ? "Older messages were summarized. The agent keeps the summary and the latest turns."
+        : full
+          ? autoCompact
+            ? "Nearly full. Older messages get summarized automatically soon; compact now or start fresh to choose when."
+            : "Nearly full. Compact or start a fresh thread before the model runs out of room."
+          : u.turnsLeft !== null && u.turnsLeft <= 30
+            ? `Room for about ${u.turnsLeft} more ${u.turnsLeft === 1 ? "turn" : "turns"} like these.`
+            : autoCompact
+              ? "Plenty of room. When it fills up, older messages are summarized automatically."
+              : "Plenty of room.";
   return (
     <div className="p-4">
-      <div className="mb-2 flex items-baseline justify-between text-[13px]">
-        <span className="font-medium text-ink">Context</span>
-        <span className="text-muted tabular-nums">{u.limit ? `${compactNumber(u.used)} / ${compactNumber(u.limit)}` : "—"}</span>
+      <div className="flex items-baseline justify-between gap-3">
+        <span className={`text-[14px] font-semibold tabular-nums ${full && !u.compacted && !u.compacting ? "text-info" : "text-ink"}`}>{headline}</span>
+        {known && !u.compacting && !u.compacted && <span className="shrink-0 text-[12px] text-muted tabular-nums">{`${compactNumber(u.used)} / ${compactNumber(u.limit)}`}</span>}
       </div>
-      <div className="h-1.5 overflow-hidden rounded-full bg-active">
-        <div className="h-full rounded-full transition-[width] duration-300" style={{ width: `${Math.max(u.pct * 100, u.used ? 1.5 : 0)}%`, background: u.pct > 0.85 ? "var(--danger)" : "var(--text-2)" }} />
-      </div>
-      <div className="mt-1.5 text-[12px] text-faint">{u.model}</div>
+      {known && (
+        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-active" role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(u.pct * 100)} aria-label="Context used">
+          <div
+            className="h-full rounded-full transition-[width] duration-200 ease-out"
+            style={{ width: u.compacted || u.compacting ? 0 : `${Math.max(u.pct * 100, u.used ? 1.5 : 0)}%`, background: full ? "var(--info)" : "var(--text-2)" }}
+          />
+        </div>
+      )}
+      <p className="mt-2 text-[12.5px] leading-snug text-muted">{note}</p>
 
-      <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 text-[12.5px]">
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <Button
+          size={phone ? "lg" : "sm"}
+          icon={<Layers size={13} />}
+          disabled={busy || u.compacting}
+          title={busy ? "Wait for the agent to finish" : "Summarize the conversation so far to free up context"}
+          onClick={() => {
+            void compact(sessionId);
+            onDone?.();
+          }}
+        >
+          Compact
+        </Button>
+        <Button
+          size={phone ? "lg" : "sm"}
+          icon={<SquarePen size={13} />}
+          title={`A new, empty session with the same agent, model and folder${remembers ? ". Teammates keep their memory." : ""}`}
+          onClick={() => {
+            onDone?.();
+            freshThread(sessionId, phone);
+          }}
+        >
+          Fresh thread
+        </Button>
+      </div>
+
+      <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-line pt-3 text-[12.5px]">
         <Stat label="Input" value={t ? compactNumber(t.input) : "—"} />
         <Stat label="Output" value={t ? compactNumber(t.output + t.reasoning) : "—"} />
         <Stat label="Cache read" value={t ? compactNumber(t.cache.read) : "—"} />
@@ -174,20 +287,7 @@ export function UsageCard({ sessionId, onDone }: { sessionId: string; onDone?: (
         <Stat label="Turns" value={String(u.turns)} />
         <Stat label="Speed" value={u.speed ? `${Math.round(u.speed)} tok/s` : "—"} />
       </dl>
-
-      <Button
-        size="sm"
-        className="mt-4 w-full"
-        icon={<Layers size={13} />}
-        disabled={busy}
-        title="Summarize the conversation so far to free up context"
-        onClick={() => {
-          void compact(sessionId);
-          onDone?.();
-        }}
-      >
-        Compact conversation
-      </Button>
+      {u.model && <div className="mt-2 truncate text-[12px] text-faint">{u.model}</div>}
     </div>
   );
 }

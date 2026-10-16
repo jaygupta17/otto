@@ -14,7 +14,9 @@ import { Settings } from "./components/settings/Settings";
 import { Sheet } from "./components/ui/Sheet";
 import { Toasts } from "./components/ui/Toasts";
 import { DialogHost } from "./components/ui/Dialogs";
+import { SubagentHost } from "./components/chat/Subagent";
 import { CommandPalette, ShortcutsSheet } from "./components/shell/CommandPalette";
+import { ScreenFocus } from "./components/panel/ScreenFocus";
 import { AppGlyph } from "./components/ui/Mark";
 
 export default function App() {
@@ -72,6 +74,8 @@ export default function App() {
       <Sheet open={addOpen} onClose={() => setAdd(false)} compact={compact}>
         <Onboarding embedded onDone={() => setAdd(false)} onCancel={() => setAdd(false)} />
       </Sheet>
+      {workspaces.length > 0 && <SubagentHost compact={compact} />}
+      {workspaces.length > 0 && <ScreenFocus />}
       <DialogHost />
       <Toasts />
     </MotionConfig>

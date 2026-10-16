@@ -32,12 +32,49 @@ function makeComponents(streaming: boolean): Components {
 const settled = makeComponents(false);
 const live = makeComponents(true);
 
-export const Markdown = memo(function Markdown({ text, streaming = false, className = "" }: { text: string; streaming?: boolean; className?: string }) {
+/**
+ * Split at blank lines that start a new top-level block (not inside a code
+ * fence, not an indented continuation). While a reply streams only the last
+ * block changes, so only it gets re-parsed.
+ */
+export function splitBlocks(text: string): string[] {
+  const lines = text.split("\n");
+  const out: string[] = [];
+  let cur: string[] = [];
+  let fence: string | null = null;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const f = /^ {0,3}(`{3,}|~{3,})/.exec(line);
+    if (f) {
+      if (!fence) fence = f[1][0].repeat(f[1].length);
+      else if (line.trim().startsWith(fence) && line.trim().replace(/[`~]/g, "") === "") fence = null;
+    }
+    cur.push(line);
+    const next = lines[i + 1];
+    if (!fence && line.trim() === "" && next !== undefined && /^\S/.test(next) && cur.some((l) => l.trim())) {
+      out.push(cur.join("\n"));
+      cur = [];
+    }
+  }
+  if (cur.length) out.push(cur.join("\n"));
+  return out;
+}
+
+const Block = memo(function Block({ text, streaming }: { text: string; streaming: boolean }) {
   return (
-    <div className={`prose-chat selectable ${streaming ? "" : ""} ${className}`}>
-      <ReactMarkdown remarkPlugins={plugins} components={streaming ? live : settled}>
-        {text}
-      </ReactMarkdown>
+    <ReactMarkdown remarkPlugins={plugins} components={streaming ? live : settled}>
+      {text}
+    </ReactMarkdown>
+  );
+});
+
+export const Markdown = memo(function Markdown({ text, streaming = false, className = "" }: { text: string; streaming?: boolean; className?: string }) {
+  const blocks = splitBlocks(text);
+  return (
+    <div className={`prose-chat selectable ${className}`}>
+      {blocks.map((b, i) => (
+        <Block key={i} text={b} streaming={streaming && i === blocks.length - 1} />
+      ))}
     </div>
   );
 });
