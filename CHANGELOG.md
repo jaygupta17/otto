@@ -22,6 +22,12 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 - Teammate colours are brighter, still clear of the status colours. Teammates using the old colours move to the new ones.
 - Sidebar rows for teammates show their state on the face instead of a separate clock or dot.
+- **Quieter live activity.** Handoffs, tool runs and thinking are single lines now, without cards: the teammate's face is the spinner, live words shimmer, and the time and a chevron follow. The turn's own "Working" line is gone. Only the teammate's face shows, in the pauses when nothing else is moving. Opening a handoff shows the brief and result underneath. Its conversation and Stop are icons that appear on hover.
+- While the agent works, the composer says "Steer Juno…". The Steer or Queue switch appears only once you've typed something.
+
+### Fixed
+
+- A teammate finishing its part of a lead's job no longer pops a "Finished. Your turn." notice while the lead is still working.
 
 ## [0.9.0] - 2026-10-16
 

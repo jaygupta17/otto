@@ -2,12 +2,12 @@ import { AnimatePresence, motion } from "motion/react";
 import { AlertCircle, ArrowDown, Check, ChevronRight, Copy, GitFork, Pencil, Redo2, RotateCw, SquareTerminal, Layers, Info, Undo2 } from "lucide-react";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { tokensPerSecond, type Block, type UIMessage } from "../../lib/opencode/projection";
-import { clock, duration } from "../../lib/format";
+import { duration } from "../../lib/format";
 import { useNow } from "../../hooks/useNow";
 import { revertIndex, useChat } from "../../state/chat";
 import { useUI } from "../../state/ui";
-import { AgentMark } from "../ui/TeammateFace";
-import { useAgentName } from "../../state/teammates";
+import { AgentMark, TeammateFace } from "../ui/TeammateFace";
+import { useAgentName, useTeammate } from "../../state/teammates";
 import { Markdown } from "./Markdown";
 import { ActivityGroup, SubagentReport } from "./Activity";
 import { ScreenCard } from "./ScreenCard";
@@ -223,7 +223,7 @@ export function Thread({ sessionId, bottomInset = 0 }: { sessionId: string; bott
             return <Turn key={it.key} msgs={it.msgs} live={live} screen={i === screenAt} start={it.start} retry={live ? retry : undefined} sessionId={sessionId} forkBefore={nextUsers[i]} />;
           })}
           {revert && hidden > 0 && <RevertBar sessionId={sessionId} files={revert.files?.length ?? 0} count={(timeline?.messages ?? []).slice(cut).filter((m) => m.kind === "user").length} />}
-          {awaitingFirst && <Working start={lastUserTimeOf(items)} seed={String(lastUserTimeOf(items))} />}
+          {awaitingFirst && <Working sessionId={sessionId} />}
         </div>
       </div>
       <AnimatePresence>
@@ -247,14 +247,6 @@ export function Thread({ sessionId, bottomInset = 0 }: { sessionId: string; bott
     </div>
     </ThreadSession.Provider>
   );
-}
-
-function lastUserTimeOf(items: Item[]) {
-  for (let i = items.length - 1; i >= 0; i--) {
-    const it = items[i];
-    if (it.type === "user") return it.msg.time;
-  }
-  return Date.now();
 }
 
 // ---------------------------------------------------------------------------
@@ -383,6 +375,8 @@ const Turn = memo(function Turn({ msgs, live, screen, start, retry, sessionId, f
   const text = segs.filter((s) => s.kind === "text").map((s) => (s as { text: string }).text).join("\n\n");
   const model = assistants.find((m) => m.model)?.model;
   const blocks = useMemo(() => msgs.flatMap((m) => (m.kind === "assistant" ? m.blocks : [])), [msgs]);
+  // Something above is already moving (streaming words, a running tool, a teammate on it): that says it's working.
+  const moving = live && (segs.some((s) => s.kind === "text" && s.streaming) || blocks.some((b) => (b.kind === "tool" && (b.status === "running" || b.status === "streaming")) || (b.kind === "reasoning" && b.streaming)));
 
   return (
     <div className="group/turn mb-6">
@@ -401,7 +395,7 @@ const Turn = memo(function Turn({ msgs, live, screen, start, retry, sessionId, f
       {screen && <ScreenCard blocks={blocks} live={live} sessionId={sessionId} />}
       {!live && <ChangedFiles blocks={blocks} />}
       {live ? (
-        <Working start={start} seed={String(start)} retry={retry} />
+        (!moving || retry) && <Working sessionId={sessionId} retry={retry} />
       ) : (
         text && <TurnFooter text={text} took={end && start ? end - start : 0} model={model?.id} agent={assistants.find((m) => m.agent)?.agent} speed={turnSpeed(assistants)} onFork={() => void useChat.getState().fork(sessionId, forkBefore)} />
       )}
@@ -422,20 +416,24 @@ function sameTurn(a: TurnProps, b: TurnProps) {
   return true;
 }
 
-function Working({ start, retry }: { start: number; seed?: string; retry?: { attempt: number; message: string; next: number } }) {
-  const now = useNow(true);
+/**
+ * The turn is live but nothing above is moving (waiting on the model, between
+ * steps): just the teammate's working face (or the clock), so it never looks
+ * frozen. Only a retry earns words.
+ */
+function Working({ sessionId, retry }: { sessionId: string; retry?: { attempt: number; message: string; next: number } }) {
+  const now = useNow(!!retry);
+  // A lead's part runs in a child session the sidebar doesn't list; it knows who's on it.
+  const mate = useTeammate(useChat((s) => s.sessions[sessionId]?.agent ?? s.delegated[sessionId]));
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-3 flex h-6 items-center gap-2 text-[13px]">
-      <AgentClock />
-      {retry ? (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-3 flex h-6 items-center gap-2 text-[13.5px]" role="status" aria-label="Working">
+      {mate ? <TeammateFace seed={mate.face} color={mate.color} accessory={mate.accessory} size={20} state="working" /> : <AgentClock />}
+      {retry && (
         <span className="text-ink-2">
           Retrying{retry.attempt > 1 ? ` (attempt ${retry.attempt})` : ""}
           {retry.next > now ? ` in ${Math.ceil((retry.next - now) / 1000)}s` : ""} <span className="text-muted">· {retry.message}</span>
         </span>
-      ) : (
-        <span className="text-ink-2">Working</span>
       )}
-      <span className="text-muted tabular-nums">{clock(now - start)}</span>
     </motion.div>
   );
 }

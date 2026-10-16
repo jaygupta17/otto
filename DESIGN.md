@@ -93,3 +93,15 @@ A lead (Juno, the chief of staff) takes the whole job and hands the parts to tea
 ## Signature
 
 The agent clock plus tabular elapsed time (`Working · 1:24`) is how activity reads everywhere: composer, timeline, sidebar, schedules.
+
+### Live lines, not cards
+
+What's happening right now reads as one quiet line: a spinner, a word or two, the time, and a chevron (`◔ Working 0:24 ›`).
+
+- The spinner is the teammate's own working face when there is one, else the agent clock.
+- A live turn shows nothing of its own while something in it is moving (words streaming, a tool or teammate running). In the gaps between, only the spinner shows, with no "Working" and no timer, so the turn never looks frozen. Only a retry gets words.
+- Live words shimmer (`.shimmer`: a soft light sweeping through the text). The shimmer is what says "live", so don't add "Running" or "In progress" next to it. When it stops, the text turns plain.
+- States are cues, not labels: a stop is struck through, a failure takes the red, needing you takes the blue. Done is the face's done state and the shimmer stopping.
+- No boxes around activity. Detail opens under the line, hanging off a thread line; content (a brief, a result, code) may sit in its own box.
+- Actions are icons that appear when you reach for the line (always shown on touch), and their tooltips name them. No words where the icon already says it: ↗ opens, ■ stops.
+- Don't show a control until it matters (Steer or Queue appears once you've typed while the agent works), and let the placeholder say the mode ("Steer Juno…").
