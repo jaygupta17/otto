@@ -76,7 +76,7 @@ export const ACCESSORIES = ["none", "antenna", "glasses", "headset", "cap", "spr
 export type Accessory = (typeof ACCESSORIES)[number];
 
 /** Bump when the base prompt changes; stale agents are recompiled on load. */
-export const TEAMMATE_PROMPT_VERSION = 5;
+export const TEAMMATE_PROMPT_VERSION = 6;
 
 export const MAX_STARTERS = 4;
 
