@@ -1,4 +1,4 @@
-import { motion } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
 import { Bug, Compass, Globe, PanelLeft, RotateCw, Search } from "lucide-react";
 import { useMemo, type CSSProperties } from "react";
 import { Composer } from "../chat/Composer";
@@ -20,6 +20,9 @@ import { DAYTONA_BILLING_URL } from "../../lib/providers/daytona";
 import { useWorkspaces } from "../../state/workspaces";
 import { kbd } from "../../hooks/useShortcuts";
 import { SessionHistory } from "../chat/SessionHistory";
+import { TeammateFace } from "../ui/TeammateFace";
+import { useTeammate } from "../../state/teammates";
+import type { Teammate } from "../../lib/teammates";
 
 /**
  * New-session screen. With a background photo there is no panel here at all:
@@ -36,6 +39,8 @@ export function Home({ compact = false }: { compact?: boolean }) {
   const sidebarOpen = useUI((s) => s.sidebarOpen);
   const toggleSidebar = useUI((s) => s.toggleSidebar);
   const mac = useTrafficLights();
+  // Starting a conversation with a teammate is meeting them: their face, their words, their starters.
+  const mate = useTeammate(useChat((s) => s.pickedAgent));
 
   return (
     <div className="relative flex h-full flex-col overflow-hidden">
@@ -54,11 +59,11 @@ export function Home({ compact = false }: { compact?: boolean }) {
             sit in the middle of the pane; min-h-full keeps it centred only when
             there is room, and the pane still scrolls once it grows past it. */}
         <div className={`mx-auto w-full max-w-[660px] ${compact ? "flex min-h-full flex-col justify-center py-10" : "pt-[14vh] pb-16"}`}>
-          <h1 className={`on-photo mb-5 font-semibold tracking-[-0.01em] text-ink ${compact ? "text-[20px]" : "text-[26px]"}`}>What should the agent work on?</h1>
+          {mate ? <Hello mate={mate} compact={compact} /> : <h1 className={`on-photo mb-5 font-semibold tracking-[-0.01em] text-ink ${compact ? "text-[20px]" : "text-[26px]"}`}>What should the agent work on?</h1>}
 
           <ConnectionBanner />
 
-          <Composer sessionId={null} autoFocus compact={compact} placeholder="Describe a task, ask a question, or paste an error" />
+          <Composer sessionId={null} autoFocus compact={compact} placeholder={mate ? `Ask ${mate.name} anything, or hand over a task` : "Describe a task, ask a question, or paste an error"} />
 
           <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-[13px]">
             <span className="surface-thin inline-flex rounded-full">
@@ -70,7 +75,7 @@ export function Home({ compact = false }: { compact?: boolean }) {
             </span>
           </div>
 
-          <Starters />
+          <Starters mate={mate} />
 
           {recent.length > 0 && !compact && (
             <section className="mt-12">
@@ -103,7 +108,36 @@ const STARTERS = [
   { icon: Compass, label: "Explain this project", text: "Walk me through how this project is organized and where to start." },
 ];
 
-function Starters() {
+/** The teammate, introducing themselves: face, name and job, then their greeting. */
+function Hello({ mate, compact }: { mate: Teammate; compact: boolean }) {
+  // It nods along with each word you type to it.
+  const words = useChat((s) => (s.drafts.new ?? "").trim().split(/\s+/).filter(Boolean).length);
+  const typing = words > 0;
+  return (
+    <AnimatePresence mode="popLayout" initial={false}>
+      <motion.div
+        key={mate.id}
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -6 }}
+        transition={{ duration: 0.18, ease: "easeOut" }}
+        className={`flex items-center gap-4 ${compact ? "mb-4" : "mb-6"}`}
+      >
+        {/* Listening while you write: a little attentive, then back to itself. */}
+        <TeammateFace seed={mate.face} color={mate.color} accessory={mate.accessory} size={compact ? 52 : 68} follow attentive={typing} interactive pulse={words} />
+        <div className="min-w-0">
+          <div className="on-photo truncate text-[13px] text-muted">
+            <span className="font-medium text-ink-2">{mate.name}</span>
+            {mate.job && ` · ${mate.job}`}
+          </div>
+          <h1 className={`on-photo mt-0.5 font-semibold tracking-[-0.01em] text-ink ${compact ? "text-[20px]" : "text-[26px]"}`}>{mate.greeting || `What should ${mate.name} work on?`}</h1>
+        </div>
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
+export function Starters({ mate, center = false }: { mate: Teammate | undefined; center?: boolean }) {
   const empty = useChat((s) => !(s.drafts.new ?? "").trim());
   const ready = useConnection((s) => s.status === "ready");
   if (!empty || !ready) return null;
@@ -116,8 +150,26 @@ function Starters() {
       ta.setSelectionRange(text.length, text.length);
     });
   };
+  if (mate?.starters.length)
+    return (
+      <div key={mate.id} className={`mt-5 flex flex-wrap gap-1.5 ${center ? "justify-center" : ""}`}>
+        {mate.starters.map((text, i) => (
+          <motion.button
+            key={text}
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.2, delay: 0.04 * i }}
+            onClick={() => pick(text)}
+            title={text}
+            className="surface-thin inline-flex h-8 max-w-full items-center rounded-full px-3 text-[13px] text-ink-2 hover:text-ink"
+          >
+            <span className="truncate">{text}</span>
+          </motion.button>
+        ))}
+      </div>
+    );
   return (
-    <div className="mt-5 flex flex-wrap gap-1.5">
+    <div className={`mt-5 flex flex-wrap gap-1.5 ${center ? "justify-center" : ""}`}>
       {STARTERS.map(({ icon: Icon, label, text }, i) => (
         <motion.button
           key={label}

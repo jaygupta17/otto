@@ -25,7 +25,9 @@ import { InboxTray } from "../chat/SessionExtras";
 import { AskDock } from "../chat/Asks";
 import { ChatScrim } from "../ui/ChatScrim";
 import { AppGlyph } from "../ui/Mark";
-import { ConnectionBanner } from "../shell/Home";
+import { ConnectionBanner, Starters } from "../shell/Home";
+import { AgentMark, TeammateFace, type FaceState } from "../ui/TeammateFace";
+import { useTeammate, useTeammates } from "../../state/teammates";
 import { FilesPanel } from "../files/FilesPanel";
 import { EditorBody } from "../files/Editor";
 import { SchedulesView } from "../schedules/SchedulesView";
@@ -105,6 +107,7 @@ function SessionsScreen({ onNew, dimmed }: { onNew: () => void; dimmed: boolean 
           </div>
           <UpdatePill className="mt-2 text-[14px] [&>button]:h-11" />
         </div>
+        {!q && <TeamStrip onNew={onNew} />}
         {!loaded && <div className="mt-10 flex justify-center text-muted"><AgentClock /></div>}
         {loaded && active.length + recent.length === 0 && (
           <div className="mt-16 flex flex-col items-center px-10 text-center">
@@ -201,10 +204,22 @@ const Row = memo(function Row({ s, now }: { s: SessionInfo; now: number }) {
   const unread = useChat((st) => !!st.unread[s.id]);
   const asking = useChat((st) => Object.values(st.permissions).some((p) => p.sessionID === s.id) || Object.values(st.forms).some((f) => f.sessionID === s.id));
   const open = useChat((st) => st.open);
+  // A teammate's session wears their face, which carries the state itself.
+  const mate = useTeammate(s.agent);
   return (
     <motion.button whileTap={{ backgroundColor: "var(--hover)" }} onClick={() => open(s.id)} className="flex w-full items-start gap-3 px-5 py-3 text-left">
-      <span className="mt-1.5 grid w-4 shrink-0 place-items-center">
-        {busy ? <AgentClock size={13} /> : asking ? <span className="h-2.5 w-2.5 rounded-full bg-info" /> : unread ? <span className="h-2 w-2 rounded-full bg-ink" /> : s.outcome === "failed" ? <span className="h-2 w-2 rounded-full bg-danger" /> : null}
+      <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center">
+        {mate ? (
+          <AgentMark id={s.agent} size={28} state={asking ? "needs" : busy ? "working" : unread ? "done" : "idle"} />
+        ) : busy ? (
+          <AgentClock size={13} />
+        ) : asking ? (
+          <span className="h-2.5 w-2.5 rounded-full bg-info" />
+        ) : unread ? (
+          <span className="h-2 w-2 rounded-full bg-ink" />
+        ) : s.outcome === "failed" ? (
+          <span className="h-2 w-2 rounded-full bg-danger" />
+        ) : null}
       </span>
       <span className="min-w-0 flex-1">
         <span className="flex items-baseline gap-2">
@@ -357,12 +372,81 @@ function SessionScreen({ sessionId }: { sessionId: string }) {
  * A new session on the phone: the same screen as a session, empty until the
  * first message. Sending closes the draft and opens the session it made.
  */
+/**
+ * The team, by face, above the sessions: who's working, who needs you, who
+ * has news. Tapping one starts a conversation with them.
+ */
+function TeamStrip({ onNew }: { onNew: () => void }) {
+  const roster = useTeammates((s) => s.byId);
+  const team = useMemo(() => Object.values(roster ?? {}).sort((a, b) => a.created - b.created), [roster]);
+  if (!team.length) return null;
+  return (
+    <div className="scroll-quiet mt-5 flex snap-x gap-1 overflow-x-auto px-3 pb-1" role="list" aria-label="Teammates">
+      {team.map((t) => (
+        <TeamFace key={t.id} id={t.id} onNew={onNew} />
+      ))}
+    </div>
+  );
+}
+
+function TeamFace({ id, onNew }: { id: string; onNew: () => void }) {
+  const t = useTeammate(id)!;
+  const state = useChat((st): FaceState => {
+    const mine = Object.values(st.sessions).filter((x) => x.agent === id);
+    if (mine.some((x) => Object.values(st.permissions).some((p) => p.sessionID === x.id) || Object.values(st.forms).some((f) => f.sessionID === x.id))) return "needs";
+    if (mine.some((x) => st.busy[x.id])) return "working";
+    return mine.some((x) => st.unread[x.id]) ? "done" : "idle";
+  });
+  return (
+    <motion.button
+      role="listitem"
+      whileTap={{ scale: 0.94 }}
+      onClick={() => {
+        void useChat.getState().setAgent(id, null);
+        onNew();
+      }}
+      aria-label={`New session with ${t.name}${state === "needs" ? ", needs you" : state === "working" ? ", working" : ""}`}
+      className="flex w-[76px] shrink-0 snap-start flex-col items-center gap-1.5 rounded-2xl py-2"
+    >
+      <TeammateFace seed={t.face} color={t.color} accessory={t.accessory} size={52} state={state} />
+      <span className={`max-w-full truncate text-[13px] ${state === "needs" ? "font-medium text-info" : "text-ink-2"}`}>{t.name}</span>
+    </motion.button>
+  );
+}
+
+/** Meeting the teammate a new session is with: face, name, greeting, their starters. */
+function DraftIntro() {
+  const mate = useTeammate(useChat((s) => s.pickedAgent));
+  const words = useChat((s) => (s.drafts.new ?? "").trim().split(/\s+/).filter(Boolean).length);
+  const typing = words > 0;
+  if (!mate)
+    return (
+      <>
+        <AppGlyph size={36} />
+        <div className="mt-5 text-[20px] font-semibold">What are we building?</div>
+      </>
+    );
+  return (
+    <motion.div key={mate.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }} className="flex w-full flex-col items-center">
+      <TeammateFace seed={mate.face} color={mate.color} accessory={mate.accessory} size={88} attentive={typing} interactive pulse={words} label={mate.name} />
+      <div className="mt-4 text-[14px] text-muted">
+        <span className="font-medium text-ink-2">{mate.name}</span>
+        {mate.job && ` · ${mate.job}`}
+      </div>
+      <div className="mt-1 text-[22px] leading-tight font-semibold">{mate.greeting || `What should ${mate.name} work on?`}</div>
+      {mate.tagline && <div className="mt-2 max-w-[300px] text-[14px] text-muted">{mate.tagline}</div>}
+      <Starters mate={mate} center />
+    </motion.div>
+  );
+}
+
 function DraftScreen() {
   const open = useChat((s) => s.open);
   const ws = useActiveWorkspace();
   const drag = useDragControls();
   const setDraftOpen = useUI((s) => s.setDraftOpen);
   const close = () => setDraftOpen(false);
+  const mate = useTeammate(useChat((s) => s.pickedAgent));
   return (
     <motion.div
       initial={{ x: "100%" }}
@@ -394,16 +478,15 @@ function DraftScreen() {
           <SessionHistory sessionId={null} phone />
         </div>
       </header>
-      <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-6 pb-6 text-center">
-        <AppGlyph size={36} />
-        <div className="mt-5 text-[20px] font-semibold">What are we building?</div>
+      <div className="scroll-quiet flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto px-6 pb-6 text-center">
+        <DraftIntro />
       </div>
       <div className="safe-bottom relative z-10 px-3">
         <div className="panel-fill pb-2">
           <Composer
             sessionId={null}
             compact
-            placeholder="Describe the task"
+            placeholder={mate ? `Ask ${mate.name}, or hand over a task` : "Describe the task"}
             onSent={(id) => {
               setDraftOpen(false);
               open(id);

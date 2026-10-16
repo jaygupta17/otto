@@ -249,6 +249,13 @@ export function AgentPicker({ sessionId }: { sessionId: string | null }) {
   const info = agents.find((a) => a.id === current);
   // Loaded but nothing to talk to yet: the chip becomes the way to add a teammate.
   const empty = !current && roster !== null;
+  // The face on the chip shows what this session's agent is doing.
+  const state = useChat((s) => {
+    const id = s.activeId;
+    if (!id) return "idle" as const;
+    if (Object.values(s.permissions).some((p) => p.sessionID === id) || Object.values(s.forms).some((f) => f.sessionID === id)) return "needs" as const;
+    return s.busy[id] ? ("working" as const) : ("idle" as const);
+  });
   useEffect(() => {
     if (open && agents.length === 0) void refreshCatalog();
   }, [open, agents.length, refreshCatalog]);
@@ -263,7 +270,7 @@ export function AgentPicker({ sessionId }: { sessionId: string | null }) {
         aria-expanded={open}
         className={`flex h-8 items-center gap-1.5 rounded-md px-2 text-[13px] hover:bg-hover hover:text-ink ${empty ? "text-ink" : "text-ink-2"}`}
       >
-        <AgentMark id={current} color={info?.color} size={roster?.[current] ? 18 : 12} />
+        <AgentMark id={current} color={info?.color} size={roster?.[current] ? 18 : 12} state={state} />
         {empty ? "Add a teammate" : name}
         <ChevronDown size={13} className="text-faint" />
       </button>

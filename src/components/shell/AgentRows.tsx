@@ -5,6 +5,7 @@ import type { SessionInfo } from "@opencode/client";
 import { asksFor, useChat } from "../../state/chat";
 import { timeAgo } from "../../lib/format";
 import { AgentMark } from "../ui/TeammateFace";
+import { useTeammate } from "../../state/teammates";
 import { AgentClock } from "../ui/AgentClock";
 import { SessionRow } from "./SessionRow";
 
@@ -37,6 +38,9 @@ const AgentRow = memo(function AgentRow({ group: g, now, onNavigate }: { group: 
   const busyCount = useChat((s) => g.sessions.reduce((n, x) => n + (s.busy[x.id] ? 1 : 0), 0));
   const asking = useChat((s) => g.sessions.some((x) => Object.values(s.permissions).some((p) => asksFor(s.parents, p.sessionID, x.id)) || Object.values(s.forms).some((f) => asksFor(s.parents, f.sessionID, x.id))));
   const unread = useChat((s) => g.sessions.some((x) => !!s.unread[x.id]));
+  // A teammate's face carries its state itself; plain agents keep the clock.
+  const face = !!useTeammate(g.id);
+  const state = asking ? "needs" : busyCount ? "working" : unread ? "done" : "idle";
   const onActive = useChat((s) => g.sessions.some((x) => x.id === s.activeId));
   const [all, setAll] = useState(false);
 
@@ -84,7 +88,7 @@ const AgentRow = memo(function AgentRow({ group: g, now, onNavigate }: { group: 
           onClick={openAgent}
           className={`flex min-w-0 flex-1 items-center gap-2 py-1.5 text-left ${onActive ? "text-ink" : "text-ink-2"}`}
         >
-          <AgentMark id={g.id} size={22} />
+          <AgentMark id={g.id} size={22} state={state} />
           <span className="min-w-0 flex-1">
             <span className={`block truncate text-[13px] ${onActive || unread || asking ? "font-medium text-ink" : ""}`}>{g.name}</span>
             <span className="block truncate text-[12px] text-faint">{preview}</span>
@@ -93,12 +97,12 @@ const AgentRow = memo(function AgentRow({ group: g, now, onNavigate }: { group: 
         <span className="flex shrink-0 items-center gap-1.5 text-[12px] tabular-nums group-hover:hidden" title={busyCount ? "Working" : asking ? "Needs you" : undefined}>
           {busyCount > 0 && (
             <span className="flex items-center gap-1 text-muted">
-              <AgentClock size={12} />
+              {!face && <AgentClock size={12} />}
               {busyCount > 1 && busyCount}
             </span>
           )}
           {asking && <span className="flex items-center gap-1 text-info">Needs you</span>}
-          {!busyCount && !asking && unread && <span className="h-1.5 w-1.5 rounded-full bg-ink" />}
+          {!busyCount && !asking && unread && !face && <span className="h-1.5 w-1.5 rounded-full bg-ink" />}
           {!busyCount && !asking && latest && <span className="text-faint">{timeAgo(latest.time.updated, now)}</span>}
         </span>
         <button
