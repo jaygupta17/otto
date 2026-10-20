@@ -16,6 +16,7 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 - **Background commands finish in the chat.** A command the agent ran in the background used to show as done at once, and its output never appeared. Now its line stays live, shows output as it arrives when you open it, and ends in place with the result, or in red with the exit code when it fails. Results that arrive while you're watching now show at once, without reopening the chat.
 - **Stopping a background command** tells the agent it was you, so it doesn't start it again. The line keeps what the command printed up to then.
+- **Picking a chat from History on a new session (phones)** now opens it. Before, the new session stayed on screen until you tapped back.
 
 ## [0.10.0] - 2026-10-20
 

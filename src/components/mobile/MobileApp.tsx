@@ -46,6 +46,10 @@ export function MobileApp() {
   useBack(view === "schedules", () => setView("chat"));
   useBack(!!activeId && view !== "schedules", () => useChat.getState().open(null));
   useBack(draftOpen && view !== "schedules", () => setDraftOpen(false));
+  // Opening a chat (from history, search, a notification) replaces the draft, or it keeps covering the chat.
+  useLayoutEffect(() => {
+    if (activeId) setDraftOpen(false);
+  }, [activeId, setDraftOpen]);
 
   // Same materials as desktop (styles.css → Materials): the photo sits behind
   // every screen and each screen frosts over it instead of painting a solid fill.
