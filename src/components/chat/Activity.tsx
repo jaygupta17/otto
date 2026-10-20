@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   ArrowUpRight,
   BookOpen,
+  Blocks,
   Bookmark,
   Brain,
   Braces,
@@ -27,6 +28,7 @@ import { memo, useContext, useEffect, useMemo, useState, type ReactNode } from "
 import type { Block, UIMessage } from "../../lib/opencode/projection";
 import {
   backgroundShellID,
+  appOf,
   backgroundShellPhase,
   diffStats,
   fileDiffs,
@@ -45,6 +47,7 @@ import {
   type SubagentReportLite,
   type ToolBlock,
 } from "../../lib/opencode/tools";
+import { appLogo } from "../../lib/composio";
 import { duration } from "../../lib/format";
 import { useNow } from "../../hooks/useNow";
 import { useChat } from "../../state/chat";
@@ -150,6 +153,9 @@ const ToolRun = memo(function ToolRun({ blocks, live }: { blocks: Block[]; live:
 
 function iconFor(b: ToolBlock, size = 15): ReactNode {
   if (memoryCalls(b)) return <Bookmark size={size} />;
+  const app = appOf(b);
+  if (app) return <img src={appLogo(app)} alt="" width={size - 2} height={size - 2} draggable={false} className="rounded-[3px]" />;
+  if (app === "") return <Blocks size={size} />;
   switch (toolKind(b.name)) {
     case "read":
       return <BookOpen size={size} />;

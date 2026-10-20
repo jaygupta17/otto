@@ -115,3 +115,15 @@ Work that outlives its turn (a command the agent left running, a teammate on a p
 - A folded run that left work going says so on its summary line ("· 1 still running").
 - A blocking command or teammate that has run a few seconds offers "Keep running in the background" (send-to-back icon): the turn moves on and the work carries on.
 - Stopping posts a note telling the agent it was you before anything is killed, so the agent doesn't retry what you stopped. The row keeps what the command printed up to then.
+
+### Apps
+
+- An app always shows its own logo, on a white tile (rounded square in lists, circle in chat), so it reads the same in light and dark.
+- A connect link from the agent becomes a pill button: logo and "Connect Gmail", then "Waiting for you in the browser…" with a pulsing blue dot (needs you), then "Gmail connected" with a green check and **Carry on**.
+- App calls read as what happened to the app ("Checked Google Calendar"), never as the script that made them.
+
+### Permissions
+
+- Show what will happen, never "Auto" or "inherit". Allow (green) / Ask (blue, it needs you) / Block (red). The answer that applies is always lit: in its colour on a plain pill when it comes from the default, filled when it was set here.
+- Under each row's name, "Default" or "Changed · Reset".
+- An agent's permissions open with a plain-words summary in three lines: free to, asks you first to, never allowed to.

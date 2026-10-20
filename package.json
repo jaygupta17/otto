@@ -18,6 +18,7 @@
     "android:dev": "tauri android dev",
     "oc:local": "bash scripts/dev-server.sh",
     "release": "bun scripts/release.ts",
+    "composio:sync": "bun scripts/composio-sync.ts",
     "icons": "bash scripts/icons.sh"
   },
   "dependencies": {
@@ -28,7 +29,6 @@
     "@tauri-apps/plugin-notification": "2",
     "@tauri-apps/plugin-opener": "2",
     "@tauri-apps/plugin-process": "2",
-    "@tauri-apps/plugin-store": "2",
     "@tauri-apps/plugin-updater": "2",
     "@tauri-apps/plugin-websocket": "2",
     "@xterm/addon-fit": "0.10.0",
@@ -44,7 +44,7 @@
     "zustand": "^5.0.15"
   },
   "devDependencies": {
-    "@opencode/client": "2.0.26",
+    "@opencode/client": "2.1.0",
     "@tailwindcss/vite": "^4.3.3",
     "@tauri-apps/cli": "2",
     "@types/react": "19",

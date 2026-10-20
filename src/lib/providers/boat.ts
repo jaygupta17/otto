@@ -236,7 +236,9 @@ export function installScript(): string {
     "set -eu",
     'OC="$HOME/.opencode/bin/opencode"',
     'mkdir -p "$HOME/.otto" "$HOME/projects"',
-    'if ! "$OC" --version 2>/dev/null | grep -Eq "v?2\\."; then',
+    // 2.1.0 or newer: the first build that lets the apps plugin ask for approval.
+    'V=$("$OC" --version 2>/dev/null | grep -Eo "[0-9]+\\.[0-9]+\\.[0-9]+" | head -n 1 || true)',
+    'if ! printf "2.1.0\\n%s\\n" "$V" | sort -V -C 2>/dev/null; then',
     '  curl -fsSL https://opencode.ai/v2/install | bash > "$HOME/.otto/install.log" 2>&1 || { tail -n 30 "$HOME/.otto/install.log"; exit 1; }',
     "fi",
     '"$OC" --version',

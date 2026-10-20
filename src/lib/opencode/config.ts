@@ -112,16 +112,21 @@ function parseJsonc(text: string): unknown {
 
 export async function readGlobalConfig(client: OpenCode): Promise<GlobalConfig> {
   const { file, dir } = await configLocation(client);
-  try {
-    const text = await client.readFile(file);
-    if (!text.trim()) return {};
-    return parseJsonc(text) as GlobalConfig;
-  } catch (e) {
-    if ((e as { status?: number }).status === 404) return {};
-    // Fall back to the parsed copy the server already holds.
+  // The parsed copy the server already holds.
+  const held = async () => {
     const entries = await client.configEntries();
     const doc = entries.find((x) => x.type === "document" && x.path === file);
-    if (doc && "info" in doc && doc.info) return doc.info as GlobalConfig;
+    return doc && "info" in doc && doc.info ? (doc.info as GlobalConfig) : null;
+  };
+  try {
+    const text = await client.readFile(file);
+    // Empty, but the server has one: caught mid-write by another device. Writing `{}` back would wipe it.
+    if (!text.trim()) return (await held().catch(() => null)) ?? {};
+    return parseJsonc(text) as GlobalConfig;
+  } catch (e) {
+    if ((e as { status?: number }).status === 404) return (await held().catch(() => null)) ?? {};
+    const doc = await held();
+    if (doc) return doc;
     void dir;
     throw e;
   }
@@ -136,7 +141,15 @@ export function updateGlobalConfig(client: OpenCode, mutate: (cfg: GlobalConfig)
     const cfg = await readGlobalConfig(client);
     const next = (mutate(cfg) ?? cfg) as GlobalConfig;
     if (!next.$schema) next.$schema = "https://opencode.ai/config.json";
-    await client.writeFile(file, JSON.stringify(next, null, 2) + "\n");
+    // Beside it, then renamed over it: another device reading meanwhile sees the old file or the new one, never half of one.
+    const tmp = `${file}.otto-${Math.random().toString(36).slice(2, 8)}`;
+    await client.writeFile(tmp, JSON.stringify(next, null, 2) + "\n");
+    // A symlinked config (dotfiles) is written in place, so the link survives.
+    const moved = await client.exec(`[ -L ${sh(file)} ] && exit 3; mv -f ${sh(tmp)} ${sh(file)}`).catch(() => null);
+    if (moved?.exit !== 0) {
+      await client.exec(`rm -f ${sh(tmp)}`).catch(() => {});
+      await client.writeFile(file, JSON.stringify(next, null, 2) + "\n");
+    }
     // The watcher normally picks this up; reload makes it immediate.
     await client.reloadLocation().catch(() => {});
     return next;

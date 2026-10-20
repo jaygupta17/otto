@@ -1,5 +1,5 @@
 import { motion } from "motion/react";
-import { Bot, Cloud, Info, Plug, Puzzle, Server, Slash, SlidersHorizontal, Sparkles, X } from "lucide-react";
+import { Blocks, Bot, Cloud, Info, Plug, Puzzle, Server, Slash, SlidersHorizontal, Sparkles, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { useUI, type SettingsTab } from "../../state/ui";
 import { useConnection } from "../../state/connection";
@@ -13,6 +13,7 @@ import { AgentsTab } from "./AgentsTab";
 import { McpTab } from "./McpTab";
 import { SkillsTab } from "./SkillsTab";
 import { CommandsTab } from "./CommandsTab";
+import { AppsTab } from "./AppsTab";
 import { Empty } from "./common";
 
 const GROUPS: { label: string; items: { id: SettingsTab; label: string; icon: ReactNode; server?: boolean }[] }[] = [
@@ -21,6 +22,7 @@ const GROUPS: { label: string; items: { id: SettingsTab; label: string; icon: Re
     items: [
       { id: "general", label: "General", icon: <SlidersHorizontal size={15} /> },
       { id: "workspaces", label: "Workspaces", icon: <Cloud size={15} /> },
+      { id: "apps", label: "Apps", icon: <Blocks size={15} /> },
     ],
   },
   {
@@ -53,6 +55,7 @@ export function Settings({ compact }: { compact: boolean }) {
       <>
         {tab === "general" && <GeneralTab />}
         {tab === "workspaces" && <WorkspacesTab />}
+        {tab === "apps" && <AppsTab />}
         {tab === "agents" && <AgentsTab compact={compact} />}
         {tab === "providers" && <ProvidersTab />}
         {tab === "mcp" && <McpTab />}

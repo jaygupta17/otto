@@ -72,7 +72,7 @@ async function startServer(bin: string, preferredPort: number | undefined, passw
   // answered, which is what an OpenCode too old to have /api/info looks like.
   throw new Error(
     log.includes("server listening")
-      ? "The agent server started but never answered. That OpenCode build is too old for Otto — it needs 2.0.26 or newer."
+      ? "The agent server started but never answered. That OpenCode build is too old for Otto — it needs 2.1.0 or newer."
       : log || "The agent server didn't start.",
   );
 }

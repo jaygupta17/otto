@@ -13,6 +13,12 @@ import { asHandoff, type Handoff } from "../../lib/handoff";
 import { useLiveTarget } from "../panel/LiveScreen";
 import type { PermissionRequestLite } from "../../lib/opencode/client";
 import { describePermission } from "../../lib/asks";
+import { ANYONE, appEffect, appRequest, JUST_YOU, resourceLabel, withoutRemembered, withRemembered, type AppRequest } from "../../lib/appPermissions";
+import { appLogo } from "../../lib/composio";
+import type { PermissionRule } from "../../lib/permissions";
+import { useExtensions } from "../../state/extensions";
+import { useTeammates } from "../../state/teammates";
+import { toast } from "../../state/ui";
 import { fileDiffs, firstChangedLine, type FileDiff } from "../../lib/opencode/tools";
 import { agentColor } from "../../lib/agentColor";
 import { layerOpen } from "../../lib/layers";
@@ -66,7 +72,7 @@ export function AskDock({ sessionId, inLayer }: { sessionId: string; inLayer?: b
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 8 }}
             transition={{ type: "spring", stiffness: 420, damping: 34 }}
-            className="mb-2 overflow-hidden rounded-2xl border border-info/40 bg-raised shadow-float"
+            className="surface-overlay mb-2 overflow-hidden rounded-2xl border !border-info/40 bg-raised shadow-float"
             role="region"
             aria-label="Waiting for you"
           >
@@ -187,6 +193,11 @@ const Kbd = ({ children }: { children: string }) => <kbd className="ml-1.5 hidde
 // ---------------------------------------------------------------------------
 
 function PermissionStep({ req, inLayer }: { req: PermissionRequestLite; inLayer?: boolean }) {
+  const app = useMemo(() => appRequest(req.action, req.metadata, req.resources), [req]);
+  return app ? <AppPermissionStep req={req} app={app} inLayer={inLayer} /> : <ToolPermissionStep req={req} inLayer={inLayer} />;
+}
+
+function ToolPermissionStep({ req, inLayer }: { req: PermissionRequestLite; inLayer?: boolean }) {
   const reply = useChat((s) => s.replyPermission);
   const { command, targets } = describePermission(req);
   const [sent, setSent] = useState(false);
@@ -270,6 +281,155 @@ function permissionDiffs(req: PermissionRequestLite): FileDiff[] {
   const diff = typeof md.diff === "string" && md.diff.trim() ? md.diff : undefined;
   const file = typeof md.filepath === "string" ? md.filepath : typeof md.filePath === "string" ? md.filePath : typeof md.path === "string" ? md.path : req.resources[0];
   return diff && file ? [{ file, patch: diff }] : [];
+}
+
+/**
+ * An app action (opencode-composio): the app, what it would do and to whom,
+ * named rather than as ids. "Always" here is a rule in Otto's settings, for
+ * this teammate or for every teammate, so it shows up there and can be taken
+ * back, instead of OpenCode's per-project memory.
+ */
+function AppPermissionStep({ req, app, inLayer }: { req: PermissionRequestLite; app: AppRequest; inLayer?: boolean }) {
+  const reply = useChat((s) => s.replyPermission);
+  const update = useExtensions((s) => s.update);
+  const agent = useChat((s) => agentOf(s, req.sessionID));
+  const teammate = useTeammates((s) => (agent ? s.byId?.[agent]?.name : undefined));
+  const name = teammate ?? (agent ? agent.charAt(0).toUpperCase() + agent.slice(1) : "");
+  const [sent, setSent] = useState(false);
+  const [all, setAll] = useState(false);
+  const connect = req.action === "composio.connect";
+  const keep = req.save?.filter(Boolean).length ? req.save.filter(Boolean) : ["*"];
+  const labels = keep.filter((r) => r !== "*").map((r) => resourceLabel(r, app.names));
+  const targets = app.targets.map((t) => ({ id: t, label: resourceLabel(t, app.names) }));
+  const shown = all ? targets : targets.slice(0, 6);
+  // The thing itself when we know it (the event, the email's subject), else the action.
+  const headline = connect ? `Sign in to ${app.appName}` : (app.about ?? app.preview ?? app.action);
+  const preview = app.about && app.preview && app.preview !== app.about ? app.preview : undefined;
+  const doing = connect ? `connect ${app.appName}` : lowerTitle(app.action);
+  const reach = keep.filter((r) => r !== "*").map((r) => (r === JUST_YOU ? "just for you" : r === ANYONE ? "for anyone with the link" : `for ${resourceLabel(r, app.names)}`));
+
+  const answer = (r: "once" | "reject") => {
+    if (sent) return;
+    setSent(true);
+    void reply(req, r).catch(() => setSent(false));
+  };
+
+  async function remember(scope: "agent" | "everyone") {
+    if (sent) return;
+    setSent(true);
+    const action = req.action;
+    // Yes to this, and to anything else waiting that the rule covers, before
+    // saving: OpenCode reloads on a config change and drops what's still waiting.
+    const st = useChat.getState();
+    const covered = (p: PermissionRequestLite) => p.action === action && (keep.includes("*") || p.resources.every((r) => keep.includes(r))) && (scope === "everyone" || agentOf(st, p.sessionID) === agent);
+    await Promise.all([req, ...Object.values(st.permissions).filter((p) => p.id !== req.id && covered(p))].map((p) => reply(p, "once").catch(() => {})));
+    const has = (rules: readonly PermissionRule[] | undefined, r: string) => !!rules?.some((x) => x.action === action && x.resource === r && x.effect === "allow");
+    // Only what this adds, so Undo leaves rules you already had alone.
+    const added: { global: string[]; agent: string[] } = { global: [], agent: [] };
+    const ok = await update((c) => {
+      const agents = { ...(c.agents ?? {}) };
+      const forAgent = (id: string) => {
+        const prev = agents[id] ?? {};
+        added.agent = keep.filter((r) => !has(prev.permissions, r));
+        agents[id] = { ...prev, permissions: withRemembered(prev.permissions ?? [], action, keep) };
+      };
+      if (scope === "agent") {
+        if (agent) forAgent(agent);
+        return { ...c, agents };
+      }
+      added.global = keep.filter((r) => !has(c.permissions, r));
+      const permissions = withRemembered(c.permissions ?? [], action, keep);
+      // A teammate's own rule about this comes after everyone's and would still ask: say yes there too.
+      if (agent && keep.some((r) => appEffect(action, { global: permissions, agent: agents[agent]?.permissions ?? [] }, r) !== "allow")) forAgent(agent);
+      return { ...c, permissions, agents };
+    });
+    if (!ok) return;
+    toast({
+      tone: "ok",
+      title: scope === "everyone" ? "Allowed for every teammate" : `Allowed for ${name}`,
+      body: `${connect ? `Connecting ${app.appName}` : app.action}${labels.length ? ` · ${labels.join(", ")}` : ""}. Change it in Permissions any time.`,
+      action: {
+        label: "Undo",
+        run: () =>
+          void update(
+            (c) => ({
+              ...c,
+              permissions: c.permissions && withoutRemembered(c.permissions, action, added.global),
+              agents: agent && added.agent.length && c.agents?.[agent] ? { ...c.agents, [agent]: { ...c.agents[agent], permissions: withoutRemembered(c.agents[agent].permissions ?? [], action, added.agent) } } : c.agents,
+            }),
+            { success: "Undone" },
+          ),
+      },
+    });
+  }
+
+  const box = useAnswerKeys({ once: () => answer("once"), always: () => void remember(agent ? "agent" : "everyone"), deny: () => answer("reject") }, inLayer, !sent);
+  const btn = "h-10 w-full sm:h-7 sm:w-auto";
+
+  return (
+    <div ref={box}>
+      <div className="scroll-quiet max-h-[50vh] space-y-2 overflow-y-auto px-3 pb-1">
+        <div className="flex items-start gap-3 rounded-xl bg-sunken px-3 py-2.5">
+          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-white hairline">
+            <img src={appLogo(app.app)} alt="" width={18} height={18} draggable={false} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="selectable text-[13.5px] leading-snug font-medium break-words text-ink">{headline}</div>
+            <div className="text-[12px] text-muted">{connect ? "They'll give you a link to connect it; nothing happens until you sign in." : `${app.appName} · ${app.action}`}</div>
+            {preview && <div className="selectable mt-1.5 line-clamp-3 text-[13px] leading-relaxed break-words text-ink-2">“{preview}”</div>}
+          </div>
+        </div>
+        {!connect && shown.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="mr-0.5 text-[12px] text-muted">{app.kind === "write" ? "Reaches" : app.kind === "delete" ? "Affects" : "From"}</span>
+            {shown.map((t) => (
+              <span key={t.id} title={t.id} className="selectable max-w-full truncate rounded-full px-2 py-0.5 text-[12.5px] text-ink-2 hairline">
+                {t.label}
+              </span>
+            ))}
+            {targets.length > shown.length && (
+              <button className="text-[12px] text-muted underline-offset-2 hover:text-ink hover:underline" onClick={() => setAll(true)}>
+                {targets.length - shown.length} more
+              </button>
+            )}
+          </div>
+        )}
+        {req.message && <div className="selectable text-[13px] leading-relaxed break-words text-ink-2">{req.message}</div>}
+        <div className="text-[12px] leading-relaxed break-words text-muted">
+          “Always” lets them {doing}
+          {reach.length ? ` ${reach.join(", ")} without asking` : connect ? " without asking" : " without asking, whatever it's for"}. You can change it in Permissions.
+        </div>
+      </div>
+      <div className="flex flex-col-reverse gap-2 px-3 pt-2 pb-3 sm:flex-row sm:justify-end">
+        <Button variant="ghost" disabled={sent} className={btn} size="sm" onClick={() => answer("reject")} title={`Deny (${alt}⌫)`}>
+          Deny
+          <Kbd>{`${alt}⌫`}</Kbd>
+        </Button>
+        <Button variant="secondary" disabled={sent} className={btn} size="sm" onClick={() => void remember("everyone")} title="Remember this for every teammate">
+          Always for every teammate
+          {!agent && <Kbd>{`${alt}${shift}↵`}</Kbd>}
+        </Button>
+        {agent && (
+          <Button variant="secondary" disabled={sent} className={btn} size="sm" onClick={() => void remember("agent")} title={`Remember this for ${name} (${alt}${shift}↵)`}>
+            Always for {name}
+            <Kbd>{`${alt}${shift}↵`}</Kbd>
+          </Button>
+        )}
+        <Button variant="primary" disabled={sent} className={btn} size="sm" onClick={() => answer("once")} title={`Allow once (${alt}↵)`}>
+          Allow once
+          <Kbd>{`${alt}↵`}</Kbd>
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** "Create Event" → "create event", keeping acronyms ("Get ACL rule" → "get ACL rule"). */
+const lowerTitle = (t: string) => t.replace(/\b[A-Z][a-z]+\b/g, (w) => w.toLowerCase());
+
+/** The agent working in a session: a subagent's, or the session's own. */
+function agentOf(s: { delegated: Record<string, string>; sessions: Record<string, { agent?: string } | undefined> }, sessionID: string): string | undefined {
+  return s.delegated[sessionID] || s.sessions[sessionID]?.agent || undefined;
 }
 
 function PermissionDiff({ f }: { f: FileDiff }) {

@@ -1,5 +1,6 @@
 /** Plain words for what an approval request is asking, shared by the card and the alerts. */
 import type { PermissionRequestLite } from "./opencode/client";
+import { appRequest, resourceLabel } from "./appPermissions";
 
 // Settings use their own labels for rules (lib/permissions); these read as a request.
 
@@ -34,6 +35,9 @@ const VERBS: Record<string, string> = {
 
 export function describePermission(req: PermissionRequestLite): PermissionSummary {
   const meta = req.metadata ?? {};
+  // An app action: "Delete event in Google Calendar", reaching these people or places.
+  const app = appRequest(req.action, meta, req.resources);
+  if (app) return { verb: req.action === "composio.connect" ? `Connect ${app.appName}` : `${app.action} in ${app.appName}`, targets: req.action === "composio.connect" ? [] : app.targets.map((t) => resourceLabel(t, app.names)) };
   const command = typeof meta.command === "string" && meta.command.trim() ? meta.command.trim() : undefined;
   const dirs = Array.isArray(meta.directories) ? meta.directories.filter((d): d is string => typeof d === "string") : [];
   const targets = req.action === "external_directory" && dirs.length ? dirs : command ? [] : req.resources;

@@ -6,6 +6,7 @@ import { create } from "zustand";
 import { OpenCode, OpenCodeError, type ServerInfo } from "../lib/opencode/client";
 import { startEventStream, type StreamStatus } from "../lib/opencode/events";
 import { useShells } from "./shells";
+import "./connectors";
 import { reviveBoat } from "../lib/providers/provision";
 import { ensureBrowserKit } from "../lib/providers/boatBrowser";
 import { BoxdError, reviveBoxd } from "../lib/providers/boxd";

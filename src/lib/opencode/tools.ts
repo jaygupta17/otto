@@ -11,6 +11,7 @@
  * accessor reads only the fields it understands and tolerates garbage.
  */
 import type { Block } from "./projection";
+import { APPS, appName } from "../composio";
 
 export type ToolBlock = Extract<Block, { kind: "tool" }>;
 type Json = Record<string, unknown>;
@@ -183,7 +184,7 @@ export function patchFiles(input: Json): { file: string; op: "add" | "update" | 
   return out;
 }
 
-export type ExecuteCall = { tool: string; status?: string; input?: string };
+export type ExecuteCall = { tool: string; status?: string; input?: string; args?: Json };
 
 /** Tools an `execute` (code mode) script called, from `metadata.toolCalls`. */
 export function executeCalls(metadata?: Json): ExecuteCall[] {
@@ -200,9 +201,113 @@ export function executeCalls(metadata?: Json): ExecuteCall[] {
     } catch {
       /* unserialisable: leave off */
     }
-    out.push({ tool, status: str(c.status), input });
+    out.push({ tool, status: str(c.status), input, args: c.input && typeof c.input === "object" ? (c.input as Json) : undefined });
   }
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// Apps (opencode-composio's tools, and the Composio MCP server's in older sessions)
+// ---------------------------------------------------------------------------
+
+/** The Composio MCP server Otto used before the plugin: `composio_composio_<op>`. */
+const APP_TOOL = /^composio[._]composio_([a-z_]+)$/i;
+
+/** What one call did to your apps. */
+type AppOp = { op: "use"; app: string; what: string } | { op: "connect" | "disconnect" | "wait"; app: string } | { op: "check"; app?: string } | { op: "search"; app?: string; query?: string } | { op: "data" };
+
+const isApp = (ns: unknown): ns is string => typeof ns === "string" && APPS.some((a) => a.slug === ns);
+const words = (name: string) => name.replace(/_/g, " ");
+
+/** "GOOGLECALENDAR_EVENTS_LIST" → the app and what it did ("events list"). */
+function appAction(slug: string): { app: string; what: string } {
+  const lower = slug.toLowerCase();
+  const app = APPS.find((a) => lower.startsWith(`${a.slug}_`))?.slug ?? lower.split("_")[0];
+  return { app, what: words(lower.slice(app.length + 1)) };
+}
+
+/**
+ * What a script's calls did to your apps, or null when any of them was about
+ * something else. Plugin calls are `gmail.send_email`, `apps.run`… (and
+ * OpenCode's own tool `search` within an app's namespace).
+ */
+function appOps(calls: ExecuteCall[]): AppOp[] | null {
+  const out: AppOp[] = [];
+  for (const c of calls) {
+    const a = c.args ?? {};
+    const legacy = APP_TOOL.exec(c.tool)?.[1]?.toLowerCase();
+    if (legacy) {
+      const toolkits = Array.isArray(a.toolkits) ? (a.toolkits as unknown[]) : [];
+      const kit = (t: unknown) => (typeof t === "string" ? t : (str((t as Json)?.name) ?? "")).toLowerCase();
+      if (legacy === "multi_execute_tool") out.push(...(Array.isArray(a.tools) ? (a.tools as Json[]) : []).map((t) => str(t?.tool_slug)).filter((x): x is string => !!x).map((t) => ({ op: "use" as const, ...appAction(t) })));
+      else if (legacy === "manage_connections")
+        for (const t of toolkits) {
+          const act = str((t as Json)?.action) ?? "add";
+          out.push({ op: act === "add" ? "connect" : act === "remove" ? "disconnect" : "check", app: kit(t) });
+        }
+      else if (legacy === "wait_for_connections") out.push(...toolkits.map((t) => ({ op: "wait" as const, app: kit(t) })));
+      else if (legacy === "search_tools" || legacy === "get_tool_schemas") out.push({ op: "search", query: (Array.isArray(a.queries) ? (a.queries as Json[]) : []).map((x) => str(x?.use_case)).find(Boolean) });
+      else out.push({ op: "data" });
+      continue;
+    }
+    const m = /^([a-z0-9_]+)\.([a-z0-9_]+)$/.exec(c.tool);
+    if (m && isApp(m[1])) out.push({ op: "use", app: m[1], what: words(m[2]) });
+    else if (m?.[1] === "apps") {
+      if (m[2] === "run" && str(a.action)) out.push({ op: "use", ...appAction(str(a.action)!) });
+      else if (m[2] === "connect" && str(a.app)) out.push({ op: "connect", app: str(a.app)!.toLowerCase() });
+      else if (m[2] === "search") out.push({ op: "search", query: str(a.task) });
+      else out.push({ op: "check" });
+    } else if (c.tool === "search" && (isApp(a.namespace) || a.namespace === "apps")) out.push({ op: "search", app: a.namespace === "apps" ? undefined : (a.namespace as string), query: str(a.query) });
+    else return null;
+  }
+  return out.length ? out : null;
+}
+
+/** `tools.gmail.send_email(` calls in a script's code, before it reports what it called. */
+function codeAppCalls(code?: string): ExecuteCall[] {
+  return [...(code ?? "").matchAll(/\btools\.([a-z0-9_]+)\.([a-z0-9_]+)\s*\(/g)].filter((m) => isApp(m[1])).map((m) => ({ tool: `${m[1]}.${m[2]}` }));
+}
+
+/** The one app a script worked with (for its logo), "" when it only touched apps in general, null when it wasn't an app script. */
+export function appOf(b: ToolBlock): string | null {
+  if (normalizeToolName(b.name) !== "execute") return null;
+  const calls = executeCalls(b.metadata);
+  const ops = appOps(calls.length ? calls : codeAppCalls(str(inputOf(b).code)));
+  if (!ops) return null;
+  const apps = new Set(ops.flatMap((o) => ("app" in o && o.app ? [o.app] : [])));
+  return apps.size === 1 ? [...apps][0] : "";
+}
+
+/** Apps a script used, for the turn's summary ("used Gmail"); [] when it only looked around; null when it wasn't an app script. */
+function appsUsed(b: ToolBlock): string[] | null {
+  if (toolKind(b.name) !== "execute") return null;
+  const ops = appOps(executeCalls(b.metadata));
+  return ops && [...new Set(ops.flatMap((o) => (o.op === "use" ? [appName(o.app)] : [])))];
+}
+
+/**
+ * A script that only touched apps reads as what happened to them: "Used
+ * Gmail · send email", "Asked to connect Slack", "Looked through Google
+ * Calendar". Null when the script did anything else.
+ */
+function appCalls(calls: ExecuteCall[], done: boolean): { verb: string; target: string } | null {
+  const ops = appOps(calls);
+  if (!ops) return null;
+  const all = <K extends AppOp["op"]>(op: K) => ops.filter((o): o is Extract<AppOp, { op: K }> => o.op === op);
+  const names = (list: { app: string }[]) => [...new Set(list.map((o) => appName(o.app)))].join(", ");
+  const used = all("use");
+  if (used.length) return { verb: `${done ? "Used" : "Using"} ${names(used)}`, target: [...new Set(used.map((o) => o.what))].slice(0, 3).join(", ") };
+  if (all("connect").length) return { verb: "Asked to connect", target: names(all("connect")) };
+  if (all("disconnect").length) return { verb: "Disconnected", target: names(all("disconnect")) };
+  if (all("wait").length) return { verb: done ? "Waited for" : "Waiting for", target: names(all("wait")) };
+  const search = all("search");
+  if (search.length) {
+    const apps = [...new Set(search.flatMap((o) => (o.app ? [appName(o.app)] : [])))];
+    return { verb: apps.length ? "Looked through" : "Looked through your apps", target: apps.length ? apps.join(", ") : search[0].query ? firstLine(search[0].query, 80) : "" };
+  }
+  const checked = all("check").filter((o): o is { op: "check"; app: string } => !!o.app);
+  if (all("check").length) return { verb: "Checked", target: checked.length ? names(checked) : "your apps" };
+  return { verb: done ? "Worked with app data" : "Working with app data", target: "" };
 }
 
 // ---------------------------------------------------------------------------
@@ -374,7 +479,13 @@ export function toolLabel(b: ToolBlock): { verb: string; target: string; path?: 
       const mem = memoryCalls(b);
       if (mem) return memoryLabel(mem, done);
       const calls = executeCalls(md);
-      if (!calls.length) return { verb: "Ran script", target: str(input.code) ? firstLine(str(input.code)!, 80) : "" };
+      if (!calls.length) {
+        // Still running: the app calls its code makes say more than its first line.
+        const apps = appCalls(codeAppCalls(str(input.code)), done);
+        return apps ?? { verb: "Ran script", target: str(input.code) ? firstLine(str(input.code)!, 80) : "" };
+      }
+      const apps = appCalls(calls, done);
+      if (apps) return apps;
       const counts = new Map<string, number>();
       for (const c of calls) counts.set(c.tool, (counts.get(c.tool) ?? 0) + 1);
       const named = [...counts].slice(0, 3).map(([t, n]) => (n > 1 ? `${normalizeToolName(t)} ×${n}` : normalizeToolName(t)));
@@ -421,11 +532,19 @@ export function summarizeTools(blocks: Block[]): string {
   const edited = new Set<string>();
   let thoughts = 0;
   let browser = 0;
+  const apps = new Set<string>();
   for (const b of blocks) {
     if (b.kind === "tool") {
       // The agent's browser runs through the shell; say so instead of "ran 5 commands".
       if (toolKind(b.name) === "shell" && /otto-browser\s+[a-z]/.test(String(inputOf(b).command ?? ""))) {
         browser += 1;
+        continue;
+      }
+      // Scripts that only touched apps: "used Gmail" instead of "ran 2 commands".
+      const used = appsUsed(b);
+      if (used) {
+        if (used.length) for (const n of used) apps.add(n);
+        else apps.add("");
         continue;
       }
       const c = memoryCalls(b) ? "memory" : toolCategory(b.name);
@@ -443,6 +562,10 @@ export function summarizeTools(blocks: Block[]): string {
   const parts: string[] = [];
   if (thoughts) parts.push(`thought ${thoughts === 1 ? "once" : `${thoughts} times`}`);
   if (browser) parts.push(`used the browser${browser === 1 ? "" : ` (${browser} steps)`}`);
+  if (apps.size) {
+    const named = [...apps].filter(Boolean);
+    parts.push(named.length ? `used ${named.slice(0, 2).join(" and ")}${named.length > 2 ? ` +${named.length - 2}` : ""}` : "checked your apps");
+  }
   for (const c of order) {
     const n = counts.get(c);
     if (!n) continue;

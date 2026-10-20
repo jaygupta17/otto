@@ -515,6 +515,11 @@ export class OpenCode {
   mcpRemove(name: string) {
     return this.request<void>("DELETE", `/api/experimental/mcp/${encodeURIComponent(name)}`);
   }
+  /** Loaded plugins and how each is doing. */
+  async plugins(): Promise<PluginInfo[]> {
+    const r = await this.request<{ data: PluginInfo[] }>("GET", "/api/plugin");
+    return r.data;
+  }
   async skills(): Promise<SkillInfo[]> {
     const r = await this.request<{ data: SkillInfo[] }>("GET", "/api/skill");
     return r.data;
@@ -595,6 +600,12 @@ export interface PermissionRequestLite {
   save?: string[];
   /** Tool-specific details, e.g. `command` for the shell tool. */
   metadata?: Record<string, unknown>;
+}
+
+export interface PluginInfo {
+  id: string;
+  source: { type: "builtin" | "package" | "local" | string; target?: string; version?: string; path?: string };
+  state: { status: "active" | "failed" | string; error?: string; message?: string };
 }
 
 export interface McpServer {

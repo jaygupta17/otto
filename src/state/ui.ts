@@ -56,7 +56,7 @@ export function backdropSettings(b: Backdrop) {
   return { on: (b.kind === "image" && !!b.image) || (b.kind === "fill" && !!b.css), intensity: b.intensity ?? BACKDROP_DEFAULTS.intensity, fade: b.fade ?? BACKDROP_DEFAULTS.fade, blur: b.blur ?? BACKDROP_DEFAULTS.blur, glass: b.glass ?? BACKDROP_DEFAULTS.glass, chatFade: b.chatFade ?? BACKDROP_DEFAULTS.chatFade };
 }
 
-export type SettingsTab = "general" | "workspaces" | "agents" | "providers" | "mcp" | "skills" | "commands" | "about";
+export type SettingsTab = "general" | "workspaces" | "apps" | "agents" | "providers" | "mcp" | "skills" | "commands" | "about";
 
 export interface Toast {
   id: string;

@@ -102,10 +102,11 @@ fn no_window(cmd: &mut Command) {
 #[cfg(not(windows))]
 fn no_window(_: &mut Command) {}
 
-/// Oldest OpenCode with every endpoint the app calls. `/api/info` — the
+/// Oldest OpenCode with everything the app relies on. `/api/info` — the
 /// handshake in `provisionLocal` — only exists from 2.0.26; earlier v2 builds
-/// 404 it and the setup just spins until it times out.
-const MIN_VERSION: (u32, u32, u32) = (2, 0, 26);
+/// 404 it and the setup just spins until it times out. Apps need 2.1.0: it's
+/// the first build that lets a plugin ask for approval (`permission.assert`).
+const MIN_VERSION: (u32, u32, u32) = (2, 1, 0);
 
 /// "opencode v2.0.27" → "2.0.27", only when new enough to drive.
 fn v2_version(bin: &Path) -> Option<String> {

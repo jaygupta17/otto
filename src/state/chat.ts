@@ -588,6 +588,8 @@ export const useChat = create<State>((set, get) => ({
     try {
       await client.replyPermission(req.sessionID, req.id, reply);
     } catch (e) {
+      // Already answered: from another window, or a rule you just saved covered it.
+      if (e instanceof OpenCodeError && e.status === 404) return;
       set((s) => ({ permissions: { ...s.permissions, [req.id]: req } }));
       toast({ tone: "error", title: "Couldn't answer", body: (e as Error).message });
     }

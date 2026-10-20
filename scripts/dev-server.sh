@@ -5,10 +5,11 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PORT="${PORT:-4917}"
 BIN="$ROOT/.dev/opencode"
-if [ ! -x "$BIN" ]; then
+OC_VERSION=2.1.0
+if [ ! -x "$BIN" ] || ! "$BIN" --version 2>/dev/null | grep -q "v$OC_VERSION"; then
   mkdir -p "$ROOT/.dev"
   arch=$([ "$(uname -m)" = "arm64" ] && echo arm64 || echo x64)
-  curl -fsSL -o "$ROOT/.dev/oc.zip" "https://opencode.ai/files/bin/2.0.26/opencode-darwin-$arch.zip"
+  curl -fsSL -o "$ROOT/.dev/oc.zip" "https://opencode.ai/files/bin/$OC_VERSION/opencode-darwin-$arch.zip"
   unzip -oq "$ROOT/.dev/oc.zip" -d "$ROOT/.dev" && rm "$ROOT/.dev/oc.zip"
 fi
 PW_FILE="$ROOT/.dev/password"

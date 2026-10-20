@@ -104,19 +104,28 @@ export function Segmented<T extends string>({ options, value, onChange, size = "
   );
 }
 
-const DOT: Record<Effect, string> = { allow: "bg-ok", ask: "bg-warn", deny: "bg-danger" };
+const LABEL: Record<Effect, string> = { allow: "Allow", ask: "Ask", deny: "Block" };
+const MEANS: Record<Effect, string> = { allow: "Goes ahead without asking", ask: "Stops and asks you first", deny: "Never allowed" };
 
+/** Your own choice: filled in its colour. */
 const EFFECT_STYLE: Record<Effect, string> = {
   allow: "bg-ok-soft text-ok",
   ask: "bg-warn-soft text-warn",
   deny: "bg-danger-soft text-danger",
 };
+/** Following the default: the same colour, on a plain pill, so it reads as "what happens" without looking chosen. */
+const DEFAULT_STYLE: Record<Effect, string> = {
+  allow: "seg-pill text-ok shadow-soft",
+  ask: "seg-pill text-warn shadow-soft",
+  deny: "seg-pill text-danger shadow-soft",
+};
 
 /**
- * Inherit / Allow / Ask / Deny. When inheriting, the effective value is shown
- * faintly so people see what will actually happen. `noAsk` is for tools that
- * run inside the code tool, where OpenCode never stops to ask: there "ask"
- * behaves as allow, so it's shown as allow and not offered.
+ * Allow / Ask / Block, always showing what will actually happen. With
+ * `allowInherit`, a row without its own choice shows the default's answer
+ * marked "Default", and one with its own choice offers Reset. `noAsk` is for
+ * tools that run inside the code tool, where OpenCode never stops to ask:
+ * there "ask" behaves as allow, so it's shown as allow and not offered.
  */
 export function EffectPicker({
   value,
@@ -124,43 +133,66 @@ export function EffectPicker({
   onChange,
   allowInherit = true,
   noAsk = false,
+  marker = true,
 }: {
   value: Effect | null;
   inherited?: Effect;
   onChange: (v: Effect | null) => void;
   allowInherit?: boolean;
   noAsk?: boolean;
+  /** Show Default / Reset beside the picker (rows with room for it under their title pass false and use DefaultMark). */
+  marker?: boolean;
 }) {
   const effects: Effect[] = noAsk ? ["allow", "deny"] : ["allow", "ask", "deny"];
-  const opts: (Effect | null)[] = allowInherit ? [null, ...effects] : effects;
+  let fallback: Effect = inherited ?? "ask";
   if (noAsk) {
     if (value === "ask") value = "allow";
-    if (inherited === "ask" || inherited === undefined) inherited = "allow";
+    if (fallback === "ask") fallback = "allow";
   }
+  const own = value !== null || !allowInherit;
+  const shown = value ?? fallback;
   return (
-    <div className="inline-flex shrink-0 gap-0.5 rounded-lg bg-sunken p-0.5 hairline">
-      {opts.map((o) => {
-        const active = value === o;
-        return (
-          <button
-            key={String(o)}
-            type="button"
-            onClick={() => onChange(o)}
-            title={o === null ? `Automatic. Currently “${inherited ?? "ask"}” from the defaults.` : o}
-            className={`rounded-lg px-2 py-[3px] text-[12px] font-medium capitalize transition-colors ${active ? (o ? EFFECT_STYLE[o] : "seg-pill text-ink shadow-soft") : "text-muted hover:text-ink"}`}
-          >
-            {o === null ? (
-              <span className="inline-flex items-center gap-1">
-                Auto
-                <span className={`h-1.5 w-1.5 rounded-full ${DOT[inherited ?? "ask"]}`} />
-              </span>
-            ) : (
-              o
-            )}
-          </button>
-        );
-      })}
+    <div className="inline-flex shrink-0 items-center gap-2">
+      <div className="inline-flex gap-0.5 rounded-lg bg-sunken p-0.5 hairline">
+        {effects.map((o) => {
+          const on = shown === o;
+          return (
+            <button
+              key={o}
+              type="button"
+              aria-pressed={on}
+              onClick={() => onChange(o)}
+              title={MEANS[o]}
+              className={`rounded-lg px-2 py-[3px] text-[12px] font-medium transition-colors ${on ? (own ? EFFECT_STYLE[o] : DEFAULT_STYLE[o]) : "text-muted hover:text-ink"}`}
+            >
+              {LABEL[o]}
+            </button>
+          );
+        })}
+      </div>
+      {allowInherit && marker && (
+        <span className="w-[46px] text-[12px]">
+          <DefaultMark own={own} fallback={fallback} onReset={() => onChange(null)} />
+        </span>
+      )}
     </div>
+  );
+}
+
+/** "Default" when nothing is set here, else Reset back to it. */
+export function DefaultMark({ own, fallback, onReset, verbose }: { own: boolean; fallback: Effect; onReset: () => void; verbose?: boolean }) {
+  return own ? (
+    <span className="inline-flex items-center gap-1.5">
+      {verbose && <span className="text-ink-2">Changed</span>}
+      {verbose && <span className="text-faint">·</span>}
+      <button type="button" onClick={onReset} title={`Back to the default: ${LABEL[fallback].toLowerCase()}`} className="text-muted underline-offset-2 hover:text-ink hover:underline">
+      Reset
+      </button>
+    </span>
+  ) : (
+    <span className="text-faint" title="Nothing set here, so the default applies">
+      Default
+    </span>
   );
 }
 

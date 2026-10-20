@@ -3,6 +3,8 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { CodeBlock } from "./CodeBlock";
 import { openLink } from "../../lib/preview";
+import { CONNECT_LINK } from "../../lib/composio";
+import { ConnectChip } from "./ConnectChip";
 
 const plugins = [remarkGfm];
 
@@ -15,7 +17,11 @@ function makeComponents(streaming: boolean): Components {
       if (!m && !text.includes("\n")) return <code>{children}</code>;
       return <CodeBlock code={text.replace(/\n$/, "")} lang={m?.[1] ?? ""} streaming={streaming} />;
     },
-    a: ({ href, children }) => (
+    a: ({ href, children }) =>
+      // An app's connect link (Composio) reads as a button that follows the sign-in.
+      href && CONNECT_LINK.test(href) ? (
+        <ConnectChip href={href}>{children}</ConnectChip>
+      ) : (
       <a
         href={href}
         onClick={(e) => {

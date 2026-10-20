@@ -11,7 +11,7 @@ import { TOOLS, inheritedEffect, parseRules, serializeRules, effectFor, type Eff
 import { Button, IconButton } from "../ui/Button";
 import { TextField } from "../ui/Field";
 import { Spinner } from "../ui/AgentClock";
-import { EffectPicker, Empty, Label, Row, Rows, SearchBox, Segmented, TextArea, Toggle } from "./common";
+import { DefaultMark, EffectPicker, Empty, Label, Row, Rows, SearchBox, Segmented, TextArea, Toggle } from "./common";
 import { ModelSelect, type ModelValue } from "./ModelSelect";
 import { TeammateEditor } from "./TeammateEditor";
 import { useTeammates } from "../../state/teammates";
@@ -19,6 +19,10 @@ import { TeammateFace } from "../ui/TeammateFace";
 import { CATALOG, hash, isOfferedAgent, listNames, STARTER_TEAM, type Teammate } from "../../lib/teammates";
 import { HireGallery } from "./HireGallery";
 import { MEMORY_TOOLS, isMemoryTool } from "../../lib/memory";
+import { COMPOSIO_SERVER } from "../../lib/composio";
+import { appEffect, KINDS, sample } from "../../lib/appPermissions";
+import { useConnectors } from "../../state/connectors";
+import { AppPermissions } from "./AppPermissions";
 
 const MEMORY_ALL = "memory_*";
 
@@ -515,6 +519,7 @@ export function PermissionsEditor({ model, onChange, globalRules }: { model: Per
   const skills = useExtensions((s) => s.skills);
   const mcp = useExtensions((s) => s.mcp);
   const mcpConfig = useExtensions((s) => s.config?.mcp?.servers);
+  const hasApps = useConnectors((s) => !!s.key);
 
   const setKey = (action: string, effect: Effect | null) => {
     const keys = { ...model.keys };
@@ -545,7 +550,9 @@ export function PermissionsEditor({ model, onChange, globalRules }: { model: Per
   };
   const memoryAll = model.keys[MEMORY_ALL]?.effect ?? null;
 
-  const mcpNames = useMemo(() => [...new Set([...(mcp ?? []).map((m) => m.name), ...Object.keys(mcpConfig ?? {})])], [mcp, mcpConfig]);
+  // Apps have their own section; a machine set up before the plugin may still list the old server until it's swapped.
+  const mcpNames = useMemo(() => [...new Set([...(mcp ?? []).map((m) => m.name), ...Object.keys(mcpConfig ?? {})])].filter((n) => n !== COMPOSIO_SERVER), [mcp, mcpConfig]);
+  const appRules = useMemo(() => (hasApps ? serializeRules(model) : []), [hasApps, model]);
   const presets: { id: string; label: string; apply: () => void }[] = [
     { id: "full", label: "Full access", apply: () => onChange({ ...model, global: "allow", keys: {} }) },
     {
@@ -573,10 +580,11 @@ export function PermissionsEditor({ model, onChange, globalRules }: { model: Per
   return (
     <div className="space-y-7">
       <div className="rounded-2xl bg-raised p-4 hairline">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <Summary effect={(a) => (a.startsWith("composio.") ? appEffect(a, { global: globalRules, agent: appRules }) : (model.keys[a]?.effect ?? inherited(a)))} apps={hasApps} />
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-3">
           <div>
-            <div className="text-[13.5px] font-medium">Default</div>
-            <div className="text-[12.5px] text-muted">For anything without its own rule</div>
+            <div className="text-[13.5px] font-medium">Everything else</div>
+            <div className="text-[12.5px] text-muted">Anything without its own choice below</div>
           </div>
           <EffectPicker value={model.global} inherited={inheritedEffect("*", { global: globalRules, agentGlobal: null })} onChange={(v) => onChange({ ...model, global: v })} />
         </div>
@@ -654,6 +662,8 @@ export function PermissionsEditor({ model, onChange, globalRules }: { model: Per
         ))}
       </PermGroup>
 
+      <AppPermissions model={model} onChange={onChange} globalRules={globalRules} />
+
       <PermGroup title="MCP servers">
         {mcp === null ? (
           <div className="flex justify-center py-3 text-muted">
@@ -673,10 +683,49 @@ export function PermissionsEditor({ model, onChange, globalRules }: { model: Per
   );
 }
 
-function PermGroup({ title, children }: { title: string; children: React.ReactNode }) {
+/** The things people care about, in the words they'd use. */
+const CAPABILITIES: { action: string; verb: string }[] = [
+  { action: "shell", verb: "run commands" },
+  { action: "edit", verb: "edit files" },
+  { action: "webfetch", verb: "open web pages" },
+  { action: "websearch", verb: "search the web" },
+  { action: "subagent", verb: "hand work to other agents" },
+  { action: "external_directory", verb: "work outside the project" },
+];
+
+const joinList = (xs: string[]) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
+
+/** What this agent will actually do, in three plain lines: free, asks first, can't. */
+function Summary({ effect, apps }: { effect: (action: string) => Effect; apps: boolean }) {
+  const caps = [...CAPABILITIES, ...(apps ? KINDS.map((k) => ({ action: sample("*", k.kind), verb: `${k.verb} in your apps` })) : [])];
+  const by = (e: Effect) => caps.filter((c) => effect(c.action) === e).map((c) => c.verb);
+  const lines: { tone: string; text: string }[] = [];
+  const free = by("allow");
+  const asks = by("ask");
+  const never = by("deny");
+  if (free.length) lines.push({ tone: "bg-ok", text: asks.length || never.length ? `Free to ${joinList(free)}` : `Free to do anything: ${joinList(free)}` });
+  if (asks.length) lines.push({ tone: "bg-warn", text: `Asks you first to ${joinList(asks)}` });
+  if (never.length) lines.push({ tone: "bg-danger", text: `Never allowed to ${joinList(never)}` });
+  return (
+    <div>
+      <div className="text-[13.5px] font-medium text-ink">What this agent can do</div>
+      <ul className="mt-2 space-y-1.5">
+        {lines.map((l) => (
+          <li key={l.tone} className="flex items-start gap-2.5 text-[13px] leading-snug text-ink-2">
+            <span className={`mt-[6px] h-1.5 w-1.5 shrink-0 rounded-full ${l.tone}`} />
+            {l.text}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function PermGroup({ title, note, children }: { title: string; note?: string; children: React.ReactNode }) {
   return (
     <div>
       <div className="mb-2 text-[14px] font-semibold">{title}</div>
+      {note && <div className="-mt-1 mb-2 text-[12.5px] text-muted">{note}</div>}
       <div className="divide-y divide-[var(--border)] overflow-hidden rounded-2xl bg-raised hairline">{children}</div>
     </div>
   );
@@ -713,17 +762,31 @@ function PermRow({
   return (
     <div className={indent ? "pl-5" : ""}>
       <div className="flex items-center gap-3 px-4 py-2.5">
-        <button type="button" disabled={!canPattern} onClick={() => setOpen((v) => !v)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
+        {/* Not a <button>: Reset sits inside it. */}
+        <div
+          role={canPattern ? "button" : undefined}
+          tabIndex={canPattern ? 0 : undefined}
+          aria-expanded={canPattern ? open : undefined}
+          onClick={() => canPattern && setOpen((v) => !v)}
+          onKeyDown={(e) => canPattern && (e.key === "Enter" || e.key === " ") && (e.preventDefault(), setOpen((v) => !v))}
+          className={`flex min-w-0 flex-1 items-center gap-2 text-left ${canPattern ? "cursor-pointer" : ""}`}
+        >
           {canPattern && <ChevronRight size={13} className={`shrink-0 text-faint transition-transform ${open ? "rotate-90" : ""}`} />}
           <span className="min-w-0">
             <span className="flex items-center gap-2 text-[13.5px] text-ink">
               <span className="truncate">{title}</span>
               {patterns && patterns.length > 0 && <span className="rounded-md bg-active px-1.5 text-[12px] font-medium text-ink">{patterns.length} rule{patterns.length === 1 ? "" : "s"}</span>}
             </span>
-            {subtitle && <span className="block truncate text-[12px] text-muted">{subtitle}</span>}
+            <span className="flex min-w-0 items-center gap-1.5 text-[12px] text-muted">
+              {subtitle && <span className="truncate">{subtitle}</span>}
+              {subtitle && <span className="text-faint">·</span>}
+              <span className="shrink-0" onClick={(e) => e.stopPropagation()}>
+                <DefaultMark verbose own={value !== null} fallback={noAsk && inherited === "ask" ? "allow" : inherited} onReset={() => onChange(null)} />
+              </span>
+            </span>
           </span>
-        </button>
-        <EffectPicker value={value} inherited={inherited} onChange={onChange} noAsk={noAsk} />
+        </div>
+        <EffectPicker value={value} inherited={inherited} onChange={onChange} noAsk={noAsk} marker={false} />
       </div>
       <AnimatePresence initial={false}>
         {open && canPattern && (

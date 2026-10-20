@@ -11,11 +11,25 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 - **Hire teammates.** + in Agents opens a gallery of everyone Otto can introduce, by face. Besides the starter team, seven new teammates are there: Quill (writing and docs), Quinn (sales outreach), Hollis (recruiting), Penny (expenses), Wren (customer health), Flint (paid ads) and Atlas (travel). Each has a profile where they greet you, say what they do, what to ask them and how they work. One tap hires them, and the same button then takes you to them. Tap one of their questions to start a session with it. "Your own" starts a blank teammate, as + did before. Like the others, the new teammates never send, pay or book anything themselves without showing you first.
 - **See what's running in the background.** Commands the agent leaves running and teammates working on a part in the background now show above the composer, each with its time and a Stop. Two or more fold into a count that opens in place.
 - **Keep running in the background.** A long command or teammate holding up the agent has a send-to-back action on its line. The work carries on, and the agent moves on and hears back when it ends.
+- **Apps.** Settings → Apps connects Gmail, Google Calendar, Drive, Docs, Sheets, Slack, Notion, GitHub, Linear and Outlook through a free Composio account of your own. Paste your key once, then tap Connect and approve the app on its own sign-in page. Every teammate on every workspace can then use it. Need another app? Just ask. Your teammate finds it among Composio's 500+ and asks you to connect it. The key stays in this device's keychain, and in a private file on each agent machine.
+- **Connect from the chat.** When a teammate needs an app you haven't connected, its link shows as a button with the app's logo. It waits while you sign in, then says the app is connected, and **Carry on** lets the teammate continue.
+- **App work reads plainly.** "Used Slack · send message", "Looked through Google Calendar", "Asked to connect Gmail", with the app's logo, even while it's still running, instead of "ran 1 command".
+- **Choose what teammates may do in your apps.** Permissions has an Apps section, for everyone and for each teammate. Each app has Reading, Sending and changing, and Deleting, each set to Allow, Ask or Block, and you can set any single action on its own. Out of the box teammates read freely and ask before they send, change or delete anything. Blocked actions disappear from their tools. Settings → Apps shows what applies and links there.
+- **Approvals for app actions say what they'll do.** The approval shows the app, the action, the thing it acts on by name ("Team sync", not an id), who it reaches, and what it will say. **Always for Juno** or **Always for every teammate** remembers that action for those people or places. The rule then shows under Remembered in Permissions, where you can change or forget it, and the toast has Undo.
+- **See what each agent can do.** An agent's Permissions now opens with a plain summary: what it's free to do, what it asks you about first, and what it's never allowed to do.
+
+### Changed
+
+- **Permissions say what will happen.** Each row shows Allow, Ask or Block, and the one that applies is lit even when the agent follows the default. "Default" or "Changed · Reset" under the name says which, in place of the old "Auto".
 
 ### Fixed
 
 - **Background commands finish in the chat.** A command the agent ran in the background used to show as done at once, and its output never appeared. Now its line stays live, shows output as it arrives when you open it, and ends in place with the result, or in red with the exit code when it fails. Results that arrive while you're watching now show at once, without reopening the chat.
 - **Stopping a background command** tells the agent it was you, so it doesn't start it again. The line keeps what the command printed up to then.
+- **The approval card is solid.** The chat no longer shows through it while it waits for you.
+- **An approval already answered elsewhere**, in another window or by a rule you just saved, no longer shows "Couldn't answer".
+- **Phones keep your workspaces and keys.** Otto on Android could reopen at onboarding with its API keys gone, once the phone had closed it in the background. Settings are now saved so a closed app always keeps the last good copy, and your backdrop photos are kept apart from them.
+- **Big app results come back whole.** A long calendar or inbox listing used to reach the agent empty, and it failed with errors like "Cannot read properties of null". Agents also see every action an app has, so they stop calling ones that don't exist.
 - **Picking a chat from History on a new session (phones)** now opens it. Before, the new session stayed on screen until you tapped back.
 
 ## [0.10.0] - 2026-10-20
