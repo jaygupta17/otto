@@ -9,11 +9,12 @@
  *
  *   bun run release notes v0.2.0    print that version's changelog section (used by CI)
  *   bun run release check [v0.2.0]  fail unless every manifest agrees (and matches the tag)
+ *   bun run release manifest v0.2.0 <dir>  print the updater's latest.json from the release's .sig files in <dir> (used by CI)
  *
  * The changelog section comes from `## [Unreleased]` in CHANGELOG.md when you've
  * written one; otherwise it's built from Conventional Commits since the last tag.
  */
-import { readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 
@@ -173,6 +174,38 @@ function notes(tag?: string) {
   process.stdout.write(`${body}${footer}\n`);
 }
 
+/** Which updater platforms a signed bundle serves, by its name. The first is the one an older updater asks for. */
+function platformsOf(name: string): string[] {
+  const arch = /aarch64|arm64/.test(name) ? "aarch64" : /x64|amd64|x86_64/.test(name) ? "x86_64" : null;
+  if (!arch) return [];
+  if (name.endsWith(".app.tar.gz")) return [`darwin-${arch}`, `darwin-${arch}-app`];
+  if (name.endsWith(".AppImage")) return [`linux-${arch}`, `linux-${arch}-appimage`];
+  if (name.endsWith(".deb")) return [`linux-${arch}-deb`];
+  if (name.endsWith(".rpm")) return [`linux-${arch}-rpm`];
+  if (name.endsWith(".msi")) return [`windows-${arch}`, `windows-${arch}-msi`];
+  if (name.endsWith("-setup.exe")) return [`windows-${arch}-nsis`];
+  return [];
+}
+
+/**
+ * latest.json, written once after every build has uploaded. Each desktop job
+ * used to rewrite it on the release in turn, and two at once lost one: v0.10.0
+ * shipped without Apple silicon, and its build failed on the clash.
+ */
+function manifest(tag: string | undefined, dir: string | undefined) {
+  if (!tag || !dir) die("Usage: release manifest v0.2.0 <dir of .sig files>");
+  const version = tag.replace(/^v/, "");
+  const platforms: Record<string, { signature: string; url: string }> = {};
+  for (const sig of readdirSync(dir).filter((f) => f.endsWith(".sig"))) {
+    const name = sig.slice(0, -4);
+    const entry = { signature: readFileSync(join(dir, sig), "utf8").trim(), url: `${REPO}/releases/download/${tag}/${name}` };
+    for (const p of platformsOf(name)) platforms[p] ??= entry;
+  }
+  for (const need of ["darwin-aarch64", "darwin-x86_64", "linux-x86_64", "windows-x86_64"]) if (!platforms[need]) die(`No signed update for ${need} in ${dir}`);
+  const notes = sectionFor(read(CHANGELOG), version) ?? "";
+  process.stdout.write(JSON.stringify({ version, notes, pub_date: new Date().toISOString(), platforms }, null, 2) + "\n");
+}
+
 function previousTag(tag: string) {
   const tags = git("tag", "--list", "v*", "--sort=-v:refname").split("\n").filter(Boolean);
   const i = tags.indexOf(tag);
@@ -238,11 +271,12 @@ function release(kind: string | undefined, dry: boolean, push: boolean) {
 if (import.meta.main) {
   const args = process.argv.slice(2);
   const flags = new Set(args.filter((a) => a.startsWith("--")));
-  const [cmd, arg] = args.filter((a) => !a.startsWith("--"));
+  const [cmd, arg, arg2] = args.filter((a) => !a.startsWith("--"));
   for (const f of flags) if (!["--dry-run", "--push"].includes(f)) die(`Unknown flag ${f}`);
   try {
     if (cmd === "check") check(arg);
     else if (cmd === "notes") notes(arg);
+    else if (cmd === "manifest") manifest(arg, arg2);
     else release(cmd, flags.has("--dry-run"), flags.has("--push"));
   } catch (e) {
     die((e as Error).message);
