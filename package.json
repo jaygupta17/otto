@@ -1,7 +1,7 @@
 {
   "name": "otto",
   "private": true,
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "A calm desktop and mobile app for running OpenCode agents on cloud machines.",
   "license": "MIT",
   "type": "module",

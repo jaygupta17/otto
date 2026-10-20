@@ -6,6 +6,8 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-20
+
 ### Added
 
 - **Hire teammates.** + in Agents opens a gallery of everyone Otto can introduce, by face. Besides the starter team, seven new teammates are there: Quill (writing and docs), Quinn (sales outreach), Hollis (recruiting), Penny (expenses), Wren (customer health), Flint (paid ads) and Atlas (travel). Each has a profile where they greet you, say what they do, what to ask them and how they work. One tap hires them, and the same button then takes you to them. Tap one of their questions to start a session with it. "Your own" starts a blank teammate, as + did before. Like the others, the new teammates never send, pay or book anything themselves without showing you first.
@@ -227,7 +229,8 @@ First public release.
 - Scheduled tasks that run on the agent machine.
 - Project file browser with syntax highlighting.
 
-[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/jaygupta17/otto/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/jaygupta17/otto/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/jaygupta17/otto/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/jaygupta17/otto/compare/v0.7.1...v0.8.0
