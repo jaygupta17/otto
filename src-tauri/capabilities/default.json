@@ -9,7 +9,6 @@
     "core:default",
     "core:window:allow-start-dragging",
     "core:window:allow-set-theme",
-    "store:default",
     "os:default",
     "notification:default",
     "websocket:default",

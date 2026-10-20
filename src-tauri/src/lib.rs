@@ -1,3 +1,4 @@
+mod kv;
 mod local;
 mod secrets;
 
@@ -41,11 +42,11 @@ fn adopt_old_data(app: &tauri::AppHandle) {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_http::init())
-        .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_websocket::init())
+        .manage(kv::Kv::default())
         .setup(|_app| {
             #[cfg(desktop)]
             adopt_old_data(_app.handle());
@@ -69,6 +70,9 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            kv::kv_get,
+            kv::kv_set,
+            kv::kv_delete,
             secrets::secret_get,
             secrets::secret_set,
             secrets::secret_delete,

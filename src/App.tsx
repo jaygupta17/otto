@@ -31,7 +31,8 @@ export default function App() {
   useEffect(() => {
     initViewport();
     void initUpdates();
-    void Promise.all([initUI(), useWorkspaces.getState().hydrate(), initNotificationCenter()]).then(() => setBooted(true));
+    // A step that fails (say, a full disk) mustn't hold the splash; workspaces gate it on their own.
+    void Promise.allSettled([initUI(), useWorkspaces.getState().hydrate(), initNotificationCenter()]).then(() => setBooted(true));
   }, []);
 
   // (Re)connect whenever the active workspace changes.

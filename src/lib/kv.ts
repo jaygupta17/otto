@@ -1,6 +1,7 @@
 /**
  * Small persistent key/value store.
- * Tauri: plugin-store (app data dir, private to the app).
+ * Tauri: the Rust `kv_*` commands (app data dir, private to the app). Each change
+ * is on disk, written so a killed app keeps the last good copy, before `set` resolves.
  * Browser: localStorage.
  */
 import { isTauri } from "./platform";
@@ -9,7 +10,6 @@ type StoreLike = {
   get<T>(key: string): Promise<T | undefined>;
   set(key: string, value: unknown): Promise<void>;
   delete(key: string): Promise<boolean>;
-  save(): Promise<void>;
 };
 
 let storePromise: Promise<StoreLike> | null = null;
@@ -18,9 +18,14 @@ function getStore(): Promise<StoreLike> {
   if (!storePromise) {
     storePromise = (async () => {
       if (isTauri) {
-        const { load } = await import("@tauri-apps/plugin-store");
-        const s = await load("otto.json", { autoSave: 200, defaults: {} });
-        return s as unknown as StoreLike;
+        const { invoke } = await import("@tauri-apps/api/core");
+        return {
+          async get<T>(key: string) {
+            return ((await invoke<T | null>("kv_get", { key })) ?? undefined) as T | undefined;
+          },
+          set: (key, value) => invoke<void>("kv_set", { key, value }),
+          delete: (key) => invoke<boolean>("kv_delete", { key }),
+        };
       }
       const prefix = "otto.kv.";
       return {
@@ -36,7 +41,6 @@ function getStore(): Promise<StoreLike> {
           localStorage.removeItem(prefix + key);
           return had;
         },
-        async save() {},
       };
     })();
   }
@@ -54,9 +58,6 @@ export const kv = {
   async delete(key: string) {
     const s = await getStore();
     await s.delete(key);
-  },
-  async flush() {
-    await (await getStore()).save();
   },
 };
 
