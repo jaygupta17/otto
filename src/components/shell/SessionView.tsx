@@ -10,7 +10,7 @@ import { basename, money } from "../../lib/format";
 import { useTrafficLights } from "../../hooks/useChrome";
 import { ConnectionBanner } from "./Home";
 import { ChatScrim } from "../ui/ChatScrim";
-import { InboxTray } from "../chat/SessionExtras";
+import { BackgroundStrip, InboxTray } from "../chat/SessionExtras";
 import { AskDock } from "../chat/Asks";
 import { kbd } from "../../hooks/useShortcuts";
 
@@ -70,6 +70,7 @@ export function SessionView({ sessionId }: { sessionId: string }) {
           <div className="mx-auto w-full max-w-[760px]">
             <ConnectionBanner />
             <AskDock sessionId={sessionId} />
+            <BackgroundStrip sessionId={sessionId} />
             <InboxTray sessionId={sessionId} />
             <Composer sessionId={sessionId} autoFocus placeholder="Reply, or steer the agent…" />
           </div>

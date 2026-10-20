@@ -535,6 +535,35 @@ export class OpenCode {
     const r = await this.request<{ data: { id: string; status: string; exit?: number } }>("GET", `/api/shell/${id}`);
     return r.data;
   }
+  /** Commands the server knows about in a location (the default one without a directory). */
+  async shells(directory?: string) {
+    const r = await this.request<{ data: ShellInfo[] }>("GET", "/api/shell", { query: locQuery(directory) });
+    return r.data ?? [];
+  }
+  /** Output from byte `cursor` on; `cursor` in the reply is where the next read starts, `size` the whole file. */
+  async shellOutputFrom(id: string, cursor: number, limit?: number) {
+    const r = await this.request<{ data: { output: string; cursor: number; size: number } }>("GET", `/api/shell/${id}/output`, { query: { cursor, limit } });
+    return r.data;
+  }
+  /** Kill a command and forget it. */
+  removeShell(id: string) {
+    return this.request<void>("DELETE", `/api/shell/${id}`);
+  }
+  /** Move whatever the session is blocked on (a long command, a subagent) to the background so the turn can go on. */
+  background(sessionId: string) {
+    return this.request<void>("POST", `/api/session/${sessionId}/background`);
+  }
+}
+
+export interface ShellInfo {
+  id: string;
+  status: "running" | "exited" | "timeout" | "killed";
+  command: string;
+  cwd?: string;
+  exit?: number;
+  signal?: string;
+  metadata?: { sessionID?: string; [k: string]: unknown };
+  time: { started: number; completed?: number };
 }
 
 function locQuery(directory?: string): Query {

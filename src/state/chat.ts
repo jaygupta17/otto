@@ -75,6 +75,8 @@ interface State {
   loadOlder(id: string): Promise<void>;
   send(text: string, opts?: { sessionId?: string | null }): Promise<string | null>;
   interrupt(id: string): Promise<void>;
+  /** Move what the session is waiting on (a long command, a subagent) to the background; the turn goes on. */
+  background(id: string): Promise<void>;
   /** Stop a subagent: tell the parent's agent it was the user (so it doesn't just retry), then interrupt the child. */
   stopSubagent(parent: string, child: string, description?: string): Promise<void>;
   remove(id: string): Promise<void>;
@@ -480,6 +482,16 @@ export const useChat = create<State>((set, get) => ({
       await client.interrupt(id);
     } catch (e) {
       toast({ tone: "error", title: "Couldn't stop", body: (e as Error).message });
+    }
+  },
+
+  async background(id) {
+    const client = get().client;
+    if (!client) return;
+    try {
+      await client.background(id);
+    } catch (e) {
+      toast({ tone: "error", title: "Couldn't move it to the background", body: (e as Error).message });
     }
   },
 

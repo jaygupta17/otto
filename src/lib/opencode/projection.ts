@@ -7,7 +7,7 @@
  *   tool:<callID>
  */
 import type { SessionMessageInfo, V2Event } from "@opencode/client";
-import { stopNoteChild } from "./tools";
+import { stopNoteChild, stopNoteShell } from "./tools";
 
 export type ToolStatus = "streaming" | "running" | "completed" | "error";
 
@@ -78,17 +78,36 @@ export type UIMessage =
   | { kind: "compaction"; id: string; status: string; summary?: string; time: number }
   /** A subagent's report, delivered back into the parent session. */
   | { kind: "subagent"; id: string; childID?: string; agent?: string; state?: string; description?: string; text: string; time: number }
-  /** The user stopped this subagent (a note to the model; never rendered). */
-  | { kind: "stopped"; id: string; childID: string; time: number };
+  /** A background command finished; folds into the call that started it. */
+  | { kind: "shellReport"; id: string; shellID: string; state?: string; exit?: number; signal?: string; timeout?: boolean; command?: string; text: string; time: number }
+  /** The user stopped this subagent or command (a note to the model; never rendered). */
+  | { kind: "stopped"; id: string; childID?: string; shellID?: string; time: number };
 
 const SUBAGENT_ENVELOPE = /^\s*<subagent\b[^>]*>\n?([\s\S]*?)\n?<\/subagent>\s*$/;
+const SHELL_ENVELOPE = /^\s*<shell\b[^>]*>\n?([\s\S]*?)\n?<\/shell>\s*$/;
 
-/** Synthetic messages from a finished subagent become report cards; any other synthetic stays hidden (it's for the model). */
+/** Synthetic messages from a finished subagent or command become their results; any other synthetic stays hidden (it's for the model). */
 function fromSynthetic(id: string, text: string, metadata: Json | undefined, description: string | undefined, time: number): UIMessage | null {
   const stopped = stopNoteChild(metadata);
   if (stopped) return { kind: "stopped", id, childID: stopped, time };
-  if (metadata?.source !== "subagent") return null;
+  const stoppedShell = stopNoteShell(metadata);
+  if (stoppedShell) return { kind: "stopped", id, shellID: stoppedShell, time };
   const str = (v: unknown) => (typeof v === "string" && v ? v : undefined);
+  if (metadata?.source === "shell" && str(metadata.shellID)) {
+    return {
+      kind: "shellReport",
+      id,
+      shellID: str(metadata.shellID)!,
+      state: str(metadata.state),
+      exit: typeof metadata.exit === "number" ? metadata.exit : undefined,
+      signal: str(metadata.signal),
+      timeout: metadata.timeout === true,
+      command: description,
+      text: (SHELL_ENVELOPE.exec(text)?.[1] ?? text).replace(/\n+$/, ""),
+      time,
+    };
+  }
+  if (metadata?.source !== "subagent") return null;
   return {
     kind: "subagent",
     id,
@@ -255,9 +274,15 @@ export function applyEvent(msgs: UIMessage[], e: V2Event): UIMessage[] {
 
   switch (e.type) {
     case "session.inbox.enqueued": {
-      const item = d.item as { type: string; payload?: { text?: string; files?: { uri: string; name?: string }[] } };
-      if (item?.type !== "user") return msgs;
+      const item = d.item as { type: string; payload?: { text?: string; files?: { uri: string; name?: string }[]; description?: string; metadata?: Json } };
       const id = d.inboxID as string;
+      // A report or note the server posts lands here live; it's stored under the same id.
+      if (item?.type === "synthetic") {
+        if (msgs.some((m) => m.id === id)) return msgs;
+        const u = fromSynthetic(id, item.payload?.text ?? "", item.payload?.metadata, item.payload?.description, created);
+        return u ? [...msgs, u] : msgs;
+      }
+      if (item?.type !== "user") return msgs;
       const existing = msgs.findIndex((m) => m.id === id || (m.kind === "user" && m.pending && m.text === item.payload?.text));
       const delivery = (item as { delivery?: Delivery }).delivery;
       const msg: UIMessage = { kind: "user", id, text: item.payload?.text ?? "", files: item.payload?.files, time: created, pending: true, delivery };

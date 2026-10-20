@@ -25,14 +25,16 @@ type Item =
   | { type: "turn"; key: string; msgs: UIMessage[]; start: number }
   | { type: "notice"; key: string; msg: UIMessage };
 
-/** Subagents a call in this timeline started: their reports fold into that call's card. */
+/** Subagents and commands a call in this timeline started: their reports fold into that call's row. */
 function claimedChildren(messages: UIMessage[]) {
   const ids = new Set<string>();
   for (const m of messages) {
     if (m.kind !== "assistant") continue;
     for (const b of m.blocks) {
-      const child = b.kind === "tool" ? (b.metadata?.sessionID ?? b.metadata?.sessionId) : undefined;
+      if (b.kind !== "tool") continue;
+      const child = b.metadata?.sessionID ?? b.metadata?.sessionId;
       if (typeof child === "string") ids.add(child);
+      if (typeof b.metadata?.shellID === "string") ids.add(b.metadata.shellID);
     }
   }
   return ids;
@@ -49,11 +51,12 @@ function buildItems(messages: UIMessage[]): Item[] {
     // The note telling the agent a stop was the user's; the card already says so.
     if (m.kind === "stopped") continue;
     if (m.kind === "subagent" && m.childID && claimed.has(m.childID)) continue;
+    if (m.kind === "shellReport" && claimed.has(m.shellID)) continue;
     if (m.kind === "user") {
       turn = null;
       lastUserTime = m.time;
       items.push({ type: "user", key: m.id, msg: m });
-    } else if (m.kind === "assistant" || m.kind === "shell" || m.kind === "subagent" || (m.kind === "notice" && m.tone === "error")) {
+    } else if (m.kind === "assistant" || m.kind === "shell" || m.kind === "shellReport" || m.kind === "subagent" || (m.kind === "notice" && m.tone === "error")) {
       if (!turn) {
         turn = { type: "turn", key: `turn-${m.id}`, msgs: [], start: lastUserTime || m.time };
         items.push(turn);
@@ -334,6 +337,12 @@ function segmentsOf(msgs: UIMessage[]): Segment[] {
     if (m.kind === "shell") {
       flushRun(m.id);
       segs.push({ kind: "shell", key: m.id, msg: m });
+      continue;
+    }
+    // A background command's result with no call in view (older history paged out).
+    if (m.kind === "shellReport") {
+      flushRun(m.id);
+      segs.push({ kind: "shell", key: m.id, msg: { kind: "shell", id: m.id, command: m.command ?? "", status: "exited", exit: m.exit ?? (m.state === "completed" ? 0 : m.state), output: m.text, time: m.time } });
       continue;
     }
     if (m.kind === "subagent") {

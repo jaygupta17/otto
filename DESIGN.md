@@ -105,3 +105,13 @@ What's happening right now reads as one quiet line: a spinner, a word or two, th
 - No boxes around activity. Detail opens under the line, hanging off a thread line; content (a brief, a result, code) may sit in its own box.
 - Actions are icons that appear when you reach for the line (always shown on touch), and their tooltips name them. No words where the icon already says it: ↗ opens, ■ stops.
 - Don't show a control until it matters (Steer or Queue appears once you've typed while the agent works), and let the placeholder say the mode ("Steer Juno…").
+
+### Background work
+
+Work that outlives its turn (a command the agent left running, a teammate on a part in the background) stays visible until it ends.
+
+- Its row stays live where it started: the shimmer, the clock, the time, and a faint "in the background". It ends in place with its own output, and its report never shows as a separate card.
+- Above the composer, one line per thing still running for this chat (its own commands, and those of teammates working for it), with ■ on hover. Two or more fold into "2 running in the background", which opens in place. A command shorter than a breath never appears there.
+- A folded run that left work going says so on its summary line ("· 1 still running").
+- A blocking command or teammate that has run a few seconds offers "Keep running in the background" (send-to-back icon): the turn moves on and the work carries on.
+- Stopping posts a note telling the agent it was you before anything is killed, so the agent doesn't retry what you stopped. The row keeps what the command printed up to then.

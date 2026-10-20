@@ -21,7 +21,7 @@ import { PanelChrome, SURFACES, SurfaceBody } from "../panel/SidePanel";
 import { Popover, MenuItem } from "../ui/Popover";
 import { AgentClock } from "../ui/AgentClock";
 import { Backdrop } from "../ui/Backdrop";
-import { InboxTray } from "../chat/SessionExtras";
+import { BackgroundStrip, InboxTray } from "../chat/SessionExtras";
 import { AskDock } from "../chat/Asks";
 import { ChatScrim } from "../ui/ChatScrim";
 import { AppGlyph } from "../ui/Mark";
@@ -345,6 +345,7 @@ function SessionScreen({ sessionId }: { sessionId: string }) {
         <div className="panel-fade h-6 bg-gradient-to-b from-transparent to-[var(--bg-panel)]" />
         <div className="panel-fill pointer-events-auto pb-2">
           <AskDock sessionId={sessionId} />
+          <BackgroundStrip sessionId={sessionId} />
           <InboxTray sessionId={sessionId} />
           <Composer sessionId={sessionId} compact placeholder="Message your agent" />
         </div>

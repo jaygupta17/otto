@@ -9,6 +9,13 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 ### Added
 
 - **Hire teammates.** + in Agents opens a gallery of everyone Otto can introduce, by face. Besides the starter team, seven new teammates are there: Quill (writing and docs), Quinn (sales outreach), Hollis (recruiting), Penny (expenses), Wren (customer health), Flint (paid ads) and Atlas (travel). Each has a profile where they greet you, say what they do, what to ask them and how they work. One tap hires them, and the same button then takes you to them. Tap one of their questions to start a session with it. "Your own" starts a blank teammate, as + did before. Like the others, the new teammates never send, pay or book anything themselves without showing you first.
+- **See what's running in the background.** Commands the agent leaves running and teammates working on a part in the background now show above the composer, each with its time and a Stop. Two or more fold into a count that opens in place.
+- **Keep running in the background.** A long command or teammate holding up the agent has a send-to-back action on its line. The work carries on, and the agent moves on and hears back when it ends.
+
+### Fixed
+
+- **Background commands finish in the chat.** A command the agent ran in the background used to show as done at once, and its output never appeared. Now its line stays live, shows output as it arrives when you open it, and ends in place with the result, or in red with the exit code when it fails. Results that arrive while you're watching now show at once, without reopening the chat.
+- **Stopping a background command** tells the agent it was you, so it doesn't start it again. The line keeps what the command printed up to then.
 
 ## [0.10.0] - 2026-10-20
 

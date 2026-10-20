@@ -5,6 +5,7 @@
 import { create } from "zustand";
 import { OpenCode, OpenCodeError, type ServerInfo } from "../lib/opencode/client";
 import { startEventStream, type StreamStatus } from "../lib/opencode/events";
+import { useShells } from "./shells";
 import { reviveBoat } from "../lib/providers/provision";
 import { ensureBrowserKit } from "../lib/providers/boatBrowser";
 import { BoxdError, reviveBoxd } from "../lib/providers/boxd";
@@ -133,10 +134,14 @@ export const useConnection = create<State>((set, get) => ({
       void chat.bootstrap(client);
 
       stream = startEventStream(client, {
-        onEvent: (e) => useChat.getState().ingest(e),
+        onEvent: (e) => {
+          if (e.type.startsWith("shell.")) useShells.getState().ingest(e);
+          useChat.getState().ingest(e);
+        },
         onStatus: (s) => !stale() && set({ stream: s }),
         onConnected: (reconnect) => {
           if (reconnect) void useChat.getState().resync();
+          void useShells.getState().load();
         },
       });
     } catch (e) {

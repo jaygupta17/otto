@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowRightToLine, CornerDownRight, FileDiff as FileDiffIcon, Gauge, Layers, SquarePen, X } from "lucide-react";
+import { ArrowRightToLine, ArrowUpRight, ChevronDown, CornerDownRight, FileDiff as FileDiffIcon, Gauge, Layers, Square, SquarePen, SquareTerminal, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { revertIndex, useChat } from "../../state/chat";
 import { useUI } from "../../state/ui";
@@ -11,7 +11,14 @@ import type { FileDiff } from "../../lib/opencode/client";
 import { compactNumber, money } from "../../lib/format";
 import { Popover } from "../ui/Popover";
 import { Button, IconButton } from "../ui/Button";
-import { Spinner } from "../ui/AgentClock";
+import { AgentClock, Spinner } from "../ui/AgentClock";
+import { TeammateFace } from "../ui/TeammateFace";
+import { useShells, inTree } from "../../state/shells";
+import { useAgentName, useTeammate } from "../../state/teammates";
+import { openSubagent } from "../../state/subagent";
+import { subagentOf, toolKind } from "../../lib/opencode/tools";
+import { duration } from "../../lib/format";
+import { useNow } from "../../hooks/useNow";
 
 type Assistant = Extract<UIMessage, { kind: "assistant" }>;
 
@@ -48,6 +55,140 @@ export function InboxTray({ sessionId }: { sessionId: string }) {
         </motion.div>
       )}
     </AnimatePresence>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Background: what's still running for this chat
+// ---------------------------------------------------------------------------
+
+type Running =
+  | { kind: "command"; id: string; command: string; started: number; sessionID?: string }
+  | { kind: "teammate"; id: string; agent?: string; description?: string; started: number };
+
+/** Shorter than this and it's just a quick command finishing; no need to list it. */
+const SETTLE_MS = 1500;
+
+/**
+ * Work that carries on after the turn: commands the agent (or a teammate
+ * working for it) left running, and teammates handed a part in the
+ * background. One line each above the composer, with its time and a Stop;
+ * several fold into a count that opens in place.
+ */
+export function BackgroundStrip({ sessionId }: { sessionId: string }) {
+  const shells = useShells((s) => s.byId);
+  const stopped = useShells((s) => s.stopped);
+  const parents = useChat((s) => s.parents);
+  const busy = useChat((s) => s.busy);
+  const timelines = useChat((s) => s.timelines);
+  const [open, setOpen] = useState(false);
+
+  const candidates = useMemo(() => {
+    const out: Running[] = [];
+    const tree = Object.keys(timelines).filter((k) => inTree(parents, k, sessionId));
+    // A command a call is still waiting on shows in that call's row, not here.
+    const blocking = new Set<string>();
+    for (const k of tree) {
+      for (const m of (timelines[k]?.messages ?? []).slice(-3)) {
+        if (m.kind !== "assistant") continue;
+        for (const b of m.blocks) if (b.kind === "tool" && (b.status === "running" || b.status === "streaming") && typeof b.metadata?.shellID === "string") blocking.add(b.metadata.shellID);
+      }
+    }
+    for (const sh of Object.values(shells)) {
+      if (sh.status !== "running" || stopped[sh.id] || blocking.has(sh.id) || !inTree(parents, sh.sessionID, sessionId)) continue;
+      out.push({ kind: "command", id: sh.id, command: sh.command, started: sh.started, sessionID: sh.sessionID });
+    }
+    // Teammates on a part in the background: their call settled, their chat is still busy.
+    const kids = Object.keys(busy).filter((k) => busy[k] && parents[k] === sessionId);
+    if (kids.length) {
+      const msgs = timelines[sessionId]?.messages ?? [];
+      const noted = new Set(msgs.flatMap((m) => (m.kind === "stopped" && m.childID ? [m.childID] : [])));
+      for (const m of msgs) {
+        if (m.kind !== "assistant") continue;
+        for (const b of m.blocks) {
+          if (b.kind !== "tool" || toolKind(b.name) !== "subagent" || b.status === "running" || b.status === "streaming") continue;
+          const a = subagentOf(b);
+          if (a.background && a.childID && kids.includes(a.childID) && !noted.has(a.childID)) out.push({ kind: "teammate", id: a.childID, agent: a.agent, description: a.description, started: b.started });
+        }
+      }
+    }
+    return out.sort((x, y) => x.started - y.started);
+  }, [shells, stopped, parents, busy, timelines, sessionId]);
+
+  const now = useNow(candidates.length > 0);
+  const items = candidates.filter((i) => now - i.started >= SETTLE_MS);
+  const folded = items.length > 1 && !open;
+
+  return (
+    <AnimatePresence initial={false}>
+      {items.length > 0 && (
+        <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }} transition={{ duration: 0.18 }} className="mb-1.5 px-1" role="status" aria-label="Running in the background">
+          {items.length > 1 && (
+            <button onClick={() => setOpen((v) => !v)} aria-expanded={open} className="group flex h-7 max-w-full items-center gap-2 rounded-md px-1.5 text-[13px] text-muted hover:text-ink">
+              <AgentClock size={11} />
+              <span className="shimmer truncate">{items.length} running in the background</span>
+              <ChevronDown size={13} className={`shrink-0 text-faint transition-transform group-hover:text-ink ${open ? "rotate-180" : ""}`} />
+            </button>
+          )}
+          {!folded && (
+            <div className={items.length > 1 ? "ml-[13px] border-l border-line pl-2" : ""}>
+              {items.map((i) => (i.kind === "command" ? <CommandLine key={i.id} item={i} root={sessionId} now={now} /> : <TeammateLine key={i.id} item={i} root={sessionId} now={now} />))}
+            </div>
+          )}
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+const stripAction =
+  "grid h-6 w-6 shrink-0 place-items-center rounded-md text-faint opacity-0 transition-opacity group-hover/bg:opacity-100 group-focus-within/bg:opacity-100 hover:bg-hover hover:text-ink focus-visible:opacity-100 [@media(hover:none)]:opacity-100";
+
+function CommandLine({ item, root, now }: { item: Extract<Running, { kind: "command" }>; root: string; now: number }) {
+  // A teammate's command says whose it is.
+  const agent = useChat((s) => (item.sessionID && item.sessionID !== root ? s.delegated[item.sessionID] : undefined));
+  const name = useAgentName(agent);
+  return (
+    <div className="group/bg flex h-7 min-w-0 items-center gap-2 rounded-md px-1.5 text-[13px]">
+      <SquareTerminal size={13} className="shrink-0 text-muted" />
+      <span className="shimmer min-w-0 truncate font-mono text-[12.5px]" title={item.command}>
+        {item.command.split("\n")[0]}
+      </span>
+      {agent && <span className="shrink-0 text-faint">· {name}</span>}
+      <span className="ml-auto shrink-0 pl-1 text-[12px] text-faint tabular-nums">{duration(now - item.started)}</span>
+      <button aria-label="Stop command" title="Stop" onClick={() => void useShells.getState().stop(item.id)} className={`${stripAction} hover:!text-danger`}>
+        <Square size={10} className="fill-current" />
+      </button>
+    </div>
+  );
+}
+
+function TeammateLine({ item, root, now }: { item: Extract<Running, { kind: "teammate" }>; root: string; now: number }) {
+  const t = useTeammate(item.agent);
+  const name = useAgentName(item.agent) || "Subagent";
+  const [stopping, setStopping] = useState(false);
+  return (
+    <div className="group/bg flex h-7 min-w-0 items-center gap-2 rounded-md px-1.5 text-[13px]">
+      {t ? <TeammateFace seed={t.face} color={t.color} accessory={t.accessory} size={16} state="working" /> : <AgentClock size={11} />}
+      <span className="shrink-0 font-medium text-ink-2">{name}</span>
+      {item.description && <span className="shimmer min-w-0 truncate">{item.description}</span>}
+      <span className="ml-auto shrink-0 pl-1 text-[12px] text-faint tabular-nums">{duration(now - item.started)}</span>
+      <button
+        aria-label={`Stop ${name}`}
+        title={`Stop ${name}`}
+        disabled={stopping}
+        onClick={async () => {
+          setStopping(true);
+          await useChat.getState().stopSubagent(root, item.id, item.description).catch(() => setStopping(false));
+        }}
+        className={`${stripAction} hover:!text-danger disabled:opacity-50`}
+      >
+        <Square size={10} className="fill-current" />
+      </button>
+      <button aria-label={`Open ${name}'s conversation`} title={`Open ${name}'s conversation`} onClick={() => openSubagent(item.id, item.agent, item.description)} className={stripAction}>
+        <ArrowUpRight size={14} />
+      </button>
+    </div>
   );
 }
 

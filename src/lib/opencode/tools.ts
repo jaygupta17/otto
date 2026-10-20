@@ -640,6 +640,73 @@ export function subagentStopNote(childID: string, description?: string) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Background commands
+// ---------------------------------------------------------------------------
+
+/**
+ * The command a shell call left running: a background call settles at once
+ * with `metadata.status: "running"` (so does one moved to the background
+ * mid-run), and its output arrives later as a report.
+ */
+export function backgroundShellID(b: ToolBlock): string | undefined {
+  const md = b.metadata ?? {};
+  return b.status === "completed" && md.status === "running" && typeof md.shellID === "string" ? md.shellID : undefined;
+}
+
+/** A finished background command, as the transcript received it. */
+export type ShellReportLite = { shellID: string; state?: string; exit?: number; signal?: string; timeout?: boolean; text: string; time: number };
+
+/** Marks a command the user stopped, so the agent doesn't read the cancellation as a failure. */
+export const SHELL_STOP_NOTE_KEY = "ottoShellCancellation";
+const SHELL_STOP_NOTE_KEYS = [SHELL_STOP_NOTE_KEY, "openchamberShellCancellation"];
+
+export function stopNoteShell(metadata?: Json): string | undefined {
+  for (const k of SHELL_STOP_NOTE_KEYS) {
+    const v = metadata?.[k] as Json | undefined;
+    if (v && typeof v.shellID === "string") return v.shellID;
+  }
+  return undefined;
+}
+
+/** The model-facing note that precedes a stop. Never shown in the chat. */
+export function shellStopNote(shellID: string, command?: string) {
+  const named = command ? `the background command \`${command.length > 200 ? `${command.slice(0, 200)}…` : command}\`` : "a background command";
+  return {
+    text: [
+      `The user stopped ${named} (shell ID: ${shellID}).`,
+      "The completion notice for it that follows reports an error such as Shell.NotFoundError or says that nothing ran.",
+      "That is how the stop shows up: the command did not fail on its own, the user cancelled it.",
+      "Do not start it again just because of that notice. The command itself is fine to run later when the task or the user needs it.",
+    ].join(" "),
+    description: "Command stopped by the user",
+    metadata: { [SHELL_STOP_NOTE_KEY]: { shellID } },
+  };
+}
+
+/**
+ * Where a background command stands: its report decides once it's in (a
+ * stop reads as stopped, never as a failure); until then the live list does.
+ */
+export function backgroundShellPhase(
+  report: ShellReportLite | undefined,
+  live: { status: string; exit?: number } | undefined,
+  stopped: boolean,
+): { phase: "running" | "done" | "error" | "stopped" | "background"; exit?: number; error?: string } {
+  if (stopped) return { phase: "stopped" };
+  if (report) {
+    // Killed from elsewhere with no note: the command is just gone.
+    if (report.state === "cancelled" || /^\s*Shell\.NotFoundError\s*$/.test(report.text)) return { phase: "stopped" };
+    if (report.timeout) return { phase: "error", exit: report.exit, error: "Timed out" };
+    if (report.signal) return { phase: "error", exit: report.exit, error: `Killed (${report.signal})` };
+    if (report.state === "error" || (report.exit !== undefined && report.exit !== 0)) return { phase: "error", exit: report.exit, error: report.exit === undefined ? report.text.trim().split("\n")[0] || "Failed" : undefined };
+    return { phase: "done", exit: report.exit };
+  }
+  if (live?.status === "running") return { phase: "running" };
+  if (live) return live.exit !== undefined && live.exit !== 0 ? { phase: "error", exit: live.exit } : { phase: "done", exit: live.exit };
+  return { phase: "background" };
+}
+
 /** An error that only says the run was stopped (by you, or a stop cutting a step short); it isn't a failure. */
 export const isStopError = (text?: string) => !!text && /^(?:step |tool (?:execution )?)?(?:interrupted|aborted|cancell?ed)\.?$|\babort(?:ed)?\b.*\b(?:signal|by user)|operation was aborted/i.test(text.trim());
 

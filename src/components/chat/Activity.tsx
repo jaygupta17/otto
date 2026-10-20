@@ -15,6 +15,7 @@ import {
   ListChecks,
   MessageCircleQuestion,
   Sparkles,
+  SendToBack,
   Square,
   SquareArrowOutUpRight,
   SquareTerminal,
@@ -25,6 +26,8 @@ import {
 import { memo, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { Block, UIMessage } from "../../lib/opencode/projection";
 import {
+  backgroundShellID,
+  backgroundShellPhase,
   diffStats,
   fileDiffs,
   firstChangedLine,
@@ -45,6 +48,7 @@ import {
 import { duration } from "../../lib/format";
 import { useNow } from "../../hooks/useNow";
 import { useChat } from "../../state/chat";
+import { useShells } from "../../state/shells";
 import { openSubagent } from "../../state/subagent";
 import { useMemory } from "../../state/memory";
 import { agentColor } from "../../lib/agentColor";
@@ -105,6 +109,9 @@ const ToolRun = memo(function ToolRun({ blocks, live }: { blocks: Block[]; live:
   const now = useNow(running);
   const took = (running ? now : last) - first;
   const verb = actions.length ? (running ? "Working" : "Worked") : running ? "Thinking" : "Thought";
+  // Commands it left running keep going after the run folds; say so on the line.
+  const ids = useMemo(() => blocks.flatMap((b) => (b.kind === "tool" ? (backgroundShellID(b) ?? []) : [])), [blocks]);
+  const going = useShells((st) => ids.filter((id) => st.byId[id]?.status === "running" && !st.stopped[id]).length);
   return (
     <div>
       <button
@@ -116,6 +123,7 @@ const ToolRun = memo(function ToolRun({ blocks, live }: { blocks: Block[]; live:
         <span className={`shrink-0 ${running ? "shimmer" : "text-ink-2 group-hover:text-ink"}`}>{verb}</span>
         {Number.isFinite(took) && took >= 1000 && <span className="shrink-0 text-faint tabular-nums">{duration(took)}</span>}
         {detail && <span className="min-w-0 truncate text-faint">· {detail.charAt(0).toLowerCase() + detail.slice(1)}</span>}
+        {!running && going > 0 && <span className="shimmer shrink-0">· {going} still running</span>}
         {failed > 0 && (
           <span className="ml-1 inline-flex items-center gap-1 text-[12.5px] text-danger" title={`${failed} failed`}>
             <AlertTriangle size={12} /> {failed}
@@ -227,16 +235,65 @@ function rowBadges(b: ToolBlock): ReactNode[] {
 
 const TIMED = new Set(["shell", "execute", "webfetch", "websearch", "other"]);
 
-const ToolRow = memo(function ToolRow({ b, step }: { b: ToolBlock; step?: BrowserStep }) {
+/**
+ * A command the agent left running, as its row sees it: the call settled at
+ * once, so its state, output and end come from the live list and then from
+ * the report it sends back. Output is read once a second while you watch.
+ */
+function useBackgroundShell(call: ToolBlock, watching: boolean) {
+  const id = backgroundShellID(call);
+  const sid = useContext(ThreadSession);
+  const report = useChat((st) => {
+    if (!id || !sid) return undefined;
+    const msgs = st.timelines[sid]?.messages ?? [];
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const m = msgs[i];
+      if (m.kind === "shellReport" && m.shellID === id) return m;
+    }
+    return undefined;
+  });
+  const noted = useChat((st) => !!id && !!sid && !!st.timelines[sid]?.messages.some((m) => m.kind === "stopped" && m.shellID === id));
+  const live = useShells((st) => (id ? st.byId[id] : undefined));
+  const stoppedHere = useShells((st) => !!id && !!st.stopped[id]);
+  const tail = useShells((st) => (id ? st.tails[id]?.text : undefined));
+  const { phase, exit, error } = backgroundShellPhase(report, live, noted || stoppedHere);
+  useEffect(() => {
+    if (!id || !watching || phase !== "running") return;
+    const read = () => void useShells.getState().read(id);
+    read();
+    const t = setInterval(read, 1000);
+    return () => clearInterval(t);
+  }, [id, watching, phase]);
+  if (!id) return null;
+  // A stop's report only says the command is gone; what it printed until then is the story.
+  const output = phase === "stopped" ? tail : (report?.text ?? tail);
+  const settled = phase === "done" || phase === "error" || phase === "stopped";
+  const view: ToolBlock = {
+    ...call,
+    status: phase === "running" ? "running" : "completed",
+    output: output || undefined,
+    ended: settled ? report?.time : undefined,
+    metadata: { ...call.metadata, exit, output: undefined },
+  };
+  return { id, phase, error, view, stop: () => useShells.getState().stop(id) };
+}
+
+const ToolRow = memo(function ToolRow({ b: call, step }: { b: ToolBlock; step?: BrowserStep }) {
   const [open, setOpen] = useState(false);
   const ready = useDeferred(open);
   const openFile = useOpenFile();
+  const bg = useBackgroundShell(call, open);
+  const b = bg?.view ?? call;
   // A browser step reads as what it did ("Clicked “Sign in”"), not the command behind it.
   const label = step ? { verb: step.verb, target: step.target } : toolLabel(b);
   const kind = toolKind(b.name);
   const active = isLive(b);
-  const stopped = b.status === "error" && isStopError(b.error);
-  const failed = (b.status === "error" && !stopped) || !!step?.failed;
+  const stopped = bg ? bg.phase === "stopped" : b.status === "error" && isStopError(b.error);
+  const failed = (b.status === "error" && !stopped) || bg?.phase === "error" || !!step?.failed;
+  // A long command holding up the turn can carry on by itself while the agent moves on.
+  const sid = useContext(ThreadSession);
+  const blocking = !bg && active && kind === "shell" && typeof call.metadata?.shellID === "string";
+  const [sending, setSending] = useState(false);
   const now = useNow(active && TIMED.has(kind));
   const elapsed = (b.ended ?? (active ? now : b.started)) - b.started;
   const mono = !step && (kind === "shell" || kind === "glob");
@@ -286,7 +343,28 @@ const ToolRow = memo(function ToolRow({ b, step }: { b: ToolBlock; step?: Browse
           )}
           {badges.length > 0 && <span className="flex shrink-0 items-center gap-2">{badges}</span>}
           {stopped && <span className="shrink-0 text-[12px] text-faint">stopped</span>}
+          {(bg?.phase === "running" || bg?.phase === "background") && <span className="shrink-0 text-[12px] text-faint">in the background</span>}
         </button>
+        {bg?.phase === "running" && (
+          <button aria-label="Stop command" title="Stop" onClick={() => void bg.stop()} className={`${rowIcon} hover:!text-danger`}>
+            <Square size={10} className="fill-current" />
+          </button>
+        )}
+        {blocking && sid && now - call.started > 4000 && (
+          <button
+            aria-label="Keep running in the background"
+            title="Keep running in the background"
+            disabled={sending}
+            onClick={async () => {
+              setSending(true);
+              await useChat.getState().background(sid);
+              setSending(false);
+            }}
+            className={`${rowIcon} disabled:opacity-50`}
+          >
+            <SendToBack size={13} />
+          </button>
+        )}
         {label.path && kind !== "other" && !(kind === "write" && active) && (
           <button
             aria-label={`Open ${label.path}`}
@@ -320,6 +398,7 @@ const ToolRow = memo(function ToolRow({ b, step }: { b: ToolBlock; step?: Browse
                 {ready ? (
                   <ToolBoundary name={label.verb.toLowerCase()}>
                     <ToolBody b={b} />
+                    {bg && <BackgroundNote phase={bg.phase} error={bg.error} />}
                   </ToolBoundary>
                 ) : (
                   <div className="h-8" />
@@ -332,6 +411,22 @@ const ToolRow = memo(function ToolRow({ b, step }: { b: ToolBlock; step?: Browse
     </div>
   );
 });
+
+/** Row actions that wait at the end of a line until you reach for it (always shown on touch). */
+const rowIcon =
+  "grid h-6 w-6 shrink-0 place-items-center rounded-md text-faint opacity-0 group-focus-within/row:opacity-100 group-hover/row:opacity-100 hover:bg-active hover:text-ink focus-visible:opacity-100 [@media(hover:none)]:opacity-100";
+
+function BackgroundNote({ phase, error }: { phase: string; error?: string }) {
+  const text =
+    phase === "running"
+      ? "Runs in the background while the agent carries on. It hears back when the command ends."
+      : phase === "background"
+        ? "Runs in the background. Its output lands here when it's done."
+        : phase === "stopped"
+          ? "You stopped it. The agent was told it was you, not a failure."
+          : error;
+  return text ? <div className={`mt-2.5 text-[12.5px] ${phase === "error" ? "text-danger" : "text-faint"}`}>{text}</div> : null;
+}
 
 // ---------------------------------------------------------------------------
 // Subagents
@@ -472,6 +567,11 @@ const SubagentRow = memo(function SubagentRow({ b }: { b: ToolBlock }) {
             <ChevronRight size={14} />
           </motion.span>
         </button>
+        {child && sid && phase === "running" && !s.background && took > 4000 && (
+          <button aria-label="Keep working in the background" title="Keep working in the background" onClick={() => void useChat.getState().background(sid)} className={rowAction}>
+            <SendToBack size={13} />
+          </button>
+        )}
         {child && running && (
           <button aria-label={`Stop ${name}`} title={stopping ? "Stopping" : `Stop ${name}`} disabled={stopping} onClick={() => void stop()} className={`${rowAction} hover:!text-danger disabled:opacity-50`}>
             <Square size={10} className="fill-current" />
