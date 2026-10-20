@@ -6,6 +6,8 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-20
+
 ### Added
 
 - **Teammates come alive.** Faces are now soft, lit characters that move with what they're doing. Idle, they breathe, blink and glance around. Working, they nod as they take the task, narrow their eyes and wear the amber clock hand round their rim. Needing you, they look up wide-eyed, hop and show a blue beacon. Done, they smile, blush and pop once. Each face keeps its own timing, so a sidebar of teammates never moves in unison. Under reduced motion they hold still and keep their state marks.
@@ -199,7 +201,8 @@ First public release.
 - Scheduled tasks that run on the agent machine.
 - Project file browser with syntax highlighting.
 
-[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/jaygupta17/otto/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/jaygupta17/otto/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/jaygupta17/otto/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/jaygupta17/otto/compare/v0.7.0...v0.7.1
