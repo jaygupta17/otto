@@ -16,7 +16,8 @@ import { ModelSelect, type ModelValue } from "./ModelSelect";
 import { TeammateEditor } from "./TeammateEditor";
 import { useTeammates } from "../../state/teammates";
 import { TeammateFace } from "../ui/TeammateFace";
-import { hash, isOfferedAgent, listNames, STARTER_TEAM, type Teammate } from "../../lib/teammates";
+import { CATALOG, hash, isOfferedAgent, listNames, STARTER_TEAM, type Teammate } from "../../lib/teammates";
+import { HireGallery } from "./HireGallery";
 import { MEMORY_TOOLS, isMemoryTool } from "../../lib/memory";
 
 const MEMORY_ALL = "memory_*";
@@ -47,17 +48,24 @@ export function AgentsTab({ compact }: { compact: boolean }) {
   const error = useExtensions((s) => s.error);
   const [selected, setSelected] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  // The hiring gallery: false when closed, null on the grid, an id on someone's profile.
+  const [hiring, setHiring] = useState<string | null | false>(false);
   const [q, setQ] = useState("");
   const [showHidden, setShowHidden] = useState(false);
   const roster = useTeammates((s) => s.byId);
   const addStarters = useTeammates((s) => s.addStarters);
   const noTeammates = roster !== null && Object.keys(roster).length === 0;
-  // Starters this machine doesn't have yet (new ones arrive with updates).
+  // Who this machine could still hire (new ones arrive with updates).
   const agentIds = useChat((s) => s.agents.map((a) => a.id).join(" "));
   const missing = useMemo(() => {
     const theirs = new Set(agentIds.split(" "));
-    return roster ? STARTER_TEAM.filter((t) => !roster[t.id] && !theirs.has(t.id)) : [];
+    return roster ? CATALOG.filter((t) => !roster[t.id] && !theirs.has(t.id)) : [];
   }, [roster, agentIds]);
+  const show = (next: { selected?: string | null; creating?: boolean; hiring?: string | null | false }) => {
+    setSelected(next.selected ?? null);
+    setCreating(next.creating ?? false);
+    setHiring(next.hiring === undefined ? false : next.hiring);
+  };
   const editorRef = useRef<HTMLDivElement>(null);
 
   // A different agent opens at its top, not wherever the last one was left.
@@ -65,7 +73,7 @@ export function AgentsTab({ compact }: { compact: boolean }) {
     let el = editorRef.current?.parentElement;
     while (el && !/auto|scroll/.test(getComputedStyle(el).overflowY)) el = el.parentElement;
     if (el) el.scrollTop = 0;
-  }, [selected, creating]);
+  }, [selected, creating, hiring]);
 
   useEffect(() => {
     void load();
@@ -92,10 +100,10 @@ export function AgentsTab({ compact }: { compact: boolean }) {
   }, [agents, cfgAgents, q, showHidden, roster]);
 
   useEffect(() => {
-    if (selected || creating || compact) return;
+    if (selected || creating || hiring !== false || compact) return;
     const first = team[0]?.id ?? list[0]?.id;
     if (first) setSelected(first);
-  }, [team, list, selected, creating, compact]);
+  }, [team, list, selected, creating, hiring, compact]);
 
   if (error) return <Empty icon={<Bot size={20} />} title="Couldn't read the server config" body={error} action={<Button onClick={() => load(true)}>Retry</Button>} />;
   if (!config)
@@ -105,8 +113,8 @@ export function AgentsTab({ compact }: { compact: boolean }) {
       </div>
     );
 
-  const showList = !compact || (!selected && !creating);
-  const showEditor = !compact || selected || creating;
+  const showList = !compact || (!selected && !creating && hiring === false);
+  const showEditor = !compact || selected || creating || hiring !== false;
 
   return (
     <div className={`flex gap-5 ${compact ? "flex-col" : "min-h-[540px]"}`}>
@@ -116,21 +124,14 @@ export function AgentsTab({ compact }: { compact: boolean }) {
             <div className="min-w-0 flex-1">
               <SearchBox value={q} onChange={setQ} placeholder="Find agent" />
             </div>
-            <IconButton
-              label="New teammate"
-              className="hairline"
-              onClick={() => {
-                setCreating(true);
-                setSelected(null);
-              }}
-            >
+            <IconButton label="Hire a teammate" className="hairline" onClick={() => show({ hiring: null })}>
               <Plus size={16} />
             </IconButton>
           </div>
           {/* Phone layout has no editor pane to hold the offer, so it sits in the list. */}
           {compact && noTeammates && (
             <div className="mt-3">
-              <MeetTheTeam onAdd={addStarters} compact />
+              <MeetTheTeam onAdd={addStarters} onBrowse={() => show({ hiring: null })} compact />
             </div>
           )}
           {team.length > 0 && (
@@ -142,22 +143,19 @@ export function AgentsTab({ compact }: { compact: boolean }) {
                     key={m.id}
                     t={m}
                     disabled={!!cfgAgents[m.id]?.disabled}
-                    active={selected === m.id && !creating}
-                    onClick={() => {
-                      setCreating(false);
-                      setSelected(m.id);
-                    }}
+                    active={selected === m.id && !creating && hiring === false}
+                    onClick={() => show({ selected: m.id })}
                   />
                 ))}
               </div>
               {missing.length > 0 && !q.trim() && (
-                <button onClick={() => void addStarters()} className="mt-1 flex w-full items-center gap-2.5 rounded-xl px-2 py-1.5 text-left text-muted transition-colors hover:bg-hover hover:text-ink">
+                <button onClick={() => show({ hiring: null })} className={`mt-1 flex w-full items-center gap-2.5 rounded-xl px-2 py-1.5 text-left transition-colors ${hiring !== false ? "bg-active text-ink" : "text-muted hover:bg-hover hover:text-ink"}`}>
                   <span className="flex shrink-0 -space-x-2">
                     {missing.slice(0, 3).map((t) => (
                       <TeammateFace key={t.id} seed={hash(t.id)} color={t.color} accessory={t.accessory} size={26} />
                     ))}
                   </span>
-                  <span className="min-w-0 flex-1 truncate text-[13px]">Add {listNames(missing.map((t) => t.name))}</span>
+                  <span className="min-w-0 flex-1 truncate text-[13px]">Hire</span>
                   <Plus size={14} className="shrink-0" />
                 </button>
               )}
@@ -171,11 +169,8 @@ export function AgentsTab({ compact }: { compact: boolean }) {
                 id={a.id}
                 info={a.info}
                 cfg={a.cfg}
-                active={selected === a.id && !creating}
-                onClick={() => {
-                  setCreating(false);
-                  setSelected(a.id);
-                }}
+                active={selected === a.id && !creating && hiring === false}
+                onClick={() => show({ selected: a.id })}
               />
             ))}
           </div>
@@ -187,19 +182,16 @@ export function AgentsTab({ compact }: { compact: boolean }) {
       {showEditor && (
         <div ref={editorRef} className="min-w-0 flex-1">
           <AnimatePresence mode="wait" initial={false}>
-            <motion.div key={creating ? "new" : (selected ?? "none")} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, transition: { duration: 0.08 } }} transition={{ duration: 0.18 }}>
-              {compact && (
-                <button
-                  className="mb-3 inline-flex items-center gap-1 text-[13px] font-medium text-muted"
-                  onClick={() => {
-                    setSelected(null);
-                    setCreating(false);
-                  }}
-                >
+            <motion.div key={hiring !== false ? `hire:${hiring ?? ""}` : creating ? "new" : (selected ?? "none")} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, transition: { duration: 0.08 } }} transition={{ duration: 0.18 }}>
+              {/* A profile in the gallery has its own way back. */}
+              {compact && !hiring && (
+                <button className="mb-3 inline-flex items-center gap-1 text-[13px] font-medium text-muted" onClick={() => show({})}>
                   <ArrowLeft size={15} /> All agents
                 </button>
               )}
-              {creating ? (
+              {hiring !== false ? (
+                <HireGallery profile={hiring} onProfile={(id) => setHiring(id)} onCustom={() => show({ creating: true })} onEdit={(id) => show({ selected: id })} compact={compact} />
+              ) : creating ? (
                 <TeammateEditor
                   key="new"
                   onDone={(id) => {
@@ -212,7 +204,7 @@ export function AgentsTab({ compact }: { compact: boolean }) {
               ) : selected ? (
                 <AgentEditor key={selected} id={selected} info={agents.find((a) => a.id === selected)} cfg={cfgAgents[selected]} origin={originOf(selected, cfgAgents[selected], agents.find((a) => a.id === selected))} onDone={(id) => setSelected(id)} />
               ) : noTeammates ? (
-                <MeetTheTeam onAdd={addStarters} compact={false} />
+                <MeetTheTeam onAdd={addStarters} onBrowse={() => show({ hiring: null })} compact={false} />
               ) : (
                 <Empty icon={<Bot size={20} />} title="Pick a teammate" body="Teammates have a name, a job and standing instructions, and keep their own model and permissions." />
               )}
@@ -235,7 +227,7 @@ function originOf(id: string, cfg?: AgentConfig, info?: AgentInfo): Origin {
 }
 
 /** Otto's starter team, introduced by face before anyone is added. */
-function MeetTheTeam({ onAdd, compact }: { onAdd: () => Promise<boolean>; compact: boolean }) {
+function MeetTheTeam({ onAdd, onBrowse, compact }: { onAdd: () => Promise<unknown>; onBrowse: () => void; compact: boolean }) {
   const [adding, setAdding] = useState(false);
   return (
     <div className={compact ? "rounded-2xl border border-line p-4" : "mx-auto max-w-[520px] py-8"}>
@@ -265,6 +257,9 @@ function MeetTheTeam({ onAdd, compact }: { onAdd: () => Promise<boolean>; compac
         }}
       >
         {adding ? <Spinner size={13} /> : `Add ${listNames(STARTER_TEAM.map((t) => t.name))}`}
+      </Button>
+      <Button variant="ghost" className="ml-1 mt-4" onClick={onBrowse}>
+        Pick who to hire
       </Button>
     </div>
   );

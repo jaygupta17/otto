@@ -6,6 +6,10 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 ## [Unreleased]
 
+### Added
+
+- **Hire teammates.** + in Agents opens a gallery of everyone Otto can introduce, by face. Besides the starter team, seven new teammates are there: Quill (writing and docs), Quinn (sales outreach), Hollis (recruiting), Penny (expenses), Wren (customer health), Flint (paid ads) and Atlas (travel). Each has a profile where they greet you, say what they do, what to ask them and how they work. One tap hires them, and the same button then takes you to them. Tap one of their questions to start a session with it. "Your own" starts a blank teammate, as + did before. Like the others, the new teammates never send, pay or book anything themselves without showing you first.
+
 ## [0.10.0] - 2026-10-20
 
 ### Added

@@ -6,7 +6,7 @@
 import { create } from "zustand";
 import { readGlobalConfig, updateGlobalConfig, type AgentConfig } from "../lib/opencode/config";
 import { withMemoryPlugin } from "../lib/memory";
-import { compileAgent, hash, listNames, readTeammates, startingAgent, STARTER_TEAM, TEAMMATE_PROMPT_VERSION, updateTeammates, type Teammate } from "../lib/teammates";
+import { CATALOG, compileAgent, hash, listNames, readTeammates, startingAgent, STARTER_TEAM, TEAMMATE_PROMPT_VERSION, updateTeammates, type Teammate } from "../lib/teammates";
 import { useChat } from "./chat";
 import { useExtensions } from "./extensions";
 import { toast } from "./ui";
@@ -25,7 +25,9 @@ interface State {
   save(t: Omit<Teammate, "created" | "updated" | "compiled">, agent: AgentPatch, opts: { isNew: boolean }): Promise<boolean>;
   remove(id: string): Promise<boolean>;
   /** Adds Otto's starter team (skips anyone already on the machine). */
-  addStarters(): Promise<boolean>;
+  addStarters(): Promise<string[] | null>;
+  /** Adds these teammates from Otto's catalogue, skipping anyone already on the machine. The ids added, or null when it failed. */
+  hire(ids: string[]): Promise<string[] | null>;
   reset(): void;
 }
 
@@ -112,21 +114,25 @@ export const useTeammates = create<State>((set, get) => ({
     }
   },
 
-  async addStarters() {
+  addStarters() {
+    return get().hire(STARTER_TEAM.map((t) => t.id));
+  },
+
+  async hire(ids) {
     try {
       const c = client();
       const now = Date.now();
       const have = get().byId ?? {};
-      // An agent of the user's own under a starter's id stays theirs.
+      // An agent of the user's own under one of these ids stays theirs.
       const theirs = new Set(useChat.getState().agents.map((a) => a.id));
-      const todo = STARTER_TEAM.filter((t) => !have[t.id] && !theirs.has(t.id));
+      const todo = ids.map((id) => CATALOG.find((t) => t.id === id)).filter((t): t is (typeof CATALOG)[number] => !!t && !have[t.id] && !theirs.has(t.id));
       if (!todo.length) {
-        toast({ tone: "ok", title: "The starter team is already here" });
-        return true;
+        toast({ tone: "ok", title: ids.length > 1 ? "They're already on the team" : "Already on the team" });
+        return [];
       }
       let added: Teammate[] = [];
       const file = await updateTeammates(c, (f) => {
-        // Created in list order, so the menus show Piper, Scout, Relay.
+        // Created in list order, so the menus show them in the order given.
         added = todo.map((t, i) => {
           const next: Teammate = { ...t, face: hash(t.id), created: now + i, updated: now + i, compiled: 0 };
           f.teammates[t.id] = next;
@@ -142,10 +148,10 @@ export const useTeammates = create<State>((set, get) => ({
       }
       syncPicked();
       toast({ tone: "ok", title: `${listNames(added.map((t) => t.name))} joined the team` });
-      return true;
+      return added.map((t) => t.id);
     } catch (e) {
-      toast({ tone: "error", title: "Couldn't add the team", body: (e as Error).message });
-      return false;
+      toast({ tone: "error", title: ids.length > 1 ? "Couldn't add the team" : "Couldn't hire them", body: (e as Error).message });
+      return null;
     }
   },
 
