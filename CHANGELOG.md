@@ -6,6 +6,8 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-10-21
+
 ### Fixed
 
 - Removing an agent no longer leaves the old one selected, and a workspace you delete no longer comes back after a restart.
@@ -236,7 +238,8 @@ First public release.
 - Scheduled tasks that run on the agent machine.
 - Project file browser with syntax highlighting.
 
-[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.11.1...HEAD
+[0.11.1]: https://github.com/jaygupta17/otto/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/jaygupta17/otto/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/jaygupta17/otto/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/jaygupta17/otto/compare/v0.8.0...v0.9.0
