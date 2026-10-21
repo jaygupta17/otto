@@ -111,6 +111,8 @@ const pendingWhileLoading = new Map<string, V2Event[]>();
 const reconcileTimers = new Map<string, ReturnType<typeof setTimeout>>();
 /** Bumped by every catalog request and every reset; only the newest may publish. */
 let catalogGeneration = 0;
+/** Bumped by every pending-ask resync and every reset; only the newest may publish. */
+let askGeneration = 0;
 
 export const useChat = create<State>((set, get) => ({
   client: null,
@@ -256,6 +258,7 @@ export const useChat = create<State>((set, get) => ({
     queue = [];
     pendingWhileLoading.clear();
     catalogGeneration++;
+    askGeneration++;
     set({ client: null, sessions: {}, sessionsLoaded: false, sessionsError: undefined, busy: {}, retrying: {}, unread: {}, timelines: {}, permissions: {}, forms: {}, parents: {}, delegated: {}, agents: [], models: [], defaultModel: null, homeDir: null, activeId: null, pickedModel: null, pickedAgent: null, projectDir: null });
   },
 
@@ -337,18 +340,32 @@ export const useChat = create<State>((set, get) => ({
       .activeSessions()
       .then((ids) => set({ busy: Object.fromEntries(ids.map((id) => [id, true])) }))
       .catch(() => {});
-    client
-      .pendingPermissions()
-      .then((list) => {
-        set({ permissions: Object.fromEntries(list.map((p) => [p.id, p])) });
-        learnParents(list.map((p) => p.sessionID));
-      })
-      .catch(() => {});
-    client
-      .pendingForms<FormLite>()
-      .then((list) => {
-        set({ forms: Object.fromEntries(list.map((f) => [f.id, f])) });
-        learnParents(list.map((f) => f.sessionID));
+    // Approvals and questions are location-scoped (the server defaults to its
+    // own cwd), so ask for every directory a known session works in as well:
+    // one fetch for the default location would miss a project's ask, and the
+    // merge below would drop it while the server still had it pending.
+    const sessions = get().sessions;
+    const dirs = new Set<string | undefined>([undefined]);
+    const dirOf: Record<string, string> = {};
+    for (const s of Object.values(sessions)) {
+      dirOf[s.id] = s.location?.directory ?? "";
+      if (s.location?.directory) dirs.add(s.location.directory);
+    }
+    const before = { permissions: new Set(Object.keys(get().permissions)), forms: new Set(Object.keys(get().forms)) };
+    const gen = ++askGeneration;
+    const allDirs = [...dirs];
+    Promise.all([fetchAsks(allDirs, (d) => client.pendingPermissions(d)), fetchAsks(allDirs, (d) => client.pendingForms<FormLite>(d))])
+      .then(([perms, formAsks]) => {
+        if (gen !== askGeneration || get().client !== client) return;
+        const now = get();
+        const permissions = mergeAsks(before.permissions, now.permissions, perms, dirOf);
+        const forms = mergeAsks(before.forms, now.forms, formAsks, dirOf);
+        const patch: Partial<State> = {};
+        if (permissions) patch.permissions = permissions;
+        if (forms) patch.forms = forms;
+        if (patch.permissions || patch.forms) set(patch);
+        // One entry per ask: a merge keyed by id can't duplicate them.
+        learnParents([...(permissions ? Object.values(permissions) : []), ...(forms ? Object.values(forms) : [])].map((a) => a.sessionID));
       })
       .catch(() => {});
     const id = get().activeId;
@@ -633,6 +650,56 @@ export const useChat = create<State>((set, get) => ({
     }
   },
 }));
+
+/**
+ * Fetch pending asks for each location in parallel. A location whose request
+ * failed is left out of `replaced`, so its entries are kept rather than pruned.
+ */
+async function fetchAsks<T>(dirs: Array<string | undefined>, fetch: (directory?: string) => Promise<T[]>) {
+  const results = await Promise.allSettled(dirs.map((d) => fetch(d)));
+  const items: T[] = [];
+  const replaced = new Set<string>();
+  results.forEach((r, i) => {
+    if (r.status !== "fulfilled") return;
+    replaced.add(dirs[i] ?? "");
+    items.push(...r.value);
+  });
+  return { items, replaced };
+}
+
+/**
+ * Merge freshly fetched asks into the map. An entry is dropped only when a
+ * fetch for its directory succeeded and no longer lists it; entries whose
+ * directory we don't know (or couldn't fetch) are kept. An ask that arrived
+ * while the fetch was in flight survives, and one answered meanwhile isn't
+ * put back. Returns null when no fetch succeeded: keep the map untouched.
+ */
+function mergeAsks<T extends { id: string; sessionID: string }>(
+  before: Set<string>,
+  now: Record<string, T>,
+  fresh: { items: T[]; replaced: Set<string> },
+  dirOf: Record<string, string>,
+): Record<string, T> | null {
+  if (!fresh.replaced.size) return null;
+  const next: Record<string, T> = {};
+  const listed = new Map(fresh.items.map((a) => [a.id, a]));
+  for (const [id, ask] of Object.entries(now)) {
+    if (listed.has(id)) continue;
+    // Arrived while the fetch was in flight: the snapshot can predate it.
+    if (!before.has(id)) {
+      next[id] = ask;
+      continue;
+    }
+    const dir = dirOf[ask.sessionID];
+    if (dir !== undefined && fresh.replaced.has(dir)) continue;
+    next[id] = ask;
+  }
+  for (const [id, ask] of listed) {
+    if (!now[id] && before.has(id)) continue;
+    next[id] = ask;
+  }
+  return next;
+}
 
 /**
  * Per-workspace on-device key. Model lists, agents and folders differ per

@@ -294,13 +294,17 @@ export class OpenCode {
     const r = await this.request<{ data: Record<string, unknown> }>("GET", "/api/session/active");
     return Object.keys(r?.data ?? {});
   }
-  /** Questions waiting for an answer (the agent's `question` tool and others), across sessions. */
-  async pendingForms<T = unknown>(): Promise<T[]> {
-    const r = await this.request<{ data: T[] } | T[]>("GET", "/api/form");
+  /**
+   * Questions waiting for an answer (the agent's `question` tool and others), across
+   * sessions in one location. Without a directory the server answers for its own.
+   */
+  async pendingForms<T = unknown>(directory?: string): Promise<T[]> {
+    const r = await this.request<{ data: T[] } | T[]>("GET", "/api/form", { query: locQuery(directory) });
     return Array.isArray(r) ? r : (r.data ?? []);
   }
-  async pendingPermissions() {
-    const r = await this.request<{ data: PermissionRequestLite[] } | PermissionRequestLite[]>("GET", "/api/permission/request");
+  /** Permissions waiting for an answer, across sessions in one location. */
+  async pendingPermissions(directory?: string) {
+    const r = await this.request<{ data: PermissionRequestLite[] } | PermissionRequestLite[]>("GET", "/api/permission/request", { query: locQuery(directory) });
     return Array.isArray(r) ? r : r.data;
   }
   replyForm(sessionID: string, formID: string, values: Record<string, unknown>) {
