@@ -85,13 +85,44 @@ export function Thread({ sessionId, bottomInset = 0 }: { sessionId: string; bott
   const content = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
   const pressing = useRef(false);
+  const scrollFrame = useRef(0);
   const [showJump, setShowJump] = useState(false);
 
-  const scrollToBottom = useCallback((smooth = false) => {
+  // Clamp to the real range: while the tools panel animates its width the
+  // thread reflows every frame, and a stale scrollHeight would leave the
+  // viewport past the last row. Resize-driven follow is coalesced to one write
+  // per frame; explicit jumps (session change, send, jump button) stay instant.
+  const scrollToBottom = useCallback((smooth = false, immediate = false) => {
     const el = scroller.current;
     if (!el) return;
-    el.scrollTo({ top: el.scrollHeight, behavior: smooth ? "smooth" : "auto" });
+    const max = () => Math.max(0, el.scrollHeight - el.clientHeight);
+    if (smooth) {
+      if (scrollFrame.current) {
+        cancelAnimationFrame(scrollFrame.current);
+        scrollFrame.current = 0;
+      }
+      el.scrollTo({ top: max(), behavior: "smooth" });
+      return;
+    }
+    if (immediate) {
+      if (scrollFrame.current) {
+        cancelAnimationFrame(scrollFrame.current);
+        scrollFrame.current = 0;
+      }
+      el.scrollTop = max();
+      return;
+    }
+    if (scrollFrame.current) return;
+    scrollFrame.current = requestAnimationFrame(() => {
+      scrollFrame.current = 0;
+      const box = scroller.current;
+      // Re-check: a wheel/touch scroll that unpinned between scheduling and
+      // this frame must win over the resize-driven follow.
+      if (box && pinned.current && !pressing.current) box.scrollTop = Math.max(0, box.scrollHeight - box.clientHeight);
+    });
   }, []);
+
+  useEffect(() => () => cancelAnimationFrame(scrollFrame.current), []);
 
   // Stay pinned to the bottom while content grows (streaming) and while the
   // viewport shrinks (keyboard, a taller composer), unless the user scrolled up.
@@ -103,6 +134,12 @@ export function Thread({ sessionId, bottomInset = 0 }: { sessionId: string; bott
       // A pointer held down must not have the list move under it: down and up
       // would land on different rows and the click would never fire.
       if (pinned.current && !pressing.current) scrollToBottom();
+      else {
+        // Growing content is fine to sit still on, but a shrink must not leave
+        // the viewport past the last row. Never move the list under a held pointer.
+        const box = scroller.current;
+        if (box && !pressing.current) box.scrollTop = Math.min(box.scrollTop, Math.max(0, box.scrollHeight - box.clientHeight));
+      }
     });
     ro.observe(el);
     ro.observe(box);
@@ -111,7 +148,7 @@ export function Thread({ sessionId, bottomInset = 0 }: { sessionId: string; bott
 
   useLayoutEffect(() => {
     pinned.current = true;
-    scrollToBottom();
+    scrollToBottom(false, true);
   }, [sessionId, scrollToBottom]);
 
   // Lifting the pointer ends the hold above; catch up once the click has been
@@ -122,7 +159,7 @@ export function Thread({ sessionId, bottomInset = 0 }: { sessionId: string; bott
       pressing.current = false;
       if (!pinned.current) return;
       requestAnimationFrame(() => {
-        if (pinned.current) scrollToBottom();
+        if (pinned.current) scrollToBottom(false, true);
       });
     };
     // Capture, so a child stopping propagation can't leave us stuck pressing.
