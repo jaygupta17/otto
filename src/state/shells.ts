@@ -35,6 +35,21 @@ interface State {
 
 let generation = 0;
 const reading = new Set<string>();
+/** Which location last listed a command, so a failed fetch there doesn't prune it. */
+const dirOf = new Map<string, string>();
+
+/**
+ * Fetch shells for each location in parallel. A location whose request failed
+ * is left out of `replaced`, so its commands are kept rather than pruned.
+ */
+async function fetchShells(dirs: Array<string | undefined>, fetch: (directory?: string) => Promise<ShellInfo[]>) {
+  const results = await Promise.allSettled(dirs.map((d) => fetch(d)));
+  const fresh: Array<{ dir: string; items: ShellInfo[] }> = [];
+  results.forEach((r, i) => {
+    if (r.status === "fulfilled") fresh.push({ dir: dirs[i] ?? "", items: r.value });
+  });
+  return { fresh, replaced: new Set(fresh.map((f) => f.dir)) };
+}
 
 const fromInfo = (s: ShellInfo): ShellLite => ({
   id: s.id,
@@ -76,13 +91,35 @@ export const useShells = create<State>((set, get) => ({
     // The list is per location: the server's own, and where recent chats work.
     const dirs = new Set<string | undefined>([undefined]);
     for (const s of sortedSessions(useChat.getState().sessions).slice(0, 12)) if (s.location?.directory) dirs.add(s.location.directory);
-    const lists = await Promise.all([...dirs].map((d) => client.shells(d).catch(() => [] as ShellInfo[])));
+    // Snapshot before the fetch: anything created or updated meanwhile is newer than the reply.
+    const before = new Map(Object.entries(get().byId).map(([id, s]) => [id, s.status]));
+    const { fresh, replaced } = await fetchShells([...dirs], (d) => client.shells(d));
     if (gen !== generation) return;
     const next: Record<string, ShellLite> = {};
-    for (const list of lists) for (const s of list) next[s.id] = fromInfo(s);
-    // Anything we thought was running and the server no longer lists has gone.
+    for (const { dir, items } of fresh) {
+      for (const s of items) {
+        next[s.id] = fromInfo(s);
+        dirOf.set(s.id, dir);
+      }
+    }
+    // A command stays unless the location that listed it answered and dropped it.
     const prev = get().byId;
-    for (const [id, s] of Object.entries(prev)) if (!next[id]) next[id] = s.status === "running" ? { ...s, status: "killed" } : s;
+    for (const [id, s] of Object.entries(prev)) {
+      // Arrived or changed while the fetch was in flight: the reply can predate it.
+      if (before.get(id) !== s.status) {
+        next[id] = s;
+        continue;
+      }
+      if (next[id]) continue;
+      const dir = dirOf.get(id);
+      // Never listed here (or its location failed): nothing says it's gone.
+      if (dir === undefined || !replaced.has(dir)) {
+        next[id] = s;
+        continue;
+      }
+      // Gone: the server no longer lists it.
+      next[id] = s.status === "running" ? { ...s, status: "killed" } : s;
+    }
     set({ byId: next });
   },
 
@@ -136,6 +173,7 @@ export const useShells = create<State>((set, get) => ({
   reset() {
     generation++;
     reading.clear();
+    dirOf.clear();
     set({ byId: {}, tails: {}, stopped: {} });
   },
 }));

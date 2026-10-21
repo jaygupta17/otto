@@ -113,6 +113,10 @@ const reconcileTimers = new Map<string, ReturnType<typeof setTimeout>>();
 let catalogGeneration = 0;
 /** Bumped by every pending-ask resync and every reset; only the newest may publish. */
 let askGeneration = 0;
+/** Bumped by every session-list load and every reset; only the newest may publish. */
+let sessionGeneration = 0;
+/** Bumped whenever busy changes locally (a send, an event) and on reset; an older snapshot must not overwrite it. */
+let busyGeneration = 0;
 
 export const useChat = create<State>((set, get) => ({
   client: null,
@@ -259,34 +263,44 @@ export const useChat = create<State>((set, get) => ({
     pendingWhileLoading.clear();
     catalogGeneration++;
     askGeneration++;
+    sessionGeneration++;
+    busyGeneration++;
     set({ client: null, sessions: {}, sessionsLoaded: false, sessionsError: undefined, busy: {}, retrying: {}, unread: {}, timelines: {}, permissions: {}, forms: {}, parents: {}, delegated: {}, agents: [], models: [], defaultModel: null, homeDir: null, activeId: null, pickedModel: null, pickedAgent: null, projectDir: null });
   },
 
   async bootstrap(client) {
+    // A newer connection already published its client: it owns the store now.
+    if (get().client && get().client !== client) return;
     set({ client });
+    // Every write below lands only while this is still the connected client: a
+    // bootstrap still in flight when the workspace changed must not put its
+    // prefs, catalog or asks into the new one.
+    const live = () => get().client === client;
     const prefs = await kv.get<{ model?: ModelRef; agent?: string; projectDir?: string | null }>(wsKey("chat.prefs"));
+    if (!live()) return;
     // Always set all three: a workspace with no saved choices must not inherit the last one's (a local path on a cloud machine).
     set({ pickedModel: prefs?.model ?? null, pickedAgent: prefs?.agent && isOfferedAgent(prefs.agent) ? prefs.agent : null, projectDir: prefs?.projectDir ?? null });
-    set({ brokenModels: (await kv.get<string[]>(wsKey("chat.brokenModels"))) ?? [], pinned: (await kv.get<string[]>(wsKey("chat.pinned"))) ?? [], agentRowsOpen: (await kv.get<string[]>(wsKey("chat.agentRowsOpen"))) ?? [], delivery: (await kv.get<Delivery>("chat.delivery")) ?? "steer" });
+    const [brokenModels, pinned, agentRowsOpen, delivery] = await Promise.all([kv.get<string[]>(wsKey("chat.brokenModels")), kv.get<string[]>(wsKey("chat.pinned")), kv.get<string[]>(wsKey("chat.agentRowsOpen")), kv.get<Delivery>("chat.delivery")]);
+    if (!live()) return;
+    set({ brokenModels: brokenModels ?? [], pinned: pinned ?? [], agentRowsOpen: agentRowsOpen ?? [], delivery: delivery ?? "steer" });
 
+    // Asks are fetched as soon as the session list lands, so they cover every
+    // directory a known session works in (see syncAsks): a fresh connection's
+    // only view of a project's pending approval or question.
+    const busyGen = busyGeneration;
+    const sessionsLoad = get().loadSessions().then(() => {
+      if (live()) void syncAsks(client);
+    });
     const results = await Promise.allSettled([
-      get().loadSessions(),
-      client.location().then((l) => set({ homeDir: l.directory })),
-      client.agents().then((agents) => set({ agents })),
-      client.models().then((models) => set({ models })),
-      client.defaultModel().then((m) => set({ defaultModel: m })),
-      client.pendingPermissions().then((list) => {
-        set({ permissions: Object.fromEntries(list.map((p) => [p.id, p])) });
-        learnParents(list.map((p) => p.sessionID));
-      }),
-      client.activeSessions().then((ids) => set({ busy: Object.fromEntries(ids.map((id) => [id, true])) })),
-      // Questions asked before this connection (a handoff left waiting, say) only arrive here.
-      client.pendingForms<FormLite>().then((list) => {
-        set({ forms: Object.fromEntries(list.map((f) => [f.id, f])) });
-        learnParents(list.map((f) => f.sessionID));
-      }),
+      sessionsLoad,
+      client.location().then((l) => live() && set({ homeDir: l.directory })),
+      client.agents().then((agents) => live() && set({ agents })),
+      client.models().then((models) => live() && set({ models })),
+      client.defaultModel().then((m) => live() && set({ defaultModel: m })),
+      client.activeSessions().then((ids) => applyActiveSessions(client, busyGen, ids)),
     ]);
-    const labels = ["sessions", "location", "agents", "models", "default model", "permissions", "active sessions", "questions"];
+    if (!live()) return;
+    const labels = ["sessions", "location", "agents", "models", "default model", "active sessions"];
     results.forEach((r, i) => {
       if (r.status === "rejected") console.error(`bootstrap: ${labels[i]} failed`, r.reason);
     });
@@ -331,43 +345,27 @@ export const useChat = create<State>((set, get) => ({
   async resync() {
     const client = get().client;
     if (!client) return;
+    // Taken before anything else so a send, stop or event that lands anywhere
+    // during the resync wins over a run snapshot from before it.
+    const busyGen = busyGeneration;
     await get().loadSessions();
+    if (get().client !== client) return;
     // The config may have changed while the stream was down (an agent or
     // teammate removed elsewhere); the generation guard keeps this ordered.
     void get().refreshCatalog();
-    // Runs that started or ended while the stream was down.
+    // Runs that started or ended while the stream was down. The snapshot is
+    // dropped if a send or an event changes busy while it is in flight: that
+    // local view is newer, and applying the snapshot would clear a run that
+    // just started (or keep one that just finished) until the next resync.
     client
       .activeSessions()
-      .then((ids) => set({ busy: Object.fromEntries(ids.map((id) => [id, true])) }))
+      .then((ids) => applyActiveSessions(client, busyGen, ids))
       .catch(() => {});
     // Approvals and questions are location-scoped (the server defaults to its
     // own cwd), so ask for every directory a known session works in as well:
     // one fetch for the default location would miss a project's ask, and the
-    // merge below would drop it while the server still had it pending.
-    const sessions = get().sessions;
-    const dirs = new Set<string | undefined>([undefined]);
-    const dirOf: Record<string, string> = {};
-    for (const s of Object.values(sessions)) {
-      dirOf[s.id] = s.location?.directory ?? "";
-      if (s.location?.directory) dirs.add(s.location.directory);
-    }
-    const before = { permissions: new Set(Object.keys(get().permissions)), forms: new Set(Object.keys(get().forms)) };
-    const gen = ++askGeneration;
-    const allDirs = [...dirs];
-    Promise.all([fetchAsks(allDirs, (d) => client.pendingPermissions(d)), fetchAsks(allDirs, (d) => client.pendingForms<FormLite>(d))])
-      .then(([perms, formAsks]) => {
-        if (gen !== askGeneration || get().client !== client) return;
-        const now = get();
-        const permissions = mergeAsks(before.permissions, now.permissions, perms, dirOf);
-        const forms = mergeAsks(before.forms, now.forms, formAsks, dirOf);
-        const patch: Partial<State> = {};
-        if (permissions) patch.permissions = permissions;
-        if (forms) patch.forms = forms;
-        if (patch.permissions || patch.forms) set(patch);
-        // One entry per ask: a merge keyed by id can't duplicate them.
-        learnParents([...(permissions ? Object.values(permissions) : []), ...(forms ? Object.values(forms) : [])].map((a) => a.sessionID));
-      })
-      .catch(() => {});
+    // merge would drop it while the server still had it pending.
+    void syncAsks(client);
     const id = get().activeId;
     if (id) await get().loadTimeline(id, true);
   },
@@ -375,12 +373,25 @@ export const useChat = create<State>((set, get) => ({
   async loadSessions() {
     const client = get().client;
     if (!client) return;
+    // Overlapping loads (a resync and a bootstrap, two reconnects) must not
+    // publish out of order: an older snapshot arriving last would put back a
+    // session deleted since, or drop one created meanwhile.
+    const gen = ++sessionGeneration;
+    const before = get().sessions;
     try {
       const r = await client.sessions({ limit: 150 });
+      if (gen !== sessionGeneration || get().client !== client) return;
       const sessions: Record<string, SessionInfo> = {};
       for (const s of r.data) if (!s.time.archived) sessions[s.id] = s;
+      // An SSE create, rename or delete may have landed while the snapshot was
+      // in flight. Every local change replaces the row, so an untouched row is
+      // the same object it was at request time: only those follow the snapshot.
+      const now = get().sessions;
+      for (const [id, cur] of Object.entries(now)) if (cur !== before[id]) sessions[id] = cur;
+      for (const id of Object.keys(before)) if (!now[id]) delete sessions[id];
       set({ sessions, sessionsLoaded: true, sessionsError: undefined });
     } catch (e) {
+      if (gen !== sessionGeneration || get().client !== client) return;
       set({ sessionsLoaded: true, sessionsError: (e as Error).message });
     }
   },
@@ -469,6 +480,7 @@ export const useChat = create<State>((set, get) => ({
         await client.prompt(id, { text, delivery: get().delivery });
         return id;
       }
+      busyGeneration++;
       set((st) => {
         const t = st.timelines[id] ?? { ...empty(), loaded: true };
         return {
@@ -490,6 +502,7 @@ export const useChat = create<State>((set, get) => ({
     } catch (e) {
       const id = sid;
       if (id) {
+        busyGeneration++;
         set((st) => {
           const t = st.timelines[id];
           return {
@@ -545,7 +558,9 @@ export const useChat = create<State>((set, get) => ({
     try {
       await client.deleteSession(id);
     } catch (e) {
-      if (prev) set((s) => ({ sessions: { ...s.sessions, [id]: prev } }));
+      // The workspace may have changed while the request was in flight: never
+      // put the old row back into the new workspace's list.
+      if (prev && get().client === client) set((s) => ({ sessions: { ...s.sessions, [id]: prev } }));
       toast({ tone: "error", title: "Couldn't delete session", body: (e as Error).message });
     }
   },
@@ -558,7 +573,7 @@ export const useChat = create<State>((set, get) => ({
     try {
       await client.renameSession(id, title);
     } catch (e) {
-      set((s) => ({ sessions: { ...s.sessions, [id]: prev } }));
+      if (get().client === client) set((s) => ({ sessions: { ...s.sessions, [id]: prev } }));
       toast({ tone: "error", title: "Couldn't rename", body: (e as Error).message });
     }
   },
@@ -573,7 +588,7 @@ export const useChat = create<State>((set, get) => ({
       try {
         await client.switchModel(sessionId, ref);
       } catch (e) {
-        if (prev) set((s) => ({ sessions: { ...s.sessions, [sessionId]: prev } }));
+        if (prev && get().client === client) set((s) => ({ sessions: { ...s.sessions, [sessionId]: prev } }));
         toast({ tone: "error", title: "Couldn't switch model", body: (e as Error).message });
       }
     }
@@ -590,7 +605,7 @@ export const useChat = create<State>((set, get) => ({
       try {
         await client.switchAgent(sessionId, agent);
       } catch (e) {
-        if (prev) set((s) => ({ sessions: { ...s.sessions, [sessionId]: prev } }));
+        if (prev && get().client === client) set((s) => ({ sessions: { ...s.sessions, [sessionId]: prev } }));
         toast({ tone: "error", title: "Couldn't switch agent", body: (e as Error).message });
       }
     }
@@ -618,7 +633,7 @@ export const useChat = create<State>((set, get) => ({
     } catch (e) {
       // Already answered: from another window, or a rule you just saved covered it.
       if (e instanceof OpenCodeError && e.status === 404) return;
-      set((s) => ({ permissions: { ...s.permissions, [req.id]: req } }));
+      if (get().client === client) set((s) => ({ permissions: { ...s.permissions, [req.id]: req } }));
       toast({ tone: "error", title: "Couldn't answer", body: (e as Error).message });
     }
   },
@@ -635,7 +650,7 @@ export const useChat = create<State>((set, get) => ({
       if (values) await client.replyForm(form.sessionID, form.id, values);
       else await client.cancelForm(form.sessionID, form.id);
     } catch (e) {
-      set((s) => ({ forms: { ...s.forms, [form.id]: form } }));
+      if (get().client === client) set((s) => ({ forms: { ...s.forms, [form.id]: form } }));
       toast({ tone: "error", title: "Couldn't send answer", body: (e as Error).message });
     }
   },
@@ -650,6 +665,45 @@ export const useChat = create<State>((set, get) => ({
     }
   },
 }));
+
+/**
+ * Re-read the server's pending approvals and questions and merge them into the
+ * maps, for the default location and every directory a known session works in.
+ * Shared by bootstrap (a handoff's question only arrives here) and resync, so
+ * both find a project's ask and neither drops one delivered by SSE meanwhile.
+ */
+function syncAsks(client: OpenCode) {
+  const st = useChat.getState();
+  const dirs = new Set<string | undefined>([undefined]);
+  const dirOf: Record<string, string> = {};
+  for (const s of Object.values(st.sessions)) {
+    dirOf[s.id] = s.location?.directory ?? "";
+    if (s.location?.directory) dirs.add(s.location.directory);
+  }
+  const before = { permissions: new Set(Object.keys(st.permissions)), forms: new Set(Object.keys(st.forms)) };
+  const gen = ++askGeneration;
+  const allDirs = [...dirs];
+  return Promise.all([fetchAsks(allDirs, (d) => client.pendingPermissions(d)), fetchAsks(allDirs, (d) => client.pendingForms<FormLite>(d))])
+    .then(([perms, formAsks]) => {
+      if (gen !== askGeneration || useChat.getState().client !== client) return;
+      const now = useChat.getState();
+      const permissions = mergeAsks(before.permissions, now.permissions, perms, dirOf);
+      const forms = mergeAsks(before.forms, now.forms, formAsks, dirOf);
+      const patch: Partial<State> = {};
+      if (permissions) patch.permissions = permissions;
+      if (forms) patch.forms = forms;
+      if (patch.permissions || patch.forms) useChat.setState(patch);
+      // One entry per ask: a merge keyed by id can't duplicate them.
+      learnParents([...(permissions ? Object.values(permissions) : []), ...(forms ? Object.values(forms) : [])].map((a) => a.sessionID));
+    })
+    .catch(() => {});
+}
+
+/** Apply an active-run snapshot unless a send or event changed busy since it was requested. */
+function applyActiveSessions(client: OpenCode, gen: number, ids: string[]) {
+  if (gen !== busyGeneration || useChat.getState().client !== client) return;
+  useChat.setState({ busy: Object.fromEntries(ids.map((id) => [id, true])) });
+}
 
 /**
  * Fetch pending asks for each location in parallel. A location whose request
@@ -1012,6 +1066,8 @@ function flush() {
   if (touched.parents) patch.parents = parents;
   if (touched.delegated) patch.delegated = delegated;
   useChat.setState(patch);
+  // A run snapshot requested before this event must not override it.
+  if (touched.busy) busyGeneration++;
   if (unknown.length) learnParents(unknown);
   for (const id of finished) scheduleReconcile(id);
   if (alerts.length) dispatchAlerts(alerts);

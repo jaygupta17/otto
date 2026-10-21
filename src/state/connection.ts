@@ -129,6 +129,9 @@ export const useConnection = create<State>((set, get) => ({
         const key = await secrets.get(secretKeys[ws.provider]);
         if (key && !stale()) keepAwake = ws.provider === "e2b" ? keepE2BAwake(key, ws.sandboxId, ws.sleepAfter ?? E2B_DEFAULT_SLEEP) : keepDaytonaAwake(key, ws.sandboxId);
       }
+      // Reading the secret above can outlast a workspace switch: don't reset
+      // and bootstrap the chat for a connection that is no longer current.
+      if (stale()) return;
       if (info.version && info.version !== ws.version) void useWorkspaces.getState().update(ws.id, { version: info.version });
 
       const chat = useChat.getState();

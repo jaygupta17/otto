@@ -104,7 +104,7 @@ jobs:
           args: ${{ matrix.args }}
           # The publish job writes latest.json once: four jobs rewriting it at
           # once lost platforms and failed builds on the clash.
-          uploadUpdaterJson: false
+          includeUpdaterJson: false
 
   android:
     needs: create-release
