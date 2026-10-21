@@ -103,11 +103,20 @@ export function AgentsTab({ compact }: { compact: boolean }) {
       .sort((a, b) => rankMode(a.info?.mode ?? a.cfg?.mode) - rankMode(b.info?.mode ?? b.cfg?.mode) || a.id.localeCompare(b.id));
   }, [agents, cfgAgents, q, showHidden, roster]);
 
+  // Every id the screen still knows about, before the search and hidden
+  // filters: a selection missing here was removed, not just filtered out.
+  const known = useMemo(() => new Set([...Object.keys(roster ?? {}), ...agents.map((a) => a.id), ...Object.keys(cfgAgents)]), [roster, agents, cfgAgents]);
+
   useEffect(() => {
+    if (selected && !known.has(selected)) {
+      // Deleted (or reset) while open: don't leave the editor pointed at it.
+      setSelected(null);
+      return;
+    }
     if (selected || creating || hiring !== false || compact) return;
     const first = team[0]?.id ?? list[0]?.id;
     if (first) setSelected(first);
-  }, [team, list, selected, creating, hiring, compact]);
+  }, [team, list, selected, creating, hiring, compact, known]);
 
   if (error) return <Empty icon={<Bot size={20} />} title="Couldn't read the server config" body={error} action={<Button onClick={() => load(true)}>Retry</Button>} />;
   if (!config)
@@ -313,7 +322,7 @@ function draftFrom(id: string, info?: AgentInfo, cfg?: AgentConfig): Draft {
   };
 }
 
-function AgentEditor({ id, info, cfg, origin, onDone }: { id: string; info?: AgentInfo; cfg?: AgentConfig; origin: Origin; onDone: (id: string) => void }) {
+function AgentEditor({ id, info, cfg, origin, onDone }: { id: string; info?: AgentInfo; cfg?: AgentConfig; origin: Origin; onDone: (id: string | null) => void }) {
   const update = useExtensions((s) => s.update);
   const globalRules = useExtensions((s) => s.config?.permissions) ?? NO_RULES;
   const initial = useMemo(() => draftFrom(id, info, cfg), [id, info, cfg]);
@@ -367,7 +376,7 @@ function AgentEditor({ id, info, cfg, origin, onDone }: { id: string; info?: Age
       },
       { success: origin === "builtin" ? "Reset to defaults" : "Agent deleted" },
     );
-    if (ok) onDone(origin === "builtin" ? id : "");
+    if (ok) onDone(origin === "builtin" ? id : null);
   }
 
   return (

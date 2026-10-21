@@ -32,6 +32,9 @@ function client() {
   return c;
 }
 
+/** Bumped by every load/update/reset so a slower, older read can't land last. */
+let generation = 0;
+
 /**
  * After a reload the server rediscovers skills asynchronously; poll briefly
  * until the change is visible so the list never flashes a partial result.
@@ -56,13 +59,18 @@ export const useExtensions = create<State>((set, get) => ({
   loading: false,
 
   async load(force) {
-    if (get().loading || (get().config && !force)) return;
+    // A forced load starts a new read even if one is in flight: the caller
+    // knows the config changed, and the older read must not win.
+    if (!force && (get().loading || get().config)) return;
+    const gen = ++generation;
     set({ loading: true, error: null });
     try {
       const c = client();
       const [loc, config] = await Promise.all([configLocation(c), readGlobalConfig(c)]);
+      if (gen !== generation) return;
       set({ loc, config, loading: false });
     } catch (e) {
+      if (gen !== generation) return;
       set({ loading: false, error: (e as Error).message });
     }
   },
@@ -88,10 +96,13 @@ export const useExtensions = create<State>((set, get) => ({
   async update(mutate, opts) {
     try {
       const next = await updateGlobalConfig(client(), mutate);
-      set({ config: next });
+      // This write is newer than any read still in flight.
+      generation++;
+      set({ config: next, loading: false });
       if (opts?.success) toast({ tone: "ok", title: opts.success });
-      // Agents/commands/models derive from config; refresh them.
-      void useChat.getState().refreshCatalog();
+      // Agents/commands/models derive from config; refresh before returning so
+      // the caller never lists or re-selects something the server dropped.
+      await useChat.getState().refreshCatalog();
       return true;
     } catch (e) {
       toast({ tone: "error", title: "Couldn't save", body: (e as Error).message });
@@ -135,6 +146,7 @@ export const useExtensions = create<State>((set, get) => ({
   },
 
   reset() {
+    generation++;
     set({ loc: null, config: null, skills: null, mcp: null, error: null, loading: false });
   },
 }));

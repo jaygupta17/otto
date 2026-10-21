@@ -109,6 +109,8 @@ let fallback: ReturnType<typeof setTimeout> | undefined;
 /** Events that arrived while a timeline was loading; applied after the REST snapshot. */
 const pendingWhileLoading = new Map<string, V2Event[]>();
 const reconcileTimers = new Map<string, ReturnType<typeof setTimeout>>();
+/** Bumped by every catalog request and every reset; only the newest may publish. */
+let catalogGeneration = 0;
 
 export const useChat = create<State>((set, get) => ({
   client: null,
@@ -253,6 +255,7 @@ export const useChat = create<State>((set, get) => ({
   reset() {
     queue = [];
     pendingWhileLoading.clear();
+    catalogGeneration++;
     set({ client: null, sessions: {}, sessionsLoaded: false, sessionsError: undefined, busy: {}, retrying: {}, unread: {}, timelines: {}, permissions: {}, forms: {}, parents: {}, delegated: {}, agents: [], models: [], defaultModel: null, homeDir: null, activeId: null, pickedModel: null, pickedAgent: null, projectDir: null });
   },
 
@@ -305,9 +308,15 @@ export const useChat = create<State>((set, get) => ({
   async refreshCatalog() {
     const client = get().client;
     if (!client) return;
+    // Requests race (a save, a reconnect, a settings screen): an older reply
+    // arriving last would put back agents deleted since. Newest wins only.
+    const gen = ++catalogGeneration;
     const [agents, models] = await Promise.allSettled([client.agents(), client.models()]);
-    if (agents.status === "fulfilled") set({ agents: agents.value });
-    if (models.status === "fulfilled") {
+    if (gen !== catalogGeneration || get().client !== client) return;
+    // A server still loading its config answers with nothing (see retryCatalog):
+    // keep what we have rather than blanking the pickers until the next refresh.
+    if (agents.status === "fulfilled" && (agents.value.length || !get().agents.length)) set({ agents: agents.value });
+    if (models.status === "fulfilled" && (models.value.length || !get().models.length)) {
       set({ models: models.value });
       if (!get().defaultModel) set({ defaultModel: fallbackModel(models.value, get().brokenModels) });
     }
@@ -320,7 +329,9 @@ export const useChat = create<State>((set, get) => ({
     const client = get().client;
     if (!client) return;
     await get().loadSessions();
-    if (!get().agents.length || !get().models.length) void get().refreshCatalog();
+    // The config may have changed while the stream was down (an agent or
+    // teammate removed elsewhere); the generation guard keeps this ordered.
+    void get().refreshCatalog();
     // Runs that started or ended while the stream was down.
     client
       .activeSessions()

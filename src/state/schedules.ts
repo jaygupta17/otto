@@ -3,7 +3,7 @@ import { ScheduleService, type RunRecord, type Schedule, type ServerEnv } from "
 import { secrets } from "../lib/secrets";
 import { useChat } from "./chat";
 import { useConnection } from "./connection";
-import { secretKeys } from "./workspaces";
+import { secretKeys, useWorkspaces } from "./workspaces";
 import { toast } from "./ui";
 
 interface State {
@@ -42,7 +42,9 @@ function localUrl() {
 }
 
 async function persist(list: Schedule[]) {
-  const wsId = useConnection.getState().workspaceId;
+  // A stopped machine clears workspaceId; the active workspace still owns the key.
+  const conn = useConnection.getState();
+  const wsId = conn.workspaceId ?? useWorkspaces.getState().activeId;
   const password = wsId ? ((await secrets.get(secretKeys.password(wsId))) ?? "") : "";
   await svc().save(list, { password, localUrl: localUrl() });
 }

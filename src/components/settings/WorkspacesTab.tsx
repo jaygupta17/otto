@@ -25,6 +25,8 @@ export function WorkspacesTab() {
   const [states, setStates] = useState<Record<string, string>>({});
 
   useEffect(() => {
+    // A newer list (say, after a removal) makes this run's answer stale.
+    let cancelled = false;
     void (async () => {
       const out: Record<string, string> = {};
       await Promise.all(
@@ -38,8 +40,11 @@ export function WorkspacesTab() {
             .catch(() => {});
         }),
       );
-      setStates(out);
+      if (!cancelled) setStates(out);
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [workspaces]);
 
   const clouds = (Object.keys(CLOUD_OPS) as CloudId[]).filter((c) => keys[c] || workspaces.some((w) => w.provider === c));
@@ -120,7 +125,8 @@ function WorkspaceCard({ w, active, machine, onSelect, onMachine }: { w: Workspa
   const asleep = !!(ops && machine && ops.isAsleep(machine));
 
   const host = w.provider === "boat" ? (w.sandboxId ?? "Boat") : new URL(w.baseUrl).host;
-  const state = active ? statusText(status) : asleep ? "Asleep" : sbState ? cap(sbState) : null;
+  // A disconnected workspace shows its machine state, not a stale connection.
+  const state = active && status !== "idle" ? statusText(status) : asleep ? "Asleep" : sbState ? cap(sbState) : null;
 
   return (
     <div className="flex items-center gap-3 px-4 py-3">
@@ -146,11 +152,15 @@ function WorkspaceCard({ w, active, machine, onSelect, onMachine }: { w: Workspa
             size="sm"
             variant="danger"
             onClick={async () => {
-              if (w.provider === "local") {
-                if (active) useConnection.getState().disconnect();
-                await stopLocal(w.baseUrl);
+              // Any provider: a connect for this workspace may still be running.
+              if (useConnection.getState().workspaceId === w.id) useConnection.getState().disconnect();
+              if (w.provider === "local") await stopLocal(w.baseUrl).catch((e) => toast({ tone: "error", title: "Couldn't stop its server", body: (e as Error).message }));
+              try {
+                await remove(w.id);
+              } catch (e) {
+                // The list was put back: say why it didn't go.
+                toast({ tone: "error", title: "Couldn't remove workspace", body: (e as Error).message });
               }
-              await remove(w.id);
             }}
           >
             Remove

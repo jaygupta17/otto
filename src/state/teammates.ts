@@ -52,7 +52,7 @@ export const useTeammates = create<State>((set, get) => ({
       if (gen !== generation) return;
       set({ byId: file.teammates, memoryOff: file.memory === "off", error: null });
       syncPicked();
-      await resync(Object.values(file.teammates));
+      await resync(Object.values(file.teammates), () => gen !== generation);
     } catch (e) {
       if (gen !== generation) return;
       // Missing file is an empty roster; anything else is worth showing.
@@ -93,6 +93,8 @@ export const useTeammates = create<State>((set, get) => ({
     try {
       const c = client();
       const name = get().byId?.[id]?.name ?? id;
+      // A load or resync already reading the old roster must not put them back.
+      generation++;
       // Agent first: if the second write fails, the leftover identity is
       // harmless and the next load would only recreate a working agent.
       await updateGlobalConfig(c, (cfg) => {
@@ -103,9 +105,13 @@ export const useTeammates = create<State>((set, get) => ({
       const file = await updateTeammates(c, (f) => {
         delete f.teammates[id];
       });
+      // Anything that read the roster before this write is now stale.
+      generation++;
       set({ byId: file.teammates });
-      syncPicked();
+      // Refresh the catalog before choosing a replacement: `startingAgent`
+      // only knows an id is gone once the server stops listing it.
       await afterConfigWrite();
+      syncPicked(id);
       toast({ tone: "ok", title: `Removed ${name}` });
       return true;
     } catch (e) {
@@ -195,11 +201,14 @@ async function markCompiled(ids: string[]) {
  * or the agent catalog changes. Waits for both: an empty catalog or a roster
  * that hasn't loaded yet says nothing about what's valid.
  */
-function syncPicked() {
+function syncPicked(removed?: string) {
   const chat = useChat.getState();
   const roster = useTeammates.getState().byId;
   if (!roster || !chat.agents.length) return;
-  const next = startingAgent(chat.pickedAgent, roster, chat.agents);
+  // A just-removed agent can still be in the catalog until the server reloads
+  // its config, and the store must not keep starting sessions with them.
+  const agents = removed ? chat.agents.filter((a) => a.id !== removed) : chat.agents;
+  const next = startingAgent(chat.pickedAgent, roster, agents);
   if (next !== chat.pickedAgent) void chat.setAgent(next, null);
 }
 
@@ -213,13 +222,16 @@ async function afterConfigWrite() {
  * Recompile teammates whose agent is missing or was built by an older
  * prompt. Writes only when something is actually stale.
  */
-async function resync(list: Teammate[]) {
+async function resync(list: Teammate[], stale: () => boolean = () => false) {
   if (!list.length) return;
   const cfg = await readGlobalConfig(client());
-  const stale = list.filter((t) => t.compiled < TEAMMATE_PROMPT_VERSION || !cfg.agents?.[t.id]);
-  if (!stale.length) return;
-  await writeAgents(stale);
-  await markCompiled(stale.map((t) => t.id));
+  // Removal bumped the generation while this read was in flight: recompiling
+  // now would write the removed teammate's agent back into the config.
+  if (stale()) return;
+  const todo = list.filter((t) => t.compiled < TEAMMATE_PROMPT_VERSION || !cfg.agents?.[t.id]);
+  if (!todo.length) return;
+  await writeAgents(todo);
+  await markCompiled(todo.map((t) => t.id));
 }
 
 export function useTeammate(id: string | undefined | null) {

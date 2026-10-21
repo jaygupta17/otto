@@ -58,8 +58,9 @@ export const useConnection = create<State>((set, get) => ({
   workspaceId: null,
 
   async connect(ws, opts) {
-    const gen = ++generation;
+    // Stops any previous connection and invalidates work still in flight for it.
     get().disconnect();
+    const gen = ++generation;
     abort = new AbortController();
     const signal = abort.signal;
     set({ status: "connecting", detail: undefined, error: undefined, billing: false, workspaceId: ws.id, client: null, info: null });
@@ -153,17 +154,23 @@ export const useConnection = create<State>((set, get) => ({
   },
 
   disconnect() {
+    // Invalidate a connect still in flight: it must not publish a client or
+    // bootstrap chats for a workspace that is gone or no longer active.
+    generation++;
     stream?.stop();
     stream = null;
     keepAwake?.();
     keepAwake = null;
     abort?.abort();
     abort = null;
-    set({ stream: "offline" });
+    set({ status: "idle", detail: undefined, error: undefined, billing: false, stream: "offline", client: null, info: null, workspaceId: null });
   },
 
   retry() {
-    const ws = useWorkspaces.getState().workspaces.find((w) => w.id === get().workspaceId);
+    const st = useWorkspaces.getState();
+    // After a disconnect workspaceId is cleared; the active workspace is the
+    // one to bring back (e.g. after waking a sleeping machine).
+    const ws = st.workspaces.find((w) => w.id === get().workspaceId) ?? st.workspaces.find((w) => w.id === st.activeId);
     if (ws) void get().connect(ws);
   },
 

@@ -52,8 +52,21 @@ export const secretKeys = {
   gate: (id: string) => `ws.${id}.gate`,
 };
 
-async function persist(s: Pick<State, "workspaces" | "activeId">) {
-  await kv.set(KEY, { workspaces: s.workspaces, activeId: s.activeId });
+/**
+ * Write the whole workspaces snapshot. Serialized, and read from the store at
+ * write time rather than passed in: a write queued before a removal (or a
+ * switch) must not carry the old list back after the newer one lands.
+ */
+let writes: Promise<unknown> = Promise.resolve();
+
+function persist() {
+  const run = async () => {
+    const { workspaces, activeId } = useWorkspaces.getState();
+    await kv.set(KEY, { workspaces, activeId });
+  };
+  const p = writes.then(run, run);
+  writes = p.catch(() => {});
+  return p;
 }
 
 export const useWorkspaces = create<State>((set, get) => ({
@@ -76,34 +89,51 @@ export const useWorkspaces = create<State>((set, get) => ({
     if (creds.gateToken) await secrets.set(secretKeys.gate(ws.id), creds.gateToken);
     const workspaces = [...get().workspaces.filter((w) => w.id !== ws.id), ws];
     set({ workspaces, activeId: ws.id });
-    await persist({ workspaces, activeId: ws.id });
+    await persist();
   },
 
   async update(id, patch, creds) {
+    // Gone (removed while a connect was finishing): don't write its secrets back.
+    if (!get().workspaces.some((w) => w.id === id)) return;
     if (creds?.password) await secrets.set(secretKeys.password(id), creds.password);
     if (creds?.gateToken) await secrets.set(secretKeys.gate(id), creds.gateToken);
     else if (creds?.gateToken === null) await secrets.delete(secretKeys.gate(id));
     const workspaces = get().workspaces.map((w) => (w.id === id ? { ...w, ...patch } : w));
     set({ workspaces });
-    await persist({ workspaces, activeId: get().activeId });
+    await persist();
   },
 
   async remove(id) {
-    await secrets.delete(secretKeys.password(id));
-    await secrets.delete(secretKeys.gate(id));
-    await kv.delete(`chat.prefs.${id}`);
-    await kv.delete(`chat.brokenModels.${id}`);
-    await kv.delete(`chat.pinned.${id}`);
-    const workspaces = get().workspaces.filter((w) => w.id !== id);
-    const activeId = get().activeId === id ? (workspaces[0]?.id ?? null) : get().activeId;
+    const prev = get();
+    const workspaces = prev.workspaces.filter((w) => w.id !== id);
+    const activeId = prev.activeId === id ? (workspaces[0]?.id ?? null) : prev.activeId;
+    // Take it off the list first: an orphaned keychain entry is harmless, but a
+    // listed workspace whose credentials are gone can't ever connect.
     set({ workspaces, activeId });
-    await persist({ workspaces, activeId });
+    try {
+      await persist();
+    } catch (e) {
+      set({ workspaces: prev.workspaces, activeId: prev.activeId });
+      throw e;
+    }
+    // Cleanup only: failing here leaves a leftover secret, not a broken entry.
+    const results = await Promise.allSettled([
+      secrets.delete(secretKeys.password(id)),
+      secrets.delete(secretKeys.gate(id)),
+      kv.delete(`chat.prefs.${id}`),
+      kv.delete(`chat.brokenModels.${id}`),
+      kv.delete(`chat.pinned.${id}`),
+      kv.delete(`chat.agentRowsOpen.${id}`),
+    ]);
+    const failed = results.filter((r): r is PromiseRejectedResult => r.status === "rejected");
+    if (failed.length) console.warn("workspace cleanup:", failed.map((f) => f.reason));
   },
 
   async setActive(id) {
+    if (id && !get().workspaces.some((w) => w.id === id)) return;
     const workspaces = get().workspaces.map((w) => (w.id === id ? { ...w, lastUsedAt: Date.now() } : w));
     set({ activeId: id, workspaces });
-    await persist({ workspaces, activeId: id });
+    await persist();
   },
 
   async setProviderKey(provider, key) {
