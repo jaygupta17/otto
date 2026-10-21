@@ -6,6 +6,13 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 ## [Unreleased]
 
+### Fixed
+
+- Removing an agent no longer leaves the old one selected, and a workspace you delete no longer comes back after a restart.
+- A tool row's stop, background and open buttons stay put while the agent moves between steps, and clicks on an expander land while a response is still streaming.
+- The chat no longer jumps past the end of the conversation when the side panel changes the column's width.
+- Permission requests stay put when you come back to Otto: an ask that is waiting on you is no longer dropped when the connection reconnects.
+
 ## [0.11.0] - 2026-10-20
 
 ### Added
