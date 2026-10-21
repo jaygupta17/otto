@@ -564,7 +564,7 @@ const SubagentRow = memo(function SubagentRow({ b }: { b: ToolBlock }) {
           aria-expanded={open}
           onClick={() => setOpen((v) => !v)}
           title={s.description}
-          className="group/line flex min-w-0 items-center gap-2 rounded-md px-1 py-1 text-left text-[14px]"
+          className="group/line flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1 text-left text-[14px]"
         >
           <Assignee agent={s.agent} state={face} />
           {line}
@@ -573,20 +573,28 @@ const SubagentRow = memo(function SubagentRow({ b }: { b: ToolBlock }) {
             <ChevronRight size={14} />
           </motion.span>
         </button>
-        {child && sid && phase === "running" && !s.background && took > 4000 && (
-          <button aria-label="Keep working in the background" title="Keep working in the background" onClick={() => void useChat.getState().background(sid)} className={rowAction}>
-            <SendToBack size={13} />
-          </button>
-        )}
-        {child && running && (
-          <button aria-label={`Stop ${name}`} title={stopping ? "Stopping" : `Stop ${name}`} disabled={stopping} onClick={() => void stop()} className={`${rowAction} hover:!text-danger disabled:opacity-50`}>
-            <Square size={10} className="fill-current" />
-          </button>
-        )}
         {child && (
-          <button aria-label={`Open ${name}'s conversation`} title={`Open ${name}'s conversation`} onClick={() => openSubagent(child, s.agent, s.description)} className={rowAction}>
-            <ArrowUpRight size={14} />
-          </button>
+          <>
+            <span className="h-6 w-6 shrink-0">
+              {sid && phase === "running" && !s.background && took > 4000 && (
+                <button aria-label="Keep working in the background" title="Keep working in the background" onClick={() => void useChat.getState().background(sid)} className={rowAction}>
+                  <SendToBack size={13} />
+                </button>
+              )}
+            </span>
+            <span className="h-6 w-6 shrink-0">
+              {running && (
+                <button aria-label={`Stop ${name}`} title={stopping ? "Stopping" : `Stop ${name}`} disabled={stopping} onClick={() => void stop()} className={`${rowAction} hover:!text-danger disabled:opacity-50`}>
+                  <Square size={10} className="fill-current" />
+                </button>
+              )}
+            </span>
+            <span className="h-6 w-6 shrink-0">
+              <button aria-label={`Open ${name}'s conversation`} title={`Open ${name}'s conversation`} onClick={() => openSubagent(child, s.agent, s.description)} className={rowAction}>
+                <ArrowUpRight size={14} />
+              </button>
+            </span>
+          </>
         )}
       </div>
 

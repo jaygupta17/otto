@@ -84,6 +84,7 @@ export function Thread({ sessionId, bottomInset = 0 }: { sessionId: string; bott
   const scroller = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
+  const pressing = useRef(false);
   const [showJump, setShowJump] = useState(false);
 
   const scrollToBottom = useCallback((smooth = false) => {
@@ -99,7 +100,9 @@ export function Thread({ sessionId, bottomInset = 0 }: { sessionId: string; bott
     const box = scroller.current;
     if (!el || !box) return;
     const ro = new ResizeObserver(() => {
-      if (pinned.current) scrollToBottom();
+      // A pointer held down must not have the list move under it: down and up
+      // would land on different rows and the click would never fire.
+      if (pinned.current && !pressing.current) scrollToBottom();
     });
     ro.observe(el);
     ro.observe(box);
@@ -110,6 +113,28 @@ export function Thread({ sessionId, bottomInset = 0 }: { sessionId: string; bott
     pinned.current = true;
     scrollToBottom();
   }, [sessionId, scrollToBottom]);
+
+  // Lifting the pointer ends the hold above; catch up once the click has been
+  // dispatched, so the catch-up scroll can't disturb the button that just ran.
+  useEffect(() => {
+    const release = () => {
+      if (!pressing.current) return;
+      pressing.current = false;
+      if (!pinned.current) return;
+      requestAnimationFrame(() => {
+        if (pinned.current) scrollToBottom();
+      });
+    };
+    // Capture, so a child stopping propagation can't leave us stuck pressing.
+    window.addEventListener("pointerup", release, true);
+    window.addEventListener("pointercancel", release, true);
+    window.addEventListener("blur", release);
+    return () => {
+      window.removeEventListener("pointerup", release, true);
+      window.removeEventListener("pointercancel", release, true);
+      window.removeEventListener("blur", release);
+    };
+  }, [scrollToBottom]);
 
   // Sending a message follows it down, even from far up the thread.
   const lastUser = useMemo(() => {
@@ -197,6 +222,7 @@ export function Thread({ sessionId, bottomInset = 0 }: { sessionId: string; bott
         onTouchStart={() => ((touching.current = true), markUser())}
         onTouchEnd={() => ((touching.current = false), markUser())}
         onTouchCancel={() => (touching.current = false)}
+        onPointerDownCapture={() => (pressing.current = true)}
         onPointerDown={markUser}
         onKeyDown={markUser}
         tabIndex={0}
@@ -329,29 +355,31 @@ type Segment = { kind: "text"; key: string; text: string; streaming: boolean } |
 function segmentsOf(msgs: UIMessage[]): Segment[] {
   const segs: Segment[] = [];
   let run: Block[] = [];
-  const flushRun = (key: string) => {
-    if (run.length) segs.push({ kind: "activity", key: `act-${key}`, blocks: run });
+  const flushRun = () => {
+    // Keyed by the run's own first block, so the same run keeps its key (and
+    // the state inside it: open/closed) when prose starts streaming after it.
+    if (run.length) segs.push({ kind: "activity", key: `act-${run[0].key}`, blocks: run });
     run = [];
   };
   for (const m of msgs) {
     if (m.kind === "shell") {
-      flushRun(m.id);
+      flushRun();
       segs.push({ kind: "shell", key: m.id, msg: m });
       continue;
     }
     // A background command's result with no call in view (older history paged out).
     if (m.kind === "shellReport") {
-      flushRun(m.id);
+      flushRun();
       segs.push({ kind: "shell", key: m.id, msg: { kind: "shell", id: m.id, command: m.command ?? "", status: "exited", exit: m.exit ?? (m.state === "completed" ? 0 : m.state), output: m.text, time: m.time } });
       continue;
     }
     if (m.kind === "subagent") {
-      flushRun(m.id);
+      flushRun();
       segs.push({ kind: "subagent", key: m.id, msg: m });
       continue;
     }
     if (m.kind === "notice") {
-      flushRun(m.id);
+      flushRun();
       segs.push({ kind: "error", key: m.id, text: m.text });
       continue;
     }
@@ -359,7 +387,7 @@ function segmentsOf(msgs: UIMessage[]): Segment[] {
     for (const b of m.blocks) {
       if (b.kind === "text") {
         if (!b.text.trim()) continue;
-        flushRun(`${m.id}-${b.key}`);
+        flushRun();
         segs.push({ kind: "text", key: `${m.id}-${b.key}`, text: b.text, streaming: b.streaming });
       } else {
         run.push({ ...b, key: `${m.id}:${b.key}` });
@@ -367,11 +395,11 @@ function segmentsOf(msgs: UIMessage[]): Segment[] {
     }
     // A stop isn't a failure: the "Stopped" divider already says it.
     if (m.error && !isStopError(m.error)) {
-      flushRun(m.id);
+      flushRun();
       segs.push({ kind: "error", key: `${m.id}-err`, text: m.error });
     }
   }
-  flushRun("tail");
+  flushRun();
   return segs;
 }
 
