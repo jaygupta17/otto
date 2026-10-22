@@ -23,9 +23,9 @@ import { AgentClock } from "../ui/AgentClock";
 import { Backdrop } from "../ui/Backdrop";
 import { BackgroundStrip, InboxTray } from "../chat/SessionExtras";
 import { AskDock } from "../chat/Asks";
-import { ChatScrim } from "../ui/ChatScrim";
+import { ChatScrim, PanelFade } from "../ui/ChatScrim";
 import { AppGlyph } from "../ui/Mark";
-import { ConnectionBanner, Starters } from "../shell/Home";
+import { ConnectionBanner } from "../shell/Home";
 import { AgentMark, TeammateFace, type FaceState } from "../ui/TeammateFace";
 import { useTeammate, useTeammates } from "../../state/teammates";
 import { FilesPanel } from "../files/FilesPanel";
@@ -346,7 +346,7 @@ function SessionScreen({ sessionId }: { sessionId: string }) {
         ref={composerRef}
         className="safe-bottom pointer-events-none absolute inset-x-0 bottom-0 z-10 px-3"
       >
-        <div className="panel-fade h-6 bg-gradient-to-b from-transparent to-[var(--bg-panel)]" />
+        <PanelFade className="h-16" />
         <div className="panel-fill pointer-events-auto pb-2">
           <AskDock sessionId={sessionId} />
           <BackgroundStrip sessionId={sessionId} />
@@ -435,13 +435,9 @@ function DraftIntro() {
   return (
     <motion.div key={mate.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }} className="flex w-full flex-col items-center">
       <TeammateFace seed={mate.face} color={mate.color} accessory={mate.accessory} size={88} attentive={typing} interactive pulse={words} label={mate.name} />
-      <div className="mt-4 text-[14px] text-muted">
-        <span className="font-medium text-ink-2">{mate.name}</span>
-        {mate.job && ` · ${mate.job}`}
-      </div>
+      <div className="mt-4 text-[14px] font-medium text-ink-2">{mate.name}</div>
       <div className="mt-1 text-[22px] leading-tight font-semibold">{mate.greeting || `What should ${mate.name} work on?`}</div>
       {mate.tagline && <div className="mt-2 max-w-[300px] text-[14px] text-muted">{mate.tagline}</div>}
-      <Starters mate={mate} center />
     </motion.div>
   );
 }

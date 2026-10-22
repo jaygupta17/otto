@@ -6,8 +6,8 @@ import { duration } from "../../lib/format";
 import { useNow } from "../../hooks/useNow";
 import { revertIndex, useChat } from "../../state/chat";
 import { useUI } from "../../state/ui";
-import { AgentMark, TeammateFace } from "../ui/TeammateFace";
-import { useAgentName, useTeammate } from "../../state/teammates";
+import { TeammateFace } from "../ui/TeammateFace";
+import { useTeammate } from "../../state/teammates";
 import { Markdown } from "./Markdown";
 import { ActivityGroup, SubagentReport } from "./Activity";
 import { ScreenCard } from "./ScreenCard";
@@ -481,7 +481,7 @@ const Turn = memo(function Turn({ msgs, live, screen, start, retry, sessionId, f
       {live ? (
         (!moving || retry) && <Working sessionId={sessionId} retry={retry} />
       ) : (
-        text && <TurnFooter text={text} took={end && start ? end - start : 0} model={model?.id} agent={assistants.find((m) => m.agent)?.agent} speed={turnSpeed(assistants)} onFork={() => void useChat.getState().fork(sessionId, forkBefore)} />
+        text && <TurnFooter text={text} took={end && start ? end - start : 0} model={model?.id} speed={turnSpeed(assistants)} onFork={() => void useChat.getState().fork(sessionId, forkBefore)} />
       )}
     </div>
   );
@@ -536,10 +536,8 @@ function turnSpeed(steps: Assistant[]): number | null {
   return secs > 0 ? tokens / secs : null;
 }
 
-function TurnFooter({ text, took, model, agent, speed, onFork }: { text: string; took: number; model?: string; agent?: string; speed: number | null; onFork: () => void }) {
+function TurnFooter({ text, took, model, speed, onFork }: { text: string; took: number; model?: string; speed: number | null; onFork: () => void }) {
   const [copied, setCopied] = useState(false);
-  const info = useChat((s) => (agent ? s.agents.find((a) => a.id === agent) : undefined));
-  const agentName = useAgentName(agent);
   return (
     <div className="mt-1 flex h-7 min-w-0 items-center gap-1 text-[12px] whitespace-nowrap text-faint opacity-0 transition-opacity duration-200 group-hover/turn:opacity-100 max-[760px]:opacity-100">
       <button
@@ -553,12 +551,6 @@ function TurnFooter({ text, took, model, agent, speed, onFork }: { text: string;
         {copied ? <Check size={13} /> : <Copy size={13} />}
         {copied ? "Copied" : "Copy"}
       </button>
-      {agent && (
-        <span className="flex items-center gap-1.5 px-1">
-          <AgentMark id={agent} color={info?.color} size={14} />
-          {agentName}
-        </span>
-      )}
       {model && <span className="min-w-0 truncate px-1">· {model}</span>}
       {took > 0 && <span className="px-1">· {duration(took)}</span>}
       {speed && <span className="px-1 tabular-nums" title="Output tokens per second">· {Math.round(speed)} tok/s</span>}

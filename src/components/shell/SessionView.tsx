@@ -9,7 +9,7 @@ import { IconButton } from "../ui/Button";
 import { basename, money } from "../../lib/format";
 import { useTrafficLights } from "../../hooks/useChrome";
 import { ConnectionBanner } from "./Home";
-import { ChatScrim } from "../ui/ChatScrim";
+import { ChatScrim, PanelFade } from "../ui/ChatScrim";
 import { BackgroundStrip, InboxTray } from "../chat/SessionExtras";
 import { AskDock } from "../chat/Asks";
 import { kbd } from "../../hooks/useShortcuts";
@@ -65,14 +65,14 @@ export function SessionView({ sessionId }: { sessionId: string }) {
       <Thread sessionId={sessionId} bottomInset={inset} />
 
       <div ref={composerRef} className="pointer-events-none absolute inset-x-0 bottom-0 z-10">
-        <div className="panel-fade h-8 bg-gradient-to-b from-transparent to-[var(--bg-panel)]" />
+        <PanelFade className="h-[88px]" />
         <div className="panel-fill pointer-events-auto px-5 pb-4 sm:px-8">
           <div className="mx-auto w-full max-w-[760px]">
             <ConnectionBanner />
             <AskDock sessionId={sessionId} />
             <BackgroundStrip sessionId={sessionId} />
             <InboxTray sessionId={sessionId} />
-            <Composer sessionId={sessionId} autoFocus placeholder="Reply, or steer the agent…" />
+            <Composer sessionId={sessionId} autoFocus placeholder="Reply, or steer…" />
           </div>
         </div>
       </div>

@@ -79,10 +79,10 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
           onNavigate?.();
         }}
       >
-        <AlarmClock size={15} className="text-muted" /> Scheduled
+        <AlarmClock size={15} className="text-muted" /> Schedules
       </button>
-      <button className={`${item} text-ink-2 hover:bg-hover`} onClick={() => openSettings("agents")}>
-        <Bot size={15} className="text-muted" /> Agents & tools
+      <button className={`${item} text-ink-2 hover:bg-hover`} title="Agents & tools" onClick={() => openSettings("agents")}>
+        <Bot size={15} className="text-muted" /> Agents
       </button>
     </div>
   );

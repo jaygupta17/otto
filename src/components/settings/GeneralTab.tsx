@@ -311,6 +311,8 @@ function BackgroundPicker() {
   const fileInput = useRef<HTMLInputElement>(null);
   const [making, setMaking] = useState(false);
   const activeId = backdrop.kind === "none" ? "none" : backdrop.activeId;
+  // A photo and a colour can look alike at thumbnail size; label them only when both are saved.
+  const mixed = saved.some((b) => b.kind === "image") && saved.some((b) => b.kind === "fill");
 
   async function onPick(files: FileList) {
     for (const file of Array.from(files).slice(0, 6)) {
@@ -334,7 +336,14 @@ function BackgroundPicker() {
           </Tile>
         ))}
         {saved.map((b) => (
-          <Tile key={b.id} label={b.name ?? (b.kind === "image" ? "Photo" : "Custom")} active={activeId === b.id} onClick={() => void apply(b)} onRemove={() => void remove(b.id)}>
+          <Tile
+            key={b.id}
+            label={b.name ?? (b.kind === "image" ? "Photo" : "Colour")}
+            badge={mixed ? (b.kind === "image" ? "Photo" : "Colour") : undefined}
+            active={activeId === b.id}
+            onClick={() => void apply(b)}
+            onRemove={() => void remove(b.id)}
+          >
             <div className="h-full w-full bg-cover bg-center" style={{ backgroundImage: b.kind === "image" ? `url(${b.image})` : asImage(b.css ?? "") }} />
           </Tile>
         ))}
@@ -358,20 +367,21 @@ function BackgroundPicker() {
   );
 }
 
-function Tile({ label, active, onClick, onRemove, children }: { label: string; active: boolean; onClick: () => void; onRemove?: () => void; children: ReactNode }) {
+function Tile({ label, badge, active, onClick, onRemove, children }: { label: string; badge?: string; active: boolean; onClick: () => void; onRemove?: () => void; children: ReactNode }) {
   return (
     <div className="group relative">
       <button onClick={onClick} title={label} aria-label={label} aria-pressed={active} className={`block aspect-[16/10] w-full overflow-hidden rounded-lg transition-shadow ${active ? "shadow-[0_0_0_2px_var(--text)]" : "hairline hover:shadow-[0_0_0_1px_var(--border-strong)]"}`}>
         {children}
       </button>
+      {badge && <span className="pointer-events-none absolute bottom-1 left-1 rounded bg-black/55 px-1 py-0.5 text-[10px] leading-none font-medium text-white">{badge}</span>}
       {onRemove && (
         <button
           onClick={onRemove}
           aria-label={`Remove ${label}`}
-          title="Remove"
-          className="absolute -top-1.5 -right-1.5 grid h-5 w-5 place-items-center rounded-full border border-line bg-raised text-muted opacity-0 shadow-soft transition-opacity group-hover:opacity-100 hover:text-ink focus-visible:opacity-100"
+          title="Remove background"
+          className="absolute top-1 right-1 grid h-6 w-6 place-items-center rounded-full border border-line bg-raised text-muted opacity-60 shadow-soft transition-opacity hover:text-ink hover:opacity-100 focus-visible:opacity-100 group-hover:opacity-100"
         >
-          <X size={11} />
+          <X size={12} />
         </button>
       )}
     </div>

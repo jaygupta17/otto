@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "motion/react";
-import { Bug, Compass, Globe, PanelLeft, RotateCw, Search } from "lucide-react";
+import { PanelLeft, RotateCw } from "lucide-react";
 import { useMemo, type CSSProperties } from "react";
 import { Composer } from "../chat/Composer";
 import { ProjectPicker } from "../chat/Pickers";
@@ -39,7 +39,7 @@ export function Home({ compact = false }: { compact?: boolean }) {
   const sidebarOpen = useUI((s) => s.sidebarOpen);
   const toggleSidebar = useUI((s) => s.toggleSidebar);
   const mac = useTrafficLights();
-  // Starting a conversation with a teammate is meeting them: their face, their words, their starters.
+  // Starting a conversation with a teammate is meeting them: their face and their words.
   const mate = useTeammate(useChat((s) => s.pickedAgent));
 
   return (
@@ -63,7 +63,7 @@ export function Home({ compact = false }: { compact?: boolean }) {
 
           <ConnectionBanner />
 
-          <Composer sessionId={null} autoFocus compact={compact} placeholder={mate ? `Ask ${mate.name} anything, or hand over a task` : "Describe a task, ask a question, or paste an error"} />
+          <Composer sessionId={null} autoFocus compact={compact} placeholder={mate ? "Ask anything, or hand over a task" : "Describe a task, ask a question, or paste an error"} />
 
           <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-[13px]">
             <span className="surface-thin inline-flex rounded-full">
@@ -74,8 +74,6 @@ export function Home({ compact = false }: { compact?: boolean }) {
               {ws?.name}
             </span>
           </div>
-
-          <Starters mate={mate} />
 
           {recent.length > 0 && !compact && (
             <section className="mt-12">
@@ -100,15 +98,7 @@ export function Home({ compact = false }: { compact?: boolean }) {
   );
 }
 
-/** Ways in, for an empty box: each fills the prompt to finish, never sends. */
-const STARTERS = [
-  { icon: Search, label: "Research a topic", text: "Research this and give me a one-page brief with sources: " },
-  { icon: Globe, label: "Use the browser", text: "Open this site in the browser and tell me what you find: " },
-  { icon: Bug, label: "Fix an error", text: "Find and fix what's causing this error:\n\n" },
-  { icon: Compass, label: "Explain this project", text: "Walk me through how this project is organized and where to start." },
-];
-
-/** The teammate, introducing themselves: face, name and job, then their greeting. */
+/** The teammate, introducing themselves: face, name, then their greeting. */
 function Hello({ mate, compact }: { mate: Teammate; compact: boolean }) {
   // It nods along with each word you type to it.
   const words = useChat((s) => (s.drafts.new ?? "").trim().split(/\s+/).filter(Boolean).length);
@@ -126,70 +116,11 @@ function Hello({ mate, compact }: { mate: Teammate; compact: boolean }) {
         {/* Listening while you write: a little attentive, then back to itself. */}
         <TeammateFace seed={mate.face} color={mate.color} accessory={mate.accessory} size={compact ? 52 : 68} follow attentive={typing} interactive pulse={words} />
         <div className="min-w-0">
-          <div className="on-photo truncate text-[13px] text-muted">
-            <span className="font-medium text-ink-2">{mate.name}</span>
-            {mate.job && ` · ${mate.job}`}
-          </div>
+          <div className="on-photo truncate text-[13px] font-medium text-ink-2">{mate.name}</div>
           <h1 className={`on-photo mt-0.5 font-semibold tracking-[-0.01em] text-ink ${compact ? "text-[20px]" : "text-[26px]"}`}>{mate.greeting || `What should ${mate.name} work on?`}</h1>
         </div>
       </motion.div>
     </AnimatePresence>
-  );
-}
-
-export function Starters({ mate, center = false }: { mate: Teammate | undefined; center?: boolean }) {
-  const empty = useChat((s) => !(s.drafts.new ?? "").trim());
-  const models = useChat((s) => s.models);
-  const connected = useConnection((s) => s.status === "ready");
-  const catalog = useConnection((s) => s.catalog);
-  // Starters fill the draft only, but offering them before the catalog is
-  // ready suggests a conversation that can't be sent yet. Loaded models count
-  // even if the readiness wait gave up first.
-  const ready = connected && (catalog === "ready" || models.length > 0);
-  if (!empty || !ready) return null;
-  const pick = (text: string) => {
-    useChat.getState().setDraft("new", text);
-    requestAnimationFrame(() => {
-      const ta = document.querySelector<HTMLTextAreaElement>("textarea[data-composer]");
-      if (!ta) return;
-      ta.focus();
-      ta.setSelectionRange(text.length, text.length);
-    });
-  };
-  if (mate?.starters.length)
-    return (
-      <div key={mate.id} className={`mt-5 flex flex-wrap gap-1.5 ${center ? "justify-center" : ""}`}>
-        {mate.starters.map((text, i) => (
-          <motion.button
-            key={text}
-            initial={{ opacity: 0, y: 4 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.2, delay: 0.04 * i }}
-            onClick={() => pick(text)}
-            title={text}
-            className="surface-thin inline-flex h-8 max-w-full items-center rounded-full px-3 text-[13px] text-ink-2 hover:text-ink"
-          >
-            <span className="truncate">{text}</span>
-          </motion.button>
-        ))}
-      </div>
-    );
-  return (
-    <div className={`mt-5 flex flex-wrap gap-1.5 ${center ? "justify-center" : ""}`}>
-      {STARTERS.map(({ icon: Icon, label, text }, i) => (
-        <motion.button
-          key={label}
-          initial={{ opacity: 0, y: 4 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.2, delay: 0.04 * i }}
-          onClick={() => pick(text)}
-          className="surface-thin inline-flex h-8 items-center gap-2 rounded-full px-3 text-[13px] text-ink-2 hover:text-ink"
-        >
-          <Icon size={13} className="text-muted" />
-          {label}
-        </motion.button>
-      ))}
-    </div>
   );
 }
 
