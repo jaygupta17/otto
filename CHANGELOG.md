@@ -6,6 +6,15 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 ## [Unreleased]
 
+### Changed
+
+- The chat fades in earlier above the composer, with a soft uneven edge instead of a straight band; the fade stays inside the conversation pane.
+- Fewer repeated labels and agent names in the composer, thread footers and new-chat header. The context meter is the ring only, with usage on hover and in its card; starter prompts are gone.
+
+### Fixed
+
+- Saved background photos and colours have a visible remove control, including on touch screens.
+
 ## [0.13.0] - 2026-10-22
 
 ### Added
