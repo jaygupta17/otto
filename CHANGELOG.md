@@ -10,6 +10,10 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 - Agents can manage schedules on a fresh machine: the `otto_schedule` tool is installed when a workspace connects, not only after someone opens Schedules. Settings → General → Automation → **Agents can manage schedules** turns it off, and existing schedules keep running.
 
+### Changed
+
+- Teammate memory is plain markdown in the OpenCode config folder: `context.md` is injected into every new session, while daily notes, project state and learnings stay on disk for agents to read on demand. The Memory panel edits the same files, and the old memory plugin is gone.
+
 ## [0.12.1] - 2026-10-22
 
 ### Fixed
