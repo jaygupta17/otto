@@ -6,6 +6,8 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-10-22
+
 ### Added
 
 - Agents can manage schedules on a fresh machine: the `otto_schedule` tool is installed when a workspace connects, not only after someone opens Schedules. Settings → General → Automation → **Agents can manage schedules** turns it off, and existing schedules keep running.
@@ -262,7 +264,8 @@ First public release.
 - Scheduled tasks that run on the agent machine.
 - Project file browser with syntax highlighting.
 
-[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.12.1...HEAD
+[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/jaygupta17/otto/compare/v0.12.1...v0.13.0
 [0.12.1]: https://github.com/jaygupta17/otto/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/jaygupta17/otto/compare/v0.11.1...v0.12.0
 [0.11.1]: https://github.com/jaygupta17/otto/compare/v0.11.0...v0.11.1
