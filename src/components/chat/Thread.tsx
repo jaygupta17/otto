@@ -216,6 +216,16 @@ export function Thread({ sessionId, bottomInset = 0 }: { sessionId: string; bott
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // A small first page can leave the thread shorter than the viewport, where
+  // there is nothing to scroll and the older messages would be unreachable.
+  // Fill the screen before the user tries; stops as soon as it scrolls.
+  useEffect(() => {
+    if (!timeline?.loaded || !timeline.older || timeline.loading) return;
+    const el = scroller.current;
+    if (!el || el.scrollHeight > el.clientHeight + 40) return;
+    void loadOlder(sessionId);
+  }, [timeline?.loaded, timeline?.older, timeline?.loading, timeline?.messages.length, sessionId, loadOlder]);
+
   const onScroll = () => {
     const el = scroller.current;
     if (!el) return;
