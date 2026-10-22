@@ -7,7 +7,7 @@ import { create } from "zustand";
 import type { AgentInfo, ModelInfo, SessionInfo, V2Event } from "@opencode/client";
 import { OpenCode, OpenCodeError, type ModelRef, type PermissionRequestLite, type SessionRevert } from "../lib/opencode/client";
 import { applyEvent, eventSessionID, projectHistory, type Delivery, type UIMessage } from "../lib/opencode/projection";
-import { fetchTimelinePage, withTimeout } from "../lib/opencode/timeline";
+import { fetchTimelinePage, mergeTail, withTimeout } from "../lib/opencode/timeline";
 import { uid } from "../lib/id";
 import { kv } from "../lib/kv";
 import { useWorkspaces } from "./workspaces";
@@ -78,6 +78,8 @@ interface State {
   loadSessions(): Promise<void>;
   open(id: string | null): void;
   loadTimeline(id: string, force?: boolean): Promise<void>;
+  /** Refresh the last few messages in place, without a skeleton. */
+  loadTail(id: string): Promise<void>;
   loadOlder(id: string): Promise<void>;
   send(text: string, opts?: { sessionId?: string | null }): Promise<string | null>;
   interrupt(id: string): Promise<void>;
@@ -434,7 +436,11 @@ export const useChat = create<State>((set, get) => ({
     }
     if (get().client !== client) return;
     const id = get().activeId;
-    if (id) await get().loadTimeline(id, true);
+    if (!id) return;
+    // Already on screen: refresh the last few messages only. A forced full
+    // reload here re-downloaded the whole page on every stream connect.
+    if (get().timelines[id]?.loaded) await get().loadTail(id);
+    else await get().loadTimeline(id);
   },
 
   async loadSessions() {
@@ -510,6 +516,39 @@ export const useChat = create<State>((set, get) => ({
       // sees something they can act on and a Try again button.
       console.warn(`loadTimeline(${id}) failed`, e);
       set((s) => ({ timelines: { ...s.timelines, [id]: { ...(s.timelines[id] ?? empty()), loading: false, error: TIMELINE_ERROR } } }));
+    }
+  },
+
+  async loadTail(id) {
+    const client = get().client;
+    if (!client) return;
+    const cur = get().timelines[id];
+    // Nothing on screen to merge into yet: this is an initial load.
+    if (!cur?.loaded) return get().loadTimeline(id);
+    const gen = timelineGeneration;
+    try {
+      const page = await fetchTimelinePage(client, id, { limit: TIMELINE_TAIL, retryLimit: TIMELINE_TAIL, timeoutMs: TIMELINE_TIMEOUT_MS, order: "desc" });
+      // A reconnect or workspace switch while this was in flight: never merge
+      // one client's (or session's) tail into another's timeline.
+      if (get().client !== client || gen !== timelineGeneration) return;
+      // A new turn started while this read was in flight: its live events are
+      // newer than the snapshot, so don't replace what is streaming.
+      if (get().busy[id]) return;
+      const t = get().timelines[id];
+      if (!t?.loaded) return;
+      const messages = mergeTail(t.messages, page.messages);
+      if (messages === t.messages) return;
+      const kids = childSessions(id, messages);
+      const doers = childAgents(messages);
+      set((s) => ({
+        timelines: { ...s.timelines, [id]: { ...(s.timelines[id] ?? t), messages } },
+        parents: Object.keys(kids).every((k) => s.parents[k] === kids[k]) ? s.parents : { ...s.parents, ...kids },
+        delegated: Object.keys(doers).every((k) => s.delegated[k] === doers[k]) ? s.delegated : { ...s.delegated, ...doers },
+      }));
+      void inferChildren(id);
+    } catch {
+      // Silent: the conversation is already on screen and events keep it live.
+      // A failed refresh is not a failed load.
     }
   },
 
@@ -864,7 +903,9 @@ function scheduleReconcile(id: string) {
     setTimeout(() => {
       reconcileTimers.delete(id);
       const t = useChat.getState().timelines[id];
-      if (t?.loaded) void useChat.getState().loadTimeline(id, true);
+      // The finished turn is already on screen from its events; only the tail
+      // can have drifted. Re-reading the whole page here cost tens of MB.
+      if (t?.loaded) void useChat.getState().loadTail(id);
     }, 400),
   );
 }
