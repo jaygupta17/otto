@@ -47,7 +47,13 @@ export function Composer({ sessionId, placeholder = "Do anything…", autoFocus 
   const interrupt = useChat((s) => s.interrupt);
   const client = useChat((s) => s.client);
   const projectDir = useChat((s) => s.projectDir);
-  const ready = useConnection((s) => s.status === "ready");
+  const connected = useConnection((s) => s.status === "ready");
+  const catalog = useConnection((s) => s.catalog);
+  const catalogError = useConnection((s) => s.catalogError);
+  const retryConnection = useConnection((s) => s.retry);
+  // Send needs the catalog: a connected listener with no models would accept
+  // the text and fail the prompt.
+  const ready = connected && catalog === "ready";
   const [sending, setSending] = useState(false);
   const [focused, setFocused] = useState(false);
   const [commands, setCommands] = useState<CommandInfo[] | null>(null);
@@ -127,7 +133,10 @@ export function Composer({ sessionId, placeholder = "Do anything…", autoFocus 
 
   async function submit() {
     const text = draft.trim();
-    if (!text || sending || !ready || needsAgent) return;
+    // Refuse before touching the draft: a cleared box with nothing sent reads
+    // as a lost message. The connection/catalog state is the reason, and the
+    // inline state below the box says so.
+    if (!text || sending || !ready || needsAgent || !client) return;
     const cmd = /^\/(\S+)\s*([\s\S]*)$/.exec(text);
     setSending(true);
     setDraft(draftKey, "");
@@ -250,7 +259,21 @@ export function Composer({ sessionId, placeholder = "Do anything…", autoFocus 
           ref={ta}
           rows={1}
           value={draft}
-          placeholder={!ready ? "Connecting…" : busy ? (delivery === "steer" ? `Steer ${doer}…` : `Queue a follow-up for ${doer}…`) : needsAgent ? "Add a teammate to start" : placeholder}
+          placeholder={
+            !connected
+              ? "Connecting…"
+              : busy
+                ? delivery === "steer"
+                  ? `Steer ${doer}…`
+                  : `Queue a follow-up for ${doer}…`
+                : needsAgent
+                  ? "Add a teammate to start"
+                  : catalog === "degraded"
+                    ? "Models didn't load"
+                    : catalog !== "ready"
+                      ? "Loading models…"
+                      : placeholder
+          }
           onChange={(e) => {
             setDraft(draftKey, e.target.value);
             void updateSuggest(e.target.value, e.target.selectionStart);
@@ -333,6 +356,17 @@ export function Composer({ sessionId, placeholder = "Do anything…", autoFocus 
               )}
             </AnimatePresence>
           </div>
+          {connected && catalog === "warming" && <div className="px-4 pb-2.5 text-[12.5px] text-muted">Loading models and agents…</div>}
+          {connected && catalog === "degraded" && (
+            <div className="flex items-center gap-2 px-4 pb-2.5 text-[12.5px] text-muted">
+              <span className="min-w-0 flex-1" title={catalogError}>
+                Models didn't load, so sending is paused.
+              </span>
+              <button onClick={retryConnection} className="shrink-0 rounded-md px-1.5 py-0.5 text-ink-2 transition-colors hover:bg-hover hover:text-ink">
+                Try again
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

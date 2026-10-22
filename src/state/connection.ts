@@ -5,6 +5,7 @@
 import { create } from "zustand";
 import { OpenCode, OpenCodeError, type ServerInfo } from "../lib/opencode/client";
 import { startEventStream, type StreamStatus } from "../lib/opencode/events";
+import { waitForCatalog, type CatalogResult } from "../lib/opencode/readiness";
 import { useShells } from "./shells";
 import "./connectors";
 import { reviveBoat } from "../lib/providers/provision";
@@ -20,6 +21,8 @@ import { isCloud, secretKeys, useWorkspaces, type Workspace } from "./workspaces
 import { useChat } from "./chat";
 
 export type ConnStatus = "idle" | "connecting" | "waking" | "repairing" | "ready" | "error";
+/** How far the server's model/agent catalog has got. `status` stays the connection's own story. */
+export type CatalogStatus = "offline" | "warming" | "ready" | "degraded";
 
 interface State {
   status: ConnStatus;
@@ -31,6 +34,10 @@ interface State {
   client: OpenCode | null;
   info: ServerInfo | null;
   workspaceId: string | null;
+  /** Models and agents: the server can accept HTTP before it can answer a prompt. */
+  catalog: CatalogStatus;
+  /** One quiet sentence for why the catalog didn't load. Never toasted. */
+  catalogError?: string;
   connect(ws: Workspace, opts?: { forceRevive?: boolean }): Promise<void>;
   disconnect(): void;
   retry(): void;
@@ -56,6 +63,7 @@ export const useConnection = create<State>((set, get) => ({
   client: null,
   info: null,
   workspaceId: null,
+  catalog: "offline",
 
   async connect(ws, opts) {
     // Stops any previous connection and invalidates work still in flight for it.
@@ -63,7 +71,7 @@ export const useConnection = create<State>((set, get) => ({
     const gen = ++generation;
     abort = new AbortController();
     const signal = abort.signal;
-    set({ status: "connecting", detail: undefined, error: undefined, billing: false, workspaceId: ws.id, client: null, info: null });
+    set({ status: "connecting", detail: undefined, error: undefined, billing: false, workspaceId: ws.id, client: null, info: null, catalog: "offline", catalogError: undefined });
     const stale = () => gen !== generation;
 
     try {
@@ -118,9 +126,33 @@ export const useConnection = create<State>((set, get) => ({
       }
 
       if (stale()) return;
-      if (!info) throw new Error(ws.provider === "custom" ? `Can't reach this server. Is it running and reachable?${lastError ? ` (${lastError})` : ""}` : "Can't reach your agent server.");
+      if (!info || !client) throw new Error(ws.provider === "custom" ? `Can't reach this server. Is it running and reachable?${lastError ? ` (${lastError})` : ""}` : "Can't reach your agent server.");
 
-      set({ client, info, status: "ready", detail: undefined });
+      // `info` only proves the listener is up. On a cold start the Location and
+      // its plugins may still be activating; live events are already flowing
+      // but the catalog is empty and a prompt would fail. Wait for the catalog
+      // before calling this connection ready. `catalog` carries the nuance to
+      // the UI: a degraded catalog leaves chat readable but send paused.
+      set({ status: "connecting", detail: "Starting OpenCode…", catalog: "warming", catalogError: undefined });
+      let sawReply = false;
+      const catalog = await waitForCatalog(client, {
+        signal,
+        onPhase: (phase, info) => {
+          if (stale()) return;
+          if (info.responded) sawReply = true;
+          if (phase === "warming") set({ detail: sawReply ? "Loading models and agents…" : "Starting OpenCode…" });
+        },
+      });
+      if (stale()) return;
+      if (catalog.phase === "aborted") return;
+      set({
+        client,
+        info,
+        status: "ready",
+        detail: undefined,
+        catalog: catalog.phase === "ready" ? "ready" : "degraded",
+        catalogError: catalog.phase === "ready" ? undefined : catalogProblem(catalog),
+      });
       // Boat machines get the agent's browser; older setups pick it up here.
       if (ws.provider === "boat") void ensureBrowserKit(client).catch((e) => console.warn("browser kit:", e));
       keepAwake?.();
@@ -136,7 +168,9 @@ export const useConnection = create<State>((set, get) => ({
 
       const chat = useChat.getState();
       chat.reset();
-      void chat.bootstrap(client);
+      // The first stream connect can fire while this is still running: chain
+      // its quiet sync instead of resyncing underneath the bootstrap.
+      const booted = chat.bootstrap(client).catch(() => {});
 
       stream = startEventStream(client, {
         onEvent: (e) => {
@@ -146,6 +180,11 @@ export const useConnection = create<State>((set, get) => ({
         onStatus: (s) => !stale() && set({ stream: s }),
         onConnected: (reconnect) => {
           if (reconnect) void useChat.getState().resync();
+          else
+            void booted.then(() => {
+              if (stale() || useChat.getState().client !== client) return;
+              void useChat.getState().syncOnConnect();
+            });
           void useShells.getState().load();
         },
       });
@@ -166,7 +205,7 @@ export const useConnection = create<State>((set, get) => ({
     keepAwake = null;
     abort?.abort();
     abort = null;
-    set({ status: "idle", detail: undefined, error: undefined, billing: false, stream: "offline", client: null, info: null, workspaceId: null });
+    set({ status: "idle", detail: undefined, error: undefined, billing: false, stream: "offline", client: null, info: null, workspaceId: null, catalog: "offline", catalogError: undefined });
   },
 
   retry() {
@@ -182,6 +221,13 @@ export const useConnection = create<State>((set, get) => ({
     else if (get().status === "error") get().retry();
   },
 }));
+
+/** One quiet sentence for the store; the UI shows it, nothing toasts it. */
+function catalogProblem(catalog: CatalogResult): string {
+  if (catalog.reason === "auth") return "The agent server refused to load its models and agents.";
+  if (catalog.reason === "fatal") return "The agent server can't load its models and agents.";
+  return "OpenCode is taking longer than usual to load models and agents.";
+}
 
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   return new Promise((resolve, reject) => {
