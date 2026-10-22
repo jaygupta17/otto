@@ -124,6 +124,27 @@ const sched = (over: Partial<Schedule> = {}): Schedule => ({
   ...over,
 });
 
+
+/** The error a promise rejects with, or a test failure. */
+async function failure<T>(p: Promise<T>): Promise<unknown> {
+  try {
+    await p;
+  } catch (e) {
+    return e;
+  }
+  throw new Error("Expected the call to fail.");
+}
+
+/** The error a synchronous call throws, or a test failure. */
+function thrown(fn: () => unknown): unknown {
+  try {
+    fn();
+  } catch (e) {
+    return e;
+  }
+  throw new Error("Expected the call to throw.");
+}
+
 const readFileJson = async () => JSON.parse(await readFile(join(ROOT, ".otto", "schedules.json"), "utf8")) as { version: number; rev: number; schedules: Schedule[] };
 
 // ---------------------------------------------------------------------------
@@ -162,7 +183,8 @@ describe("file format", () => {
   });
 
   test("invalid JSON is an error, not a silent empty list", () => {
-    expect(() => parseSchedules("{ nope")).toThrow(/not valid JSON/);
+    const error = thrown(() => parseSchedules("{ nope")) as Error;
+    expect(error.message).toContain("not valid JSON");
     expect(parseSchedules(null)).toEqual({ schedules: [], rev: 0, legacy: false });
   });
 
@@ -224,7 +246,7 @@ describe("optimistic concurrency", () => {
     } catch (e) {
       error = e;
     }
-    expect(error).toBeInstanceOf(StaleScheduleError);
+    expect(error instanceof StaleScheduleError).toBe(true);
     const stale = error as StaleScheduleError;
     expect(stale.current).toBe(2);
     expect(stale.schedules.map((s) => s.id).sort()).toEqual(["sch_one", "sch_two"]);
@@ -251,7 +273,8 @@ describe("optimistic concurrency", () => {
   test("a remove based on an old rev does not delete a schedule added since", async () => {
     await store().upsert(sched(), 0);
     await store().upsert(sched({ id: "sch_two" }), 1);
-    await expect(store().remove("sch_one", 0)).rejects.toBeInstanceOf(StaleScheduleError);
+    const error = await failure(store().remove("sch_one", 0));
+    expect(error instanceof StaleScheduleError).toBe(true);
     expect((await store().load()).schedules.map((s) => s.id).sort()).toEqual(["sch_one", "sch_two"]);
   });
 
@@ -270,9 +293,12 @@ describe("locking", () => {
   test("a held lock times out with ScheduleLockError", async () => {
     await mkdir(join(ROOT, ".otto", "schedules.lock"), { recursive: true });
     const s = store({ lockRetries: 3, lockWaitMs: 5 });
-    await expect(s.upsert(sched(), 0)).rejects.toBeInstanceOf(ScheduleLockError);
+    const error = await failure(s.upsert(sched(), 0));
+    expect(error instanceof ScheduleLockError).toBe(true);
     expect(await readdir(join(ROOT, ".otto"))).toContain("schedules.lock");
-    expect(await store().load()).toMatchObject({ rev: 0, schedules: [] });
+    const loaded = await store().load();
+    expect(loaded.rev).toBe(0);
+    expect(loaded.schedules).toEqual([]);
   });
 
   test("a lock older than 30s is removed and the write proceeds", async () => {
@@ -346,7 +372,8 @@ describe("runNow", () => {
   });
 
   test("refuses an id that is not in the file", async () => {
-    await expect(store().runNow("sch_nope")).rejects.toThrow(/No schedule/);
+    const error = (await failure(store().runNow("sch_nope"))) as Error;
+    expect(error.message).toContain("No schedule");
   });
 });
 

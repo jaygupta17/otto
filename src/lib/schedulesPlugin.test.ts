@@ -113,6 +113,27 @@ const sched = (over: Partial<RuntimeSchedule> = {}): RuntimeSchedule => ({
   ...over,
 });
 
+
+/** The error a promise rejects with, or a test failure. */
+async function failure<T>(p: Promise<T>): Promise<unknown> {
+  try {
+    await p;
+  } catch (e) {
+    return e;
+  }
+  throw new Error("Expected the call to fail.");
+}
+
+/** The error a synchronous call throws, or a test failure. */
+function thrown(fn: () => unknown): unknown {
+  try {
+    fn();
+  } catch (e) {
+    return e;
+  }
+  throw new Error("Expected the call to throw.");
+}
+
 const readCron = () => readFile(cronFile, "utf8");
 const readJson = async () => JSON.parse(await readFile(join(ROOT, ".otto", "schedules.json"), "utf8")) as { version: number; rev: number; schedules: RuntimeSchedule[] };
 
@@ -144,7 +165,8 @@ describe("generated package", () => {
     for (const a of ["create", "update", "setEnabled"]) expect(module.permissionAction({ action: a })).toBe("otto_schedule.write");
     expect(module.permissionAction({ action: "delete" })).toBe("otto_schedule.delete");
     expect(module.permissionAction({ action: "run" })).toBe("otto_schedule.run");
-    expect(() => module.permissionAction({ action: "nope" })).toThrow(/Unknown action/);
+    const error = thrown(() => module.permissionAction({ action: "nope" })) as Error;
+    expect(error.message).toContain("Unknown action");
   });
 });
 
@@ -248,9 +270,9 @@ describe("tool actions", () => {
     expect(made.id.startsWith("sch_")).toBe(true);
     expect((await store.load()).schedules).toHaveLength(1);
 
-    await expect(module.dispatch(store, { action: "create", name: "Bad", prompt: "p", frequency: { kind: "daily", hour: 24, minute: 0 } }, ctx)).rejects.toThrow(/hour/);
-    await expect(module.dispatch(store, { action: "create", name: "Bad", prompt: "p", frequency: { kind: "custom", cron: "0 0 * *" } }, ctx)).rejects.toThrow(/cron/);
-    await expect(module.dispatch(store, { action: "create", name: "Bad", prompt: "p", frequency: { kind: "weekly", days: [], hour: 9 } }, ctx)).rejects.toThrow(/days/);
+    expect(((await failure(module.dispatch(store, { action: "create", name: "Bad", prompt: "p", frequency: { kind: "daily", hour: 24, minute: 0 } }, ctx))) as Error).message).toContain("hour");
+    expect(((await failure(module.dispatch(store, { action: "create", name: "Bad", prompt: "p", frequency: { kind: "custom", cron: "0 0 * *" } }, ctx))) as Error).message).toContain("cron");
+    expect(((await failure(module.dispatch(store, { action: "create", name: "Bad", prompt: "p", frequency: { kind: "weekly", days: [], hour: 9 } }, ctx))) as Error).message).toContain("days");
   });
 
   test("create refuses a timezone that is not this machine's", async () => {
@@ -258,7 +280,7 @@ describe("tool actions", () => {
     const store = makeStore(module);
     const here = Intl.DateTimeFormat().resolvedOptions().timeZone;
     const wrong = here === "UTC" ? "Asia/Tokyo" : "UTC";
-    await expect(module.dispatch(store, { action: "create", name: "Zone", prompt: "p", frequency: { kind: "daily", hour: 9, minute: 0 }, timezone: wrong }, ctx)).rejects.toThrow(/timezone/);
+    expect(((await failure(module.dispatch(store, { action: "create", name: "Zone", prompt: "p", frequency: { kind: "daily", hour: 9, minute: 0 }, timezone: wrong }, ctx))) as Error).message).toContain("timezone");
     const ok = await module.dispatch(store, { action: "create", name: "Zone", prompt: "p", frequency: { kind: "hourly", minute: 5 }, timezone: here }, ctx);
     expect((ok.schedule as RuntimeSchedule).frequency).toEqual({ kind: "hourly", minute: 5 });
   });
@@ -272,7 +294,7 @@ describe("tool actions", () => {
     expect(after.name).toBe("Renamed");
     expect(after.prompt).toBe("Run tests");
     expect(after.directory).toBe("/work");
-    await expect(module.dispatch(store, { action: "update", id: made.id }, ctx)).rejects.toThrow(/at least one/);
+    expect(((await failure(module.dispatch(store, { action: "update", id: made.id }, ctx))) as Error).message).toContain("at least one");
   });
 
   test("update with a rev refuses a newer change", async () => {
@@ -319,7 +341,7 @@ describe("tool actions", () => {
     expect((list.schedules as (RuntimeSchedule & { when?: string })[])[0].when).toBe("Every day at 02:30");
     await module.dispatch(store, { action: "delete", id: made.id }, ctx);
     expect((await store.load()).schedules).toHaveLength(0);
-    await expect(module.dispatch(store, { action: "delete", id: "sch_nope" }, ctx)).rejects.toThrow(/No schedule/);
+    expect(((await failure(module.dispatch(store, { action: "delete", id: "sch_nope" }, ctx))) as Error).message).toContain("No schedule");
   });
 });
 
@@ -362,7 +384,7 @@ describe("crontab", () => {
     await mkdir(empty, { recursive: true });
     const module = await load();
     const store = makeStore(module, join(ROOT, ".otto"), { OTTO_CRONTAB: "", PATH: empty });
-    expect(await store.probeCron()).toMatchObject({ hasCron: false });
+    expect((await store.probeCron()).hasCron).toBe(false);
     const out = await store.upsert(sched());
     expect(out.warnings).toContain("cron-missing");
     expect((await store.load()).schedules).toHaveLength(1);
