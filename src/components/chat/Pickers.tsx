@@ -263,6 +263,7 @@ export function AgentPicker({ sessionId }: { sessionId: string | null }) {
     if (Object.values(s.permissions).some((p) => p.sessionID === id) || Object.values(s.forms).some((f) => f.sessionID === id)) return "needs" as const;
     return s.busy[id] ? ("working" as const) : ("idle" as const);
   });
+  const stateName = state === "working" ? "working" : state === "needs" ? "needs you" : "";
   useEffect(() => {
     if (open && agents.length === 0) void refreshCatalog();
   }, [open, agents.length, refreshCatalog]);
@@ -271,14 +272,14 @@ export function AgentPicker({ sessionId }: { sessionId: string | null }) {
       <button
         ref={anchor}
         onClick={() => (empty ? useUI.getState().openSettings("agents") : setOpen((v) => !v))}
-        title={empty ? "Add a teammate" : "Switch agent (Tab)"}
-        aria-label={empty ? "Add a teammate" : `Agent: ${name}`}
+        title={empty ? "Add a teammate" : `Switch agent (Tab)${name ? ` · ${name}${stateName ? `, ${stateName}` : ""}` : ""}`}
+        aria-label={empty ? "Add a teammate" : `Agent: ${name || "none"}${stateName ? `, ${stateName}` : ""}`}
         aria-haspopup="menu"
         aria-expanded={open}
-        className={`flex h-8 items-center gap-1.5 rounded-md px-2 text-[13px] hover:bg-hover hover:text-ink ${empty ? "text-ink" : "text-ink-2"}`}
+        className={`flex h-8 items-center gap-1 rounded-md px-1.5 text-[13px] hover:bg-hover hover:text-ink ${empty ? "text-ink" : "text-ink-2"}`}
       >
         <AgentMark id={current} color={info?.color} size={roster?.[current] ? 18 : 12} state={state} />
-        {empty ? "Add a teammate" : name}
+        {empty && "Add a teammate"}
         <ChevronDown size={13} className="text-faint" />
       </button>
       <Popover open={open} onClose={() => setOpen(false)} anchor={anchor.current} placement="top-start" width={280}>

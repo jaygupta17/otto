@@ -291,9 +291,9 @@ function Ring({ pct, size = 18 }: { pct: number; size?: number }) {
 }
 
 /**
- * Context-window meter for the composer: a ring and the percentage, blue once
- * it's nearly full. Opens the usage card (a popover, on phones too), which
- * offers to compact or start a fresh thread.
+ * Context-window meter for the composer: a ring, blue once it's nearly full.
+ * Opens the usage card (a popover, on phones too), which carries the numbers
+ * and offers to compact or start a fresh thread.
  */
 export function ContextMeter({ sessionId, compact = false }: { sessionId: string; compact?: boolean }) {
   const u = useUsage(sessionId);
@@ -301,8 +301,6 @@ export function ContextMeter({ sessionId, compact = false }: { sessionId: string
   const [open, setOpen] = useState(false);
   if (!u.limit || (!u.used && !u.compacted && !u.compacting)) return null;
   const full = u.pct >= FULL;
-  // Phones are tight: the number shows once it starts to matter.
-  const showPct = !u.compacting && !u.compacted && (!compact || u.pct >= 0.5);
   const title = u.compacting
     ? "Compacting the conversation…"
     : u.compacted
@@ -317,10 +315,9 @@ export function ContextMeter({ sessionId, compact = false }: { sessionId: string
         title={title}
         aria-label={`Context usage: ${u.compacting ? "compacting" : u.compacted ? "compacted" : `${pctLabel(u.pct)} full`}`}
         aria-expanded={open}
-        className={`flex h-8 shrink-0 items-center gap-1.5 rounded-md px-1.5 text-[12px] font-medium tabular-nums transition-colors hover:bg-hover ${full ? "text-info" : "text-muted hover:text-ink"} ${open ? "bg-hover" : ""}`}
+        className={`grid h-8 w-8 shrink-0 place-items-center rounded-md transition-colors hover:bg-hover ${full ? "text-info" : "text-muted hover:text-ink"} ${open ? "bg-hover" : ""}`}
       >
         {u.compacting ? <Spinner size={16} /> : <Ring pct={u.compacted ? 0 : u.pct} />}
-        {showPct && <span>{pctLabel(u.pct)}</span>}
       </button>
       {/* A small card, so a popover by the meter on phones too, not a page. */}
       <Popover open={open} onClose={() => setOpen(false)} anchor={anchor.current} placement="top-end" width={Math.min(320, window.innerWidth - 16)} label="Context usage">
