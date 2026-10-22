@@ -6,6 +6,8 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-10-22
+
 ### Added
 
 - Agents can create, change and run schedules from chat with the `otto_schedule` tool. The app and the tool write through one rev-locked file, so neither overwrites the other, and the Schedules view shows who created a schedule and how its last run went.
@@ -246,7 +248,8 @@ First public release.
 - Scheduled tasks that run on the agent machine.
 - Project file browser with syntax highlighting.
 
-[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.11.1...HEAD
+[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/jaygupta17/otto/compare/v0.11.1...v0.12.0
 [0.11.1]: https://github.com/jaygupta17/otto/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/jaygupta17/otto/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/jaygupta17/otto/compare/v0.9.0...v0.10.0
