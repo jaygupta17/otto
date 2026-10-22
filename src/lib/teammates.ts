@@ -54,6 +54,8 @@ export interface TeammatesFile {
   teammates: Record<string, Teammate>;
   /** "off" once the user turns memory off; Otto then leaves the plugin out. */
   memory?: "off";
+  /** "off" once the user turns agent schedule tools off; Otto then removes the plugin. */
+  schedules?: "off";
 }
 
 /**
@@ -103,7 +105,12 @@ export async function readTeammates(client: OpenCode): Promise<TeammatesFile> {
     const n = normalize(id, t);
     if (n) teammates[id] = n;
   }
-  return { version: 1, teammates, ...(raw.memory === "off" ? { memory: "off" as const } : {}) };
+  return {
+    version: 1,
+    teammates,
+    ...(raw.memory === "off" ? { memory: "off" as const } : {}),
+    ...(raw.schedules === "off" ? { schedules: "off" as const } : {}),
+  };
 }
 
 let chain: Promise<unknown> = Promise.resolve();

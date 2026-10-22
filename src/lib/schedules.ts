@@ -210,12 +210,23 @@ export class ScheduleService {
     return (await this.store()).setEnabled(id, enabled, baseRev, creds);
   }
 
+  /**
+   * Runner, credentials and payloads, with no cron write. Called when a
+   * workspace connects, so a brand-new session already has `otto_schedule`.
+   */
+  async prepare(creds: Credentials): Promise<{ rev: number; schedules: Schedule[]; warnings: string[] }> {
+    // `store()` probes the machine first, so `envCache` carries a fresh
+    // `hasCron`; nothing here can change it.
+    return (await this.store()).prepare(creds);
+  }
+
   /** Runner script, credentials, payloads and cron block; no definition change. */
   async install(creds: Credentials): Promise<{ rev: number; schedules: Schedule[]; warnings: string[] }> {
     const store = await this.store();
     const out = await store.install(creds);
     const env = await this.env();
-    if (!out.warnings.some((w) => w.startsWith("cron-"))) this.envCache = { ...env, hasCron: true };
+    // With no schedules the crontab is untouched, so the probe's answer stands.
+    if (out.schedules.length && !out.warnings.some((w) => w.startsWith("cron-"))) this.envCache = { ...env, hasCron: true };
     return out;
   }
 

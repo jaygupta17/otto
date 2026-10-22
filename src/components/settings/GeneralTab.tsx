@@ -12,6 +12,7 @@ import { dispatchAlerts, useNotifications, type AlertKind } from "../../state/no
 import { Button } from "../ui/Button";
 import { Select } from "../ui/Select";
 import { AgentMark } from "../ui/TeammateFace";
+import { useSchedules } from "../../state/schedules";
 import { useTeammates } from "../../state/teammates";
 import { isOfferedAgent } from "../../lib/teammates";
 import { Spinner } from "../ui/AgentClock";
@@ -27,6 +28,7 @@ export function GeneralTab() {
       <AppearanceSection />
       <NotificationsSection />
       <DefaultsSection />
+      <AutomationSection />
       <UpdatesSection />
     </>
   );
@@ -212,6 +214,32 @@ function DefaultsSection() {
         <PermissionsEditor model={perms} onChange={setPerms} globalRules={[]} />
       </Section>
     </>
+  );
+}
+
+/** What Otto's agents can do on their own, on this machine. */
+function AutomationSection() {
+  const client = useChat((s) => s.client);
+  const schedulesOff = useTeammates((s) => s.schedulesOff);
+  const setAgentTools = useSchedules((s) => s.setAgentTools);
+  const [busy, setBusy] = useState(false);
+  return (
+    <Section title="Automation" desc="On the machine your agents run on.">
+      <Rows>
+        <Row label="Agents can manage schedules" hint="They can create and run schedules; creating, changing or deleting one asks you first">
+          <Toggle
+            on={!schedulesOff}
+            disabled={!client || busy}
+            onChange={async (v) => {
+              setBusy(true);
+              await setAgentTools(v);
+              setBusy(false);
+            }}
+            label="Agents can manage schedules"
+          />
+        </Row>
+      </Rows>
+    </Section>
   );
 }
 

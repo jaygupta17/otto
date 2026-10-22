@@ -16,7 +16,9 @@ import { DAYTONA_EXTRA_HEADERS, DAYTONA_PREVIEW_HEADER, DaytonaError, keepDayton
 import { PROVIDER_NAME } from "../lib/providers/names";
 import { reviveLocal } from "../lib/providers/local";
 import { BoatError, isBillingError } from "../lib/providers/boat";
+import { prepareSchedules, scheduleLocalUrl } from "../lib/schedulesSetup";
 import { secrets } from "../lib/secrets";
+import { readTeammates } from "../lib/teammates";
 import { isCloud, secretKeys, useWorkspaces, type Workspace } from "./workspaces";
 import { useChat } from "./chat";
 
@@ -171,6 +173,14 @@ export const useConnection = create<State>((set, get) => ({
       // The first stream connect can fire while this is still running: chain
       // its quiet sync instead of resyncing underneath the bootstrap.
       const booted = chat.bootstrap(client).catch(() => {});
+      // The schedule tool has to be on the machine before a session is asked
+      // to schedule something, not only once someone opens Schedules. After
+      // the bootstrap, so the plugin's config write (which reloads OpenCode's
+      // config) can't cut into the first catalog read. Never blocking, and a
+      // machine that can't take the files still connects.
+      void booted
+        .then(() => (stale() ? undefined : prepareAutomation(client, password, info)))
+        .catch((e) => console.warn("schedules:", e));
 
       stream = startEventStream(client, {
         onEvent: (e) => {
@@ -221,6 +231,16 @@ export const useConnection = create<State>((set, get) => ({
     else if (get().status === "error") get().retry();
   },
 }));
+
+/**
+ * Install the agent schedule tool on a fresh connection, unless the user
+ * turned agent schedules off on this machine. `info` is from `client.info()`,
+ * so the runner's URL is built from the server's own first address.
+ */
+async function prepareAutomation(client: OpenCode, password: string, info: ServerInfo | null) {
+  if ((await readTeammates(client)).schedules === "off") return;
+  await prepareSchedules(client, { password, localUrl: scheduleLocalUrl(info) });
+}
 
 /** One quiet sentence for the store; the UI shows it, nothing toasts it. */
 function catalogProblem(catalog: CatalogResult): string {

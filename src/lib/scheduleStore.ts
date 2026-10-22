@@ -371,11 +371,7 @@ export class ScheduleStore {
       const draft = mutate(current.schedules.map((s) => ({ ...s })));
       const next = normalizeSchedules(draft.schedules);
       const rev = current.rev + 1;
-      await this.writeRunner();
-      if (opts.creds) await this.writeCredentials(opts.creds);
-      // Payloads are derived and cheap; writing them all repairs a deleted
-      // file or a migrated v1 schedule that never had one.
-      for (const s of next) await this.writeTask(s);
+      await this.writeDerived(next, opts.creds);
       const body = serializeSchedules(next, rev);
       const tmp = `${this.file}.tmp-${this.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
       await this.host.write(tmp, body);
@@ -437,14 +433,30 @@ export class ScheduleStore {
     );
   }
 
+  /**
+   * Write the runner, credentials and payloads without a definition change and
+   * without touching the crontab. A connection prepares these files so the
+   * first agent-created schedule can run; a machine with no schedules yet must
+   * not get an empty managed crontab block.
+   */
+  async prepare(creds?: Credentials): Promise<{ rev: number; schedules: Schedule[]; warnings: string[] }> {
+    return this.withLock(async () => {
+      const current = await this.readFile(true);
+      await this.writeDerived(current.schedules, creds);
+      await this.host.prune(current.schedules.map((s) => s.id)).catch(() => {});
+      return { rev: current.rev, schedules: current.schedules, warnings: [] };
+    });
+  }
+
   /** Write the runner, credentials, payloads and cron block without a definition change. */
   async install(creds?: Credentials): Promise<{ rev: number; schedules: Schedule[]; warnings: string[] }> {
     return this.withLock(async () => {
       const current = await this.readFile(true);
-      await this.writeRunner();
-      if (creds) await this.writeCredentials(creds);
-      for (const s of current.schedules) await this.writeTask(s);
-      const warnings = await this.installCron(current.schedules);
+      await this.writeDerived(current.schedules, creds);
+      // No schedules: leave the crontab exactly as it is. Nothing would run,
+      // and connecting would otherwise add empty managed markers to a new
+      // machine. Cron starts on the first schedule, through `transact`.
+      const warnings = current.schedules.length ? await this.installCron(current.schedules) : [];
       await this.host.prune(current.schedules.map((s) => s.id)).catch(() => {});
       return { rev: current.rev, schedules: current.schedules, warnings };
     });
@@ -526,6 +538,15 @@ export class ScheduleStore {
   private async writeRunner() {
     await this.host.write(`${this.dir}/bin/otto-run`, RUNNER_SCRIPT);
     await this.host.chmod(`${this.dir}/bin/otto-run`, 0o755);
+  }
+
+  /** Runner, credentials and payloads: everything derived from the schedule list. */
+  private async writeDerived(schedules: Schedule[], creds?: Credentials) {
+    await this.writeRunner();
+    if (creds) await this.writeCredentials(creds);
+    // Payloads are derived and cheap; writing them all repairs a deleted file
+    // or a migrated v1 schedule that never had one.
+    for (const s of schedules) await this.writeTask(s);
   }
 
   private async writeCredentials(creds: Credentials) {

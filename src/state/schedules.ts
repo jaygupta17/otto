@@ -1,9 +1,12 @@
 import { create } from "zustand";
 import { ScheduleService, StaleScheduleError, type Credentials, type RunRecord, type Schedule, type ServerEnv } from "../lib/schedules";
 import { ensureSchedulePlugin } from "../lib/schedulesPlugin";
+import { prepareSchedules, removeScheduleTools, scheduleLocalUrl } from "../lib/schedulesSetup";
 import { secrets } from "../lib/secrets";
+import { updateTeammates } from "../lib/teammates";
 import { useChat } from "./chat";
 import { useConnection } from "./connection";
+import { useTeammates } from "./teammates";
 import { secretKeys, useWorkspaces } from "./workspaces";
 import { toast } from "./ui";
 
@@ -22,6 +25,8 @@ interface State {
   remove(id: string, baseRev?: number): Promise<boolean>;
   setEnabled(id: string, enabled: boolean): Promise<boolean>;
   runNow(id: string): Promise<void>;
+  /** "Agents can manage schedules": install or remove the `otto_schedule` tool. */
+  setAgentTools(on: boolean): Promise<boolean>;
   reset(): void;
 }
 
@@ -37,14 +42,7 @@ function svc() {
 
 /** Address the runner uses on the server itself (loopback, not the public proxy). */
 function localUrl() {
-  const info = useConnection.getState().info;
-  const raw = info?.urls?.[0] ?? "http://127.0.0.1:4096";
-  try {
-    const u = new URL(raw);
-    return `http://127.0.0.1:${u.port || (u.protocol === "https:" ? 443 : 80)}`;
-  } catch {
-    return "http://127.0.0.1:4096";
-  }
+  return scheduleLocalUrl(useConnection.getState().info);
 }
 
 /** The runner's credentials, from the workspace this device is connected to. */
@@ -110,8 +108,9 @@ export const useSchedules = create<State>((set, get) => ({
         set((st) => ({ env: st.env ? { ...st.env, hasCron: false } : st.env }));
         toast({ tone: "error", title: editing ? "Saved, but cron isn't set up" : "Created, but cron isn't set up", body: "The schedule is stored; it starts firing once cron works on this machine." });
       } else toast({ tone: "ok", title: editing ? "Schedule updated" : "Schedule created" });
-      // A schedule saved before the view ever opened still gets the agent tool.
-      void ensureSchedulePlugin(s.client).catch(() => {});
+      // A schedule saved before the view ever opened still gets the agent tool
+      // (unless the user turned agent schedules off).
+      if (!useTeammates.getState().schedulesOff) void ensureSchedulePlugin(s.client).catch(() => {});
       return true;
     } catch (e) {
       set({ saving: false });
@@ -173,6 +172,42 @@ export const useSchedules = create<State>((set, get) => ({
     }
   },
 
+  async setAgentTools(on) {
+    const c = useChat.getState().client;
+    if (!c) {
+      toast({ tone: "error", title: on ? "Couldn't turn schedules on" : "Couldn't turn schedules off", body: "Not connected to a workspace." });
+      return false;
+    }
+    try {
+      // The file flag first: a reconnect reads it before installing anything,
+      // so a half-finished change can't put the tool back behind the user.
+      await updateTeammates(c, (f) => {
+        if (on) delete f.schedules;
+        else f.schedules = "off";
+      });
+      if (on) {
+        useTeammates.setState({ schedulesOff: false });
+        await prepareSchedules(c, await credentials());
+        toast({ tone: "ok", title: "Agents can manage schedules", body: "They can create and run schedules; creating, changing or deleting one asks you first." });
+      } else {
+        useTeammates.setState({ schedulesOff: true });
+        await removeScheduleTools(c);
+        toast({ tone: "ok", title: "Agents can't manage schedules", body: "Existing schedules keep running. Their files and run history stay on the machine." });
+      }
+      return true;
+    } catch (e) {
+      // Put the flag back so the next connection doesn't inherit a setting
+      // that never took effect.
+      await updateTeammates(c, (f) => {
+        if (on) f.schedules = "off";
+        else delete f.schedules;
+      }).catch(() => {});
+      useTeammates.setState({ schedulesOff: !on });
+      toast({ tone: "error", title: on ? "Couldn't turn schedules on" : "Couldn't turn schedules off", body: (e as Error).message });
+      return false;
+    }
+  },
+
   reset() {
     service = null;
     prepared = null;
@@ -187,14 +222,16 @@ async function install(s: ScheduleService) {
     const state = useSchedules.getState();
     // A save may have landed while this was reading; never walk the list back.
     if (out.rev >= state.rev) {
-      useSchedules.setState({ rev: out.rev, list: out.schedules, env: state.env ? { ...state.env, hasCron: out.warnings.length === 0 } : state.env });
+      // With no schedules, install left cron alone: keep what the probe said.
+      const env = state.env ? { ...state.env, hasCron: out.schedules.length ? out.warnings.length === 0 : state.env.hasCron } : state.env;
+      useSchedules.setState({ rev: out.rev, list: out.schedules, env });
     }
   } catch {
     // Retry on the next focus/open: a stopped machine or a missing password is
     // often temporary.
     if (prepared === s) prepared = null;
   }
-  await ensureSchedulePlugin(s.client).catch(() => {});
+  if (!useTeammates.getState().schedulesOff) await ensureSchedulePlugin(s.client).catch(() => {});
 }
 
 useChat.subscribe((s, prev) => {

@@ -23,6 +23,9 @@ interface FakeCron {
   content: string;
   /** When set, every crontab write fails with this message. */
   fail: string | null;
+  /** How many times the host read/wrote the crontab (prepare must not). */
+  reads: number;
+  writes: number;
 }
 
 function localHost(cron: FakeCron, onRun?: (id: string) => RunRecord | null): StoreHost {
@@ -61,10 +64,12 @@ function localHost(cron: FakeCron, onRun?: (id: string) => RunRecord | null): St
     },
     chmod,
     async readCrontab() {
+      cron.reads++;
       if (cron.fail) return { ok: false, reason: "failed", message: cron.fail };
       return { ok: true, content: cron.content };
     },
     async writeCrontab(body) {
+      cron.writes++;
       if (cron.fail) throw new Error(cron.fail);
       cron.content = body;
     },
@@ -104,7 +109,7 @@ let cron: FakeCron;
 
 beforeEach(async () => {
   ROOT = await mkdtemp(join(tmpdir(), "otto-schedules-"));
-  cron = { content: "", fail: null };
+  cron = { content: "", fail: null, reads: 0, writes: 0 };
 });
 
 afterEach(async () => {
@@ -146,6 +151,12 @@ function thrown(fn: () => unknown): unknown {
 }
 
 const readFileJson = async () => JSON.parse(await readFile(join(ROOT, ".otto", "schedules.json"), "utf8")) as { version: number; rev: number; schedules: Schedule[] };
+
+/** Seed the file directly, without going through the store (and its cron write). */
+async function seed(schedules: Schedule[], rev = 0) {
+  await mkdir(join(ROOT, ".otto"), { recursive: true });
+  await writeFile(join(ROOT, ".otto", "schedules.json"), JSON.stringify({ version: 2, rev, schedules }));
+}
 
 // ---------------------------------------------------------------------------
 
@@ -408,5 +419,43 @@ describe("runner install", () => {
     const env = join(ROOT, ".otto", "server.env");
     expect(await readFile(env, "utf8")).toContain("OTTO_PASSWORD='pw'");
     expect((await stat(env)).mode & 0o777).toBe(0o600);
+  });
+});
+
+describe("install on connect", () => {
+  test("prepare writes the runner, credentials and payloads, and leaves cron alone", async () => {
+    await seed([sched()], 3);
+    const out = await store().prepare({ password: "pw", localUrl: "http://127.0.0.1:4096" });
+    expect(out.rev).toBe(3);
+    expect(out.schedules.map((s) => s.id)).toEqual(["sch_one"]);
+    expect(out.warnings).toEqual([]);
+    expect(await readFile(join(ROOT, ".otto", "bin", "otto-run"), "utf8")).toContain("skipped-running");
+    expect(await readFile(join(ROOT, ".otto", "server.env"), "utf8")).toContain("OTTO_PASSWORD='pw'");
+    expect(await readFile(join(ROOT, ".otto", "tasks", "sch_one.prompt.json"), "utf8")).toContain("Check the tests");
+    // Not even a read: preparing has no cron business at all.
+    expect(cron.reads).toBe(0);
+    expect(cron.writes).toBe(0);
+    expect(cron.content).toBe("");
+  });
+
+  test("install with no schedules does not add a managed cron block", async () => {
+    cron.content = "MAILTO=me@example.com\n";
+    const out = await store().install({ password: "pw", localUrl: "http://127.0.0.1:4096" });
+    expect(out.schedules).toEqual([]);
+    expect(out.warnings).toEqual([]);
+    expect(cron.writes).toBe(0);
+    expect(cron.content).toBe("MAILTO=me@example.com\n");
+    expect(cron.content).not.toContain(CRON_BEGIN);
+    // The files the tool needs are still written.
+    expect(await readFile(join(ROOT, ".otto", "bin", "otto-run"), "utf8")).toContain("set -u");
+  });
+
+  test("install with one schedule writes exactly one managed block", async () => {
+    await seed([sched()], 2);
+    const out = await store().install({ password: "pw", localUrl: "http://127.0.0.1:4096" });
+    expect(out.rev).toBe(2);
+    expect(cron.writes).toBe(1);
+    expect(cron.content.split(CRON_BEGIN).length - 1).toBe(1);
+    expect(cron.content).toContain("0 9 * * *");
   });
 });

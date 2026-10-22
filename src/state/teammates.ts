@@ -19,6 +19,8 @@ interface State {
   byId: Record<string, Teammate> | null;
   /** The user turned memory off; writing agents then leaves the plugin out. */
   memoryOff: boolean;
+  /** The user turned agent schedules off; Otto then removes the schedule plugin. */
+  schedulesOff: boolean;
   error: string | null;
   load(): Promise<void>;
   /** Create or update. Returns false (after a toast) when it didn't save. */
@@ -42,6 +44,7 @@ let generation = 0;
 export const useTeammates = create<State>((set, get) => ({
   byId: null,
   memoryOff: false,
+  schedulesOff: false,
   error: null,
 
   async load() {
@@ -50,7 +53,7 @@ export const useTeammates = create<State>((set, get) => ({
       const c = client();
       const file = await readTeammates(c);
       if (gen !== generation) return;
-      set({ byId: file.teammates, memoryOff: file.memory === "off", error: null });
+      set({ byId: file.teammates, memoryOff: file.memory === "off", schedulesOff: file.schedules === "off", error: null });
       syncPicked();
       await resync(Object.values(file.teammates), () => gen !== generation);
     } catch (e) {
@@ -163,7 +166,7 @@ export const useTeammates = create<State>((set, get) => ({
 
   reset() {
     generation++;
-    set({ byId: null, memoryOff: false, error: null });
+    set({ byId: null, memoryOff: false, schedulesOff: false, error: null });
   },
 }));
 
