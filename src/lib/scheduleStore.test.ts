@@ -194,6 +194,12 @@ describe("file format", () => {
     expect(reloaded.schedules[0].lastRun).toEqual(run);
   });
 
+  test("a save with an older lastRun does not walk the run status back", async () => {
+    await store().upsert(sched({ lastRun: { at: 2_000, ok: true, sessionID: "ses_new" } }), 0);
+    const saved = await store().upsert(sched({ name: "Renamed", lastRun: { at: 1_000, ok: false, error: "old" } }), 1);
+    expect(saved.result.lastRun).toEqual({ at: 2_000, ok: true, sessionID: "ses_new" });
+  });
+
   test("merges a newer run state from the runner over the stored lastRun", async () => {
     await store().upsert(sched({ lastRun: { at: 1_000, ok: false, error: "old" } }), 0);
     await mkdir(join(ROOT, ".otto", "state"), { recursive: true });

@@ -389,8 +389,12 @@ export class ScheduleStore {
   upsert(schedule: Schedule, baseRev?: number, creds?: Credentials) {
     return this.transact(
       (schedules) => {
-        const exists = schedules.some((s) => s.id === schedule.id);
-        return { schedules: exists ? schedules.map((s) => (s.id === schedule.id ? schedule : s)) : [...schedules, schedule], result: schedule };
+        const before = schedules.find((s) => s.id === schedule.id);
+        // A run may have finished while the app's editor was open; its status
+        // is newer than the copy the editor saved.
+        const lastRun = before?.lastRun && (!schedule.lastRun || before.lastRun.at > schedule.lastRun.at) ? before.lastRun : schedule.lastRun;
+        const next = lastRun ? { ...schedule, lastRun } : schedule;
+        return { schedules: before ? schedules.map((s) => (s.id === schedule.id ? next : s)) : [...schedules, next], result: next };
       },
       { baseRev, creds },
     );
