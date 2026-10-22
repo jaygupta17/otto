@@ -48,6 +48,8 @@ interface State {
   delegated: Record<string, string>;
   agents: AgentInfo[];
   models: ModelInfo[];
+  /** Why the last catalog refresh failed, if it did. Shown quietly; never toasted automatically. */
+  catalogError?: string;
   defaultModel: ModelRef | null;
   pickedModel: ModelRef | null;
   /** The agent new sessions start with. null until a teammate exists. */
@@ -62,13 +64,16 @@ interface State {
   /** Agent rows open in the sidebar, by agent id. */
   agentRowsOpen: string[];
   toggleAgentRow(id: string, open?: boolean): void;
-  refreshCatalog(): Promise<void>;
+  /** Re-read agents and models. Silent by default: automatic refreshes must not toast during warmup. */
+  refreshCatalog(opts?: { silent?: boolean }): Promise<void>;
   activeId: string | null;
   drafts: Record<string, string>;
 
   reset(): void;
   bootstrap(client: OpenCode): Promise<void>;
   resync(): Promise<void>;
+  /** Cheap catch-up after the first stream connect, once bootstrap has settled. */
+  syncOnConnect(): Promise<void>;
   loadSessions(): Promise<void>;
   open(id: string | null): void;
   loadTimeline(id: string, force?: boolean): Promise<void>;
@@ -111,6 +116,10 @@ const pendingWhileLoading = new Map<string, V2Event[]>();
 const reconcileTimers = new Map<string, ReturnType<typeof setTimeout>>();
 /** Bumped by every catalog request and every reset; only the newest may publish. */
 let catalogGeneration = 0;
+/** One in-flight catalog read per client + generation, however many callers ask. */
+let catalogInFlight: { client: OpenCode; gen: number; promise: Promise<void> } | null = null;
+/** Debounced silent refresh for provider/model/agent config events. */
+let catalogEventTimer: ReturnType<typeof setTimeout> | undefined;
 /** Bumped by every pending-ask resync and every reset; only the newest may publish. */
 let askGeneration = 0;
 /** Bumped by every session-list load and every reset; only the newest may publish. */
@@ -261,11 +270,13 @@ export const useChat = create<State>((set, get) => ({
   reset() {
     queue = [];
     pendingWhileLoading.clear();
+    if (catalogEventTimer) clearTimeout(catalogEventTimer);
+    catalogEventTimer = undefined;
     catalogGeneration++;
     askGeneration++;
     sessionGeneration++;
     busyGeneration++;
-    set({ client: null, sessions: {}, sessionsLoaded: false, sessionsError: undefined, busy: {}, retrying: {}, unread: {}, timelines: {}, permissions: {}, forms: {}, parents: {}, delegated: {}, agents: [], models: [], defaultModel: null, homeDir: null, activeId: null, pickedModel: null, pickedAgent: null, projectDir: null });
+    set({ client: null, sessions: {}, sessionsLoaded: false, sessionsError: undefined, busy: {}, retrying: {}, unread: {}, timelines: {}, permissions: {}, forms: {}, parents: {}, delegated: {}, agents: [], models: [], catalogError: undefined, defaultModel: null, homeDir: null, activeId: null, pickedModel: null, pickedAgent: null, projectDir: null });
   },
 
   async bootstrap(client) {
@@ -301,17 +312,20 @@ export const useChat = create<State>((set, get) => ({
     ]);
     if (!live()) return;
     const labels = ["sessions", "location", "agents", "models", "default model", "active sessions"];
+    let problem: string | undefined;
     results.forEach((r, i) => {
-      if (r.status === "rejected") console.error(`bootstrap: ${labels[i]} failed`, r.reason);
+      if (r.status !== "rejected") return;
+      console.error(`bootstrap: ${labels[i]} failed`, r.reason);
+      // Warmup is expected on a fresh connection and connection readiness owns
+      // its retries. Record the reason; never toast from here.
+      if ((i === 2 || i === 3) && !problem) problem = String((r.reason as Error | undefined)?.message ?? r.reason ?? "");
     });
-    const failed = results.map((r, i) => (r.status === "rejected" && (i === 2 || i === 3) ? labels[i] : null)).filter(Boolean);
-    if (failed.length) toast({ tone: "error", title: `Couldn't load ${failed.join(" and ")}`, body: String((results.find((r) => r.status === "rejected") as PromiseRejectedResult).reason?.message ?? "") });
+    if (problem) set({ catalogError: problem });
     if (import.meta.env.DEV) console.info(`bootstrap: ${Object.keys(get().sessions).length} sessions, ${get().agents.length} agents, ${get().models.length} models, home=${get().homeDir}`);
     const { pickedModel, models, defaultModel } = get();
     if (pickedModel && models.length && !models.some((m) => m.providerID === pickedModel.providerID && m.id === pickedModel.id)) set({ pickedModel: null });
     const defInfo = defaultModel && models.find((m) => m.providerID === defaultModel.providerID && m.id === defaultModel.id);
     if (models.length && (!defInfo || !defInfo.capabilities?.tools)) set({ defaultModel: fallbackModel(models, get().brokenModels) ?? defaultModel });
-    if (!get().agents.length || !models.length) void retryCatalog(client);
     // A remembered folder that's gone (deleted, or the machine was rebuilt) would fail the first message: fall back to home.
     const dir = get().projectDir;
     if (dir && dir !== get().homeDir) {
@@ -322,24 +336,42 @@ export const useChat = create<State>((set, get) => ({
     }
   },
 
-  async refreshCatalog() {
+  async refreshCatalog(opts) {
     const client = get().client;
     if (!client) return;
+    // Automatic refreshes are quiet by default: the connection owns warmup, and
+    // a toast here produced a storm on every reconnect. Only an explicit user
+    // action opts into the toast.
+    const silent = opts?.silent ?? true;
+    // Single-flight: a save, a config event and a resync may all ask at once.
+    if (catalogInFlight && catalogInFlight.client === client && catalogInFlight.gen === catalogGeneration) return catalogInFlight.promise;
     // Requests race (a save, a reconnect, a settings screen): an older reply
     // arriving last would put back agents deleted since. Newest wins only.
     const gen = ++catalogGeneration;
-    const [agents, models] = await Promise.allSettled([client.agents(), client.models()]);
-    if (gen !== catalogGeneration || get().client !== client) return;
-    // A server still loading its config answers with nothing (see retryCatalog):
-    // keep what we have rather than blanking the pickers until the next refresh.
-    if (agents.status === "fulfilled" && (agents.value.length || !get().agents.length)) set({ agents: agents.value });
-    if (models.status === "fulfilled" && (models.value.length || !get().models.length)) {
-      set({ models: models.value });
-      if (!get().defaultModel) set({ defaultModel: fallbackModel(models.value, get().brokenModels) });
-    }
-    if (agents.status === "rejected" || models.status === "rejected") {
-      toast({ tone: "error", title: "Couldn't load models", body: String(((agents.status === "rejected" ? agents : models) as PromiseRejectedResult).reason?.message ?? "") });
-    }
+    let promise: Promise<void>;
+    promise = (async () => {
+      const [agents, models] = await Promise.allSettled([client.agents(), client.models()]);
+      if (gen !== catalogGeneration || get().client !== client) return;
+      // A server still loading its config answers with nothing (readiness owns
+      // waiting for it): keep what we have rather than blanking the pickers.
+      if (agents.status === "fulfilled" && (agents.value.length || !get().agents.length)) set({ agents: agents.value });
+      if (models.status === "fulfilled" && (models.value.length || !get().models.length)) {
+        set({ models: models.value });
+        if (!get().defaultModel) set({ defaultModel: fallbackModel(models.value, get().brokenModels) });
+      }
+      const failure = agents.status === "rejected" ? agents : models.status === "rejected" ? models : null;
+      if (failure) {
+        const message = String((failure as PromiseRejectedResult).reason?.message ?? (failure as PromiseRejectedResult).reason ?? "");
+        set({ catalogError: message });
+        if (!silent) toast({ tone: "error", title: "Couldn't load models", body: message });
+      } else {
+        set({ catalogError: undefined });
+      }
+    })().finally(() => {
+      if (catalogInFlight?.promise === promise) catalogInFlight = null;
+    });
+    catalogInFlight = { client, gen, promise };
+    return promise;
   },
 
   async resync() {
@@ -366,6 +398,28 @@ export const useChat = create<State>((set, get) => ({
     // one fetch for the default location would miss a project's ask, and the
     // merge would drop it while the server still had it pending.
     void syncAsks(client);
+    const id = get().activeId;
+    if (id) await get().loadTimeline(id, true);
+  },
+
+  /**
+   * The stream's first connect can land just after bootstrap. Catch anything
+   * that changed between the bootstrap snapshot and the stream going live:
+   * asks, running sessions, and the timeline the user has open. Cheap on
+   * purpose; a real `resync` is only for reconnects.
+   */
+  async syncOnConnect() {
+    const client = get().client;
+    if (!client) return;
+    const busyGen = busyGeneration;
+    void syncAsks(client);
+    try {
+      const ids = await client.activeSessions();
+      applyActiveSessions(client, busyGen, ids);
+    } catch {
+      /* bootstrap already reported a failure; this is a catch-up */
+    }
+    if (get().client !== client) return;
     const id = get().activeId;
     if (id) await get().loadTimeline(id, true);
   },
@@ -794,6 +848,23 @@ function scheduleReconcile(id: string) {
   );
 }
 
+/**
+ * A provider/model/agent config event arrives in bursts. Refresh once, quietly,
+ * and only for the client that was connected when the event landed: a
+ * workspace switch during the debounce must not pull one machine's catalog
+ * into another.
+ */
+function scheduleCatalogRefresh(client: OpenCode | null) {
+  if (!client) return;
+  if (catalogEventTimer) clearTimeout(catalogEventTimer);
+  catalogEventTimer = setTimeout(() => {
+    catalogEventTimer = undefined;
+    const st = useChat.getState();
+    if (st.client !== client) return;
+    void st.refreshCatalog({ silent: true });
+  }, 400);
+}
+
 /** Index of the first hidden message when an undo is staged (messages.length when none). */
 export function revertIndex(messages: UIMessage[], revert?: SessionRevert | { messageID: string }): number {
   if (!revert) return messages.length;
@@ -850,6 +921,9 @@ function flush() {
 
   const settled: ToolSettled[] = [];
   for (const e of events) {
+    // Provider keys, model availability and agent definitions changed: the
+    // catalog is stale. One quiet refresh after a burst (a save writes several).
+    if (e.type === "model.updated" || e.type === "provider.updated" || e.type === "agent.updated") scheduleCatalogRefresh(st.client);
     const d = (e as { data?: Record<string, unknown> }).data ?? {};
     const sid = eventSessionID(e);
     if (e.type === "session.tool.success" && sid && toolListeners.size) {
@@ -1085,21 +1159,6 @@ const toolListeners = new Set<(t: ToolSettled) => void>();
 export function onToolSettled(fn: (t: ToolSettled) => void) {
   toolListeners.add(fn);
   return () => void toolListeners.delete(fn);
-}
-
-/**
- * A server that has only just started can answer before its config has
- * loaded, with no agents or models (every real server has at least `build`).
- * Ask again a few times instead of leaving the pickers empty until the next
- * reconnect.
- */
-async function retryCatalog(client: OpenCode) {
-  for (const ms of [600, 1500, 4000]) {
-    await new Promise((r) => setTimeout(r, ms));
-    const s = useChat.getState();
-    if (s.client !== client || (s.agents.length && s.models.length)) return;
-    await s.refreshCatalog();
-  }
 }
 
 /**
