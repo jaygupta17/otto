@@ -6,6 +6,10 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 ## [Unreleased]
 
+### Added
+
+- Agents can manage schedules on a fresh machine: the `otto_schedule` tool is installed when a workspace connects, not only after someone opens Schedules. Settings → General → Automation → **Agents can manage schedules** turns it off, and existing schedules keep running.
+
 ## [0.12.1] - 2026-10-22
 
 ### Fixed

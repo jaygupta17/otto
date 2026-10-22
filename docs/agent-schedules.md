@@ -60,8 +60,12 @@ Each schedule carries optional `createdBy` (`"user"` or `"agent:<sessionID>"`),
 ## The tool
 
 The OpenCode file plugin at `~/.otto/agent-tool/otto-schedule/` registers one
-tool, `otto_schedule`. It is installed when the Schedules view first opens (or
-on the first save) and added to the global config as exactly one entry:
+tool, `otto_schedule`. It is installed for every workspace connection, so a
+brand-new session can schedule something without anyone opening Schedules
+first; opening the view or saving a schedule also ensures it. The runner,
+`server.env` and task payloads are prepared the same way, but cron is not
+written until the first schedule exists, so a new machine gets no empty managed
+block. The plugin goes into the global config as exactly one entry:
 
 ```jsonc
 { "plugins": [{ "package": "file:///home/me/.otto/agent-tool/otto-schedule", "options": {} }] }
@@ -69,7 +73,11 @@ on the first save) and added to the global config as exactly one entry:
 
 `ensureSchedulePlugin(client)` writes `package.json` and `index.js` only when
 their text changed, then adds/replaces the entry. `removeSchedulePlugin(client)`
-removes the entry and leaves the files in place.
+removes the entry and leaves the files in place. Turning off Settings → General
+→ Automation → **Agents can manage schedules** does exactly that: the tool is
+gone from new sessions, while `schedules.json`, the runner, existing cron lines
+and run history stay, so existing schedules keep firing. Turning it back on
+reinstalls the plugin and keeps them.
 
 Parameters:
 
