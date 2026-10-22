@@ -6,6 +6,8 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-10-22
+
 ### Fixed
 
 - Long conversations open without a long wait or a failed fetch. History now loads in small pages, and a finished turn refreshes only the last few messages instead of downloading the whole session again.
@@ -252,7 +254,8 @@ First public release.
 - Scheduled tasks that run on the agent machine.
 - Project file browser with syntax highlighting.
 
-[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.12.1...HEAD
+[0.12.1]: https://github.com/jaygupta17/otto/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/jaygupta17/otto/compare/v0.11.1...v0.12.0
 [0.11.1]: https://github.com/jaygupta17/otto/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/jaygupta17/otto/compare/v0.10.0...v0.11.0
