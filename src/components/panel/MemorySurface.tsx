@@ -1,119 +1,94 @@
 /**
- * What teammates remember in this project: every memory the plugin saved,
- * searchable, editable and deletable in place. Nothing is hidden: this is the
- * same file the agents read.
+ * Memory: the markdown teammates keep on this machine. `context.md` is
+ * injected into every new session, so it sits at the top in an editor; the
+ * rest of the folder is a small index, and any file opens here to edit.
+ * Nothing is hidden: this is the same folder the agents read and write.
  */
-import { Bookmark, Pencil, Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { AlertTriangle, ArrowLeft, FileText, RefreshCw } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useChat } from "../../state/chat";
 import { useMemory } from "../../state/memory";
-import { useTeammates } from "../../state/teammates";
-import { basename, timeAgo } from "../../lib/format";
-import { MEMORY_TYPES, PROJECT_SCOPE, TYPE_LABEL, USER_SCOPE, type MemoryEntry, type MemoryType } from "../../lib/memory";
-import type { Teammate } from "../../lib/teammates";
+import { prettyPath, timeAgo } from "../../lib/format";
+import { CONTEXT_LINE_LIMIT, lineCount, type MemoryFile, type MemoryKind } from "../../lib/memory";
+import { Toggle } from "../settings/common";
 import { Button, IconButton } from "../ui/Button";
-import { Select } from "../ui/Select";
 import { Spinner } from "../ui/AgentClock";
-import { AgentMark } from "../ui/TeammateFace";
 import { PanelEmpty, PanelHeader, PanelTitle, useSurfaceVisible } from "./SidePanel";
 
-const ALL = "";
+const KIND_LABEL: Record<Exclude<MemoryKind, "context" | "other">, string> = {
+  daily: "Daily",
+  project: "Project",
+  learning: "Learning",
+  agent: "Agent",
+};
 
-export function scopeLabel(scope: string, roster: Record<string, Teammate> | null) {
-  if (scope === USER_SCOPE) return "About you";
-  if (scope === PROJECT_SCOPE) return "This project";
-  return roster?.[scope]?.name ?? scope;
-}
+const relPath = (f: MemoryFile) => {
+  switch (f.kind) {
+    case "daily":
+      return `daily/${f.name}.md`;
+    case "project":
+      return `projects/${f.name}.md`;
+    case "learning":
+      return `learnings/${f.name}.md`;
+    case "agent":
+      return `agents/${f.name}.md`;
+    case "context":
+      return "context.md";
+    default:
+      return f.name;
+  }
+};
 
-const typeOptions = MEMORY_TYPES.map((t) => ({ value: t, label: TYPE_LABEL[t] }));
+const todayStamp = () => {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+};
 
-export function MemorySurface({ root }: { root: string | null }) {
+export function MemorySurface(_props: { root: string | null }) {
   const client = useChat((s) => s.client);
   const visible = useSurfaceVisible("memory");
   const installed = useMemory((s) => s.installed);
-  const folder = useMemory((s) => (root ? s.byRoot[root] : undefined));
-  const roster = useTeammates((s) => s.byId);
-  const [query, setQuery] = useState("");
-  const [scope, setScope] = useState(ALL);
-  const [adding, setAdding] = useState(false);
+  const context = useMemory((s) => s.context);
+  const files = useMemory((s) => s.files);
+  const active = useMemory((s) => s.active);
+  const loading = useMemory((s) => s.loading);
+  const error = useMemory((s) => s.error);
   const [busy, setBusy] = useState(false);
-  const searchRef = useRef<HTMLInputElement>(null);
 
   // Load on show, and again whenever the panel comes back.
   useEffect(() => {
     if (!visible || !client) return;
     const m = useMemory.getState();
-    if (m.installed === null) void m.checkInstalled();
-    if (root) void m.load(root);
-  }, [visible, client, root]);
+    void m.checkInstalled();
+    void m.load();
+  }, [visible, client]);
 
-  // "Show in Memory" from a chat: take its search once the panel is up.
-  const pending = useMemory((s) => s.query);
-  useEffect(() => {
-    if (!visible || pending === null) return;
-    setQuery(useMemory.getState().takeQuery() ?? "");
-    setScope(ALL);
-  }, [pending, visible]);
-
-  useEffect(() => {
-    setScope(ALL);
-    setAdding(false);
-  }, [root]);
-
-  const entries = folder?.entries ?? null;
-
-  /** Scopes in use, people first: you, the project, teammates, then anything else. */
-  const scopes = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const e of entries ?? []) counts.set(e.scope, (counts.get(e.scope) ?? 0) + 1);
-    const rank = (s: string) => (s === USER_SCOPE ? 0 : s === PROJECT_SCOPE ? 1 : roster?.[s] ? 2 : 3);
-    return [...counts].sort((a, b) => rank(a[0]) - rank(b[0]) || a[0].localeCompare(b[0]));
-  }, [entries, roster]);
-
-  const shown = useMemo(() => {
-    const words = query.toLowerCase().split(/\s+/).filter(Boolean);
-    return (entries ?? []).filter((e) => {
-      if (scope && e.scope !== scope) return false;
-      if (!words.length) return true;
-      const hay = `${e.content} ${e.type} ${e.scope} ${scopeLabel(e.scope, roster)} ${e.tags?.join(" ") ?? ""} ${e.issue ?? ""}`.toLowerCase();
-      return words.every((w) => hay.includes(w));
-    });
-  }, [entries, scope, query, roster]);
-
-  const turnOn = async () => {
+  const toggle = async (on: boolean) => {
     setBusy(true);
-    await useMemory.getState().setEnabled(true);
+    await useMemory.getState().setEnabled(on);
     setBusy(false);
   };
 
   const header = (
     <PanelHeader
       actions={
-        root && (
-          <>
-            <IconButton label="Refresh" size={28} onClick={() => void useMemory.getState().load(root)}>
-              <RefreshCw size={13} />
-            </IconButton>
-            <IconButton label="Add a memory" size={28} active={adding} onClick={() => setAdding((a) => !a)}>
-              <Plus size={15} />
-            </IconButton>
-          </>
-        )
+        <>
+          <IconButton label="Refresh" size={28} disabled={loading} onClick={() => void useMemory.getState().load()}>
+            <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
+          </IconButton>
+          <div className="mr-1 ml-1 flex items-center gap-2">
+            <span className="text-[12px] text-muted">{installed ? "On" : "Off"}</span>
+            <Toggle on={!!installed} onChange={(v) => void toggle(v)} disabled={installed === null || busy} label="Memory" />
+          </div>
+        </>
       }
     >
-      <PanelTitle surface="memory" detail={root ? basename(root) : undefined} />
+      <PanelTitle surface="memory" detail="every session" />
     </PanelHeader>
   );
 
-  if (!root)
-    return (
-      <>
-        {header}
-        <PanelEmpty icon={<Bookmark size={18} />} title="No project yet" body="Open a session to see what its teammates remember." />
-      </>
-    );
-
-  if (installed === null || (entries === null && !folder?.error))
+  if (installed === null || (files === null && !error))
     return (
       <>
         {header}
@@ -123,322 +98,240 @@ export function MemorySurface({ root }: { root: string | null }) {
       </>
     );
 
-  const empty = !entries?.length;
-
-  if (!installed && empty && !adding)
+  if (active) {
+    const file = files?.find((f) => f.path === active);
     return (
       <>
         {header}
-        <PanelEmpty
-          icon={<Bookmark size={18} />}
-          title="Memory is off"
-          body="With memory on, teammates save what they learn about you and this project, and pick it up again in later sessions. You can see and edit all of it here."
-        >
-          <Button size="sm" variant="primary" disabled={busy} onClick={() => void turnOn()}>
-            {busy ? <Spinner size={12} /> : "Turn on memory"}
-          </Button>
-        </PanelEmpty>
+        <FileEditor path={active} file={file} onBack={() => useMemory.getState().closeFile()} />
       </>
     );
+  }
+
+  const daily = (files ?? []).filter((f) => f.kind === "daily").sort((a, b) => b.name.localeCompare(a.name));
+  const today = daily.filter((f) => f.name === todayStamp());
+  const earlier = daily.filter((f) => f.name !== todayStamp());
+  const projects = byName((files ?? []).filter((f) => f.kind === "project"));
+  const learnings = byName((files ?? []).filter((f) => f.kind === "learning"));
+  const agents = byName((files ?? []).filter((f) => f.kind === "agent"));
+  const notes = daily.length + projects.length + learnings.length + agents.length;
 
   return (
     <>
       {header}
-      {!installed && (
-        <div className="flex shrink-0 items-center gap-3 border-b border-line px-4 py-2.5 text-[12.5px] text-muted">
-          <span className="min-w-0 flex-1">Memory is off. Teammates won't save or recall these.</span>
-          <Button size="sm" disabled={busy} onClick={() => void turnOn()}>
-            {busy ? <Spinner size={12} /> : "Turn on"}
-          </Button>
-        </div>
-      )}
-
-      {adding && <Composer root={root} roster={roster} onDone={() => setAdding(false)} />}
-
-      {!empty && (
-        <div className="shrink-0 space-y-2 px-3 pt-3 pb-2">
-          <div className="field flex h-8 items-center gap-2 rounded-lg px-2.5">
-            <Search size={13} className="text-faint" />
-            <input
-              ref={searchRef}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search memories"
-              aria-label="Search memories"
-              data-own-escape={query ? "" : undefined}
-              onKeyDown={(e) => e.key === "Escape" && query && setQuery("")}
-              className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-faint"
-            />
-            {query && (
-              <button aria-label="Clear search" className="text-faint hover:text-ink" onClick={() => setQuery("")}>
-                <X size={13} />
-              </button>
-            )}
-          </div>
-          {scopes.length > 1 && (
-            <div className="scroll-quiet -mx-3 flex gap-1 overflow-x-auto px-3" role="tablist" aria-label="Whose memories">
-              <ScopeChip active={scope === ALL} onClick={() => setScope(ALL)} label="All" count={entries!.length} />
-              {scopes.map(([s, n]) => (
-                <ScopeChip key={s} active={scope === s} onClick={() => setScope(scope === s ? ALL : s)} label={scopeLabel(s, roster)} count={n} mark={roster?.[s] ? s : undefined} />
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {folder?.error && (
-        <div className="mx-3 mt-2 rounded-lg border border-line px-3 py-2 text-[12.5px] text-muted">
-          Couldn't read this project's memory: {folder.error}
-        </div>
-      )}
-
-      {empty && !folder?.error ? (
-        !adding && (
-          <PanelEmpty
-            icon={<Bookmark size={18} />}
-            title="Nothing remembered yet"
-            body={
-              <>
-                Tell a teammate “remember that…”, or let them note decisions and preferences as they work. Everything they save in {basename(root)} shows up here.
-              </>
-            }
-          >
-            <Button size="sm" icon={<Plus size={13} />} onClick={() => setAdding(true)}>
-              Add one yourself
+      <div className="scroll-quiet min-h-0 flex-1 overflow-y-auto">
+        {!installed && (
+          <div className="flex items-center gap-3 border-b border-line px-4 py-2.5 text-[12.5px] text-muted">
+            <span className="min-w-0 flex-1">Memory is off. context.md isn't injected into new sessions; the files below stay.</span>
+            <Button size="sm" disabled={busy} onClick={() => void toggle(true)}>
+              {busy ? <Spinner size={12} /> : "Turn on"}
             </Button>
-          </PanelEmpty>
-        )
-      ) : (
-        <div className="scroll-quiet min-h-0 flex-1 overflow-y-auto px-3 pb-4">
-          {shown.length === 0 ? (
-            <div className="px-2 py-8 text-center text-[13px] text-muted">
-              Nothing matches.{" "}
-              <button
-                className="text-ink underline-offset-2 hover:underline"
-                onClick={() => {
-                  setQuery("");
-                  setScope(ALL);
-                }}
-              >
-                Show everything
-              </button>
-            </div>
-          ) : (
-            <ul className="space-y-1.5 pt-1">
-              {shown.map((e) => (
-                <Card key={`${e.file}\n${e.raw}`} entry={e} root={root} roster={roster} />
-              ))}
-            </ul>
-          )}
-          <Footer root={root} installed={!!installed} />
+          </div>
+        )}
+
+        {error && <div className="mx-3 mt-2 rounded-lg border border-line px-3 py-2 text-[12.5px] text-muted">Couldn't read the memory folder: {error}</div>}
+
+        <ContextEditor initial={context} />
+
+        {notes === 0 ? (
+          <div className="mx-3 mb-4 rounded-xl border border-dashed border-line px-5 py-7 text-center">
+            <div className="text-[13.5px] font-medium text-ink">No notes yet</div>
+            <p className="mx-auto mt-1 max-w-[290px] text-[12.5px] leading-relaxed text-muted">
+              As teammates work they add a line to today's file and keep project notes here. Tell one “remember that…” and it shows up.
+            </p>
+          </div>
+        ) : (
+          <div className="px-3 pt-1 pb-4">
+            <Section title="Today" hint="one line per event">
+              {today.length ? today.map((f) => <Row key={f.path} file={f} />) : <div className="px-2 py-2 text-[12.5px] text-faint">Nothing yet today.</div>}
+            </Section>
+            {earlier.length > 0 && (
+              <Section title="Earlier days">
+                {earlier.map((f) => (
+                  <Row key={f.path} file={f} />
+                ))}
+              </Section>
+            )}
+            <Section title="Projects">{projects.length ? projects.map((f) => <Row key={f.path} file={f} />) : <EmptyRow text="No project notes yet." />}</Section>
+            <Section title="Learnings">{learnings.length ? learnings.map((f) => <Row key={f.path} file={f} />) : <EmptyRow text="Nothing durable learned yet." />}</Section>
+            <Section title="Agents">{agents.length ? agents.map((f) => <Row key={f.path} file={f} />) : <EmptyRow text="No private notes yet." />}</Section>
+          </div>
+        )}
+
+        <div className="space-y-1 px-4 pt-1 pb-5 text-[11.5px] leading-relaxed text-faint">
+          <div>
+            Saved in <span className="font-mono">~/.config/opencode/memory</span> (the OpenCode config folder on this machine).
+          </div>
+          <div>Earlier versions saved memories inside each project's <span className="font-mono">.opencode/memory</span> folder; those files are untouched and not shown here.</div>
         </div>
-      )}
+      </div>
     </>
   );
 }
 
-function ScopeChip({ active, onClick, label, count, mark }: { active: boolean; onClick(): void; label: string; count: number; mark?: string }) {
+const byName = (list: MemoryFile[]) => list.sort((a, b) => a.name.localeCompare(b.name));
+
+function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
   return (
-    <button
-      role="tab"
-      aria-selected={active}
-      onClick={onClick}
-      className={`flex h-7 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-[12.5px] transition-colors ${active ? "border-transparent bg-active text-ink" : "border-line text-muted hover:bg-hover hover:text-ink"}`}
-    >
-      {mark && <AgentMark id={mark} size={16} />}
-      {label}
-      <span className="text-faint tabular-nums">{count}</span>
-    </button>
+    <section className="mt-4 first:mt-2">
+      <div className="flex items-baseline gap-2 px-2 pb-1.5">
+        <h3 className="text-[12px] font-semibold tracking-wide text-muted uppercase">{title}</h3>
+        {hint && <span className="text-[11.5px] text-faint">{hint}</span>}
+      </div>
+      <ul className="space-y-1">{children}</ul>
+    </section>
   );
 }
 
-/** Neutral on purpose: hue is reserved for agent state. */
-export function TypeChip({ type }: { type: MemoryType }) {
-  return <span className="rounded-md bg-hover px-1.5 py-px text-[11.5px] font-medium text-muted">{TYPE_LABEL[type]}</span>;
+function EmptyRow({ text }: { text: string }) {
+  return <li className="px-2 py-1 text-[12.5px] text-faint">{text}</li>;
 }
 
-function Card({ entry, root, roster }: { entry: MemoryEntry; root: string; roster: Record<string, Teammate> | null }) {
-  const [editing, setEditing] = useState(false);
-  const [confirming, setConfirming] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const teammate = roster?.[entry.scope];
-  const ts = Date.parse(entry.ts);
-
-  if (editing)
-    return (
-      <li>
-        <Editor
-          initial={{ content: entry.content, type: entry.type }}
-          saveLabel="Save"
-          onCancel={() => setEditing(false)}
-          onSave={async (v) => {
-            if (v.content === entry.content && v.type === entry.type) return setEditing(false);
-            if (await useMemory.getState().update(root, entry, v)) setEditing(false);
-          }}
-        />
-      </li>
-    );
-
+function Row({ file }: { file: MemoryFile }) {
   return (
-    <li className="group rounded-lg border border-line px-3 py-2.5 transition-colors hover:bg-hover/50">
-      <div className="text-[13.5px] leading-relaxed whitespace-pre-wrap break-words text-ink">{entry.content || <span className="text-faint">Empty</span>}</div>
-      <div className="mt-2 flex min-h-6 flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-faint">
-        <TypeChip type={entry.type} />
-        <span className="flex items-center gap-1 text-muted">
-          {teammate && <AgentMark id={entry.scope} size={14} />}
-          {scopeLabel(entry.scope, roster)}
+    <li>
+      <button
+        onClick={() => void useMemory.getState().read(file.path)}
+        className="group flex w-full items-center gap-2.5 rounded-lg border border-transparent px-2 py-2 text-left transition-colors hover:border-line hover:bg-hover/60"
+      >
+        <FileText size={14} className="shrink-0 text-faint group-hover:text-muted" />
+        <span className="min-w-0 flex-1 truncate text-[13.5px] text-ink-2 group-hover:text-ink">
+          {file.name}
+          {file.kind !== "daily" && <span className="text-faint">.md</span>}
         </span>
-        {!Number.isNaN(ts) && <span title={new Date(ts).toLocaleString()}>{timeAgo(ts)}</span>}
-        {entry.issue && <span className="font-mono">{entry.issue}</span>}
-        {entry.tags?.map((t) => (
-          <span key={t}>#{t}</span>
-        ))}
-        <span className="ml-auto flex items-center gap-0.5">
-          {confirming ? (
-            <>
-              <span className="mr-1 text-muted">Delete this?</span>
-              <Button size="sm" variant="ghost" autoFocus onClick={() => setConfirming(false)}>
-                Keep
-              </Button>
-              <Button
-                size="sm"
-                variant="danger"
-                disabled={saving}
-                onClick={async () => {
-                  setSaving(true);
-                  if (!(await useMemory.getState().forget(root, entry))) setSaving(false);
-                }}
-              >
-                {saving ? <Spinner size={12} /> : "Delete"}
-              </Button>
-            </>
-          ) : (
-            <span className="flex opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100">
-              <IconButton label="Edit memory" size={24} onClick={() => setEditing(true)}>
-                <Pencil size={12} />
-              </IconButton>
-              <IconButton label="Delete memory" size={24} onClick={() => setConfirming(true)}>
-                <Trash2 size={12} />
-              </IconButton>
-            </span>
-          )}
+        <span className="shrink-0 text-[11.5px] text-faint" title={new Date(file.modified).toLocaleString()}>
+          {timeAgo(file.modified)}
         </span>
-      </div>
+      </button>
     </li>
   );
 }
 
-/** Content + type, shared by "add" and "edit". */
-function Editor({
-  initial,
-  saveLabel,
-  onSave,
-  onCancel,
-  children,
-}: {
-  initial: { content: string; type: MemoryType };
-  saveLabel: string;
-  onSave(v: { content: string; type: MemoryType }): Promise<unknown>;
-  onCancel(): void;
-  children?: React.ReactNode;
-}) {
-  const [content, setContent] = useState(initial.content);
-  const [type, setType] = useState<MemoryType>(initial.type);
+function ContextEditor({ initial }: { initial: string }) {
+  const [text, setText] = useState(initial);
   const [saving, setSaving] = useState(false);
-  const ok = content.trim().length > 0 && !saving;
+  // A reload (save, toggle, refresh) brings authoritative text back.
+  useEffect(() => setText(initial), [initial]);
+  const lines = lineCount(text);
+  const long = lines > CONTEXT_LINE_LIMIT;
+  const dirty = text !== initial;
   const save = async () => {
-    if (!ok) return;
     setSaving(true);
-    await onSave({ content: content.trim(), type });
+    await useMemory.getState().saveContext(text);
     setSaving(false);
   };
+
   return (
-    <div className="rounded-lg border border-line-strong bg-raised p-2.5">
-      <textarea
-        value={content}
-        onChange={(e) => setContent(e.target.value)}
-        autoFocus
-        rows={3}
-        data-own-escape
-        placeholder="What should teammates remember?"
-        aria-label="Memory"
-        onFocus={(e) => e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length)}
-        onKeyDown={(e) => {
-          if (e.key === "Escape") {
-            e.preventDefault();
-            onCancel();
-          } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-            e.preventDefault();
-            void save();
-          }
-        }}
-        className="block w-full resize-none bg-transparent text-[13.5px] leading-relaxed text-ink outline-none placeholder:text-faint"
-      />
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        <Select value={type} onChange={setType} options={typeOptions} ariaLabel="Kind" width={150} className="!h-7 !w-auto !text-[12.5px]" />
-        {children}
-        <span className="ml-auto flex gap-1">
-          <Button size="sm" variant="ghost" onClick={onCancel}>
-            Cancel
-          </Button>
-          <Button size="sm" variant="primary" disabled={!ok} onClick={() => void save()}>
-            {saving ? <Spinner size={12} /> : saveLabel}
-          </Button>
+    <section className="border-b border-line px-3 py-3">
+      <div className="flex items-baseline gap-2">
+        <h3 className="text-[13px] font-medium text-ink">Current context</h3>
+        <span className={`ml-auto inline-flex items-center gap-1 text-[11.5px] tabular-nums ${long ? "text-danger" : "text-faint"}`}>
+          {long && <AlertTriangle size={11} />}
+          {lines} / {CONTEXT_LINE_LIMIT} lines
         </span>
       </div>
-    </div>
-  );
-}
-
-function Composer({ root, roster, onDone }: { root: string; roster: Record<string, Teammate> | null; onDone(): void }) {
-  const [scope, setScope] = useState(USER_SCOPE);
-  const options = useMemo(
-    () => [
-      { value: USER_SCOPE, label: "About you", hint: "Every teammate" },
-      { value: PROJECT_SCOPE, label: "This project", hint: "Every teammate" },
-      ...Object.values(roster ?? {})
-        .sort((a, b) => a.created - b.created)
-        .map((t) => ({ value: t.id, label: t.name, icon: <AgentMark id={t.id} size={16} />, hint: "Only them" })),
-    ],
-    [roster],
-  );
-  return (
-    <div className="shrink-0 border-b border-line p-3">
-      <Editor
-        initial={{ content: "", type: "preference" }}
-        saveLabel="Remember"
-        onCancel={onDone}
-        onSave={async (v) => {
-          if (await useMemory.getState().add(root, { ...v, scope })) onDone();
-        }}
-      >
-        <Select value={scope} onChange={setScope} options={options} ariaLabel="For" width={200} className="!h-7 !w-auto !text-[12.5px]" />
-      </Editor>
-    </div>
-  );
-}
-
-function Footer({ root, installed }: { root: string; installed: boolean }) {
-  const [busy, setBusy] = useState(false);
-  return (
-    <div className="mt-5 space-y-1 px-1 text-[11.5px] leading-relaxed text-faint">
-      <div>
-        Saved in <span className="font-mono">{basename(root)}/.opencode/memory</span>. Teammates get the memories that match each message.
+      <p className="mt-0.5 text-[12px] leading-relaxed text-muted">
+        Injected into every new session. Rewrite it to say what matters now; keep it under {CONTEXT_LINE_LIMIT} lines.
+      </p>
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        rows={12}
+        spellCheck={false}
+        data-own-escape
+        aria-label="context.md"
+        placeholder="# Memory&#10;&#10;## Now&#10;…"
+        className="field scroll-quiet mt-2 block w-full resize-y rounded-lg px-3 py-2 font-mono text-[12px] leading-relaxed outline-none placeholder:text-faint"
+      />
+      <div className="mt-2 flex items-center gap-2">
+        <span className="text-[11.5px] text-faint">{long ? `Trim it: only the first ${CONTEXT_LINE_LIMIT} lines are cheap to carry.` : "Every teammate sees this in a new session."}</span>
+        <Button size="sm" variant="primary" className="ml-auto" disabled={!dirty || saving} onClick={() => void save()}>
+          {saving ? <Spinner size={12} /> : "Save"}
+        </Button>
       </div>
-      {installed && (
-        <button
-          disabled={busy}
-          className="text-faint underline-offset-2 hover:text-muted hover:underline disabled:opacity-50"
-          onClick={async () => {
-            if (!confirm("Turn memory off for every teammate? Saved memories stay where they are.")) return;
-            setBusy(true);
-            await useMemory.getState().setEnabled(false);
-            setBusy(false);
-          }}
-        >
-          Turn memory off
-        </button>
-      )}
+    </section>
+  );
+}
+
+function FileEditor({ path, file, onBack }: { path: string; file: MemoryFile | undefined; onBack(): void }) {
+  const [text, setText] = useState<string | null>(null);
+  const [saved, setSaved] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    setText(null);
+    setFailed(false);
+    void useMemory.getState().read(path).then((t) => {
+      if (!live) return;
+      if (t === null) setFailed(true);
+      else {
+        setText(t);
+        setSaved(t);
+      }
+    });
+    return () => {
+      live = false;
+    };
+  }, [path]);
+
+  const lines = text === null ? 0 : lineCount(text);
+  const dirty = text !== null && text !== saved;
+  const save = async () => {
+    if (text === null) return;
+    setSaving(true);
+    if (await useMemory.getState().saveFile(path, text)) setSaved(text);
+    setSaving(false);
+  };
+
+  if (failed)
+    return (
+      <PanelEmpty icon={<FileText size={18} />} title="Couldn't open this file" body="It may have moved or been deleted since the list was loaded.">
+        <Button size="sm" onClick={onBack}>
+          Back
+        </Button>
+      </PanelEmpty>
+    );
+
+  if (text === null)
+    return (
+      <div className="flex flex-1 items-center justify-center text-muted">
+        <Spinner size={16} />
+      </div>
+    );
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex shrink-0 items-center gap-1.5 border-b border-line px-2 py-2">
+        <IconButton label="Back to memory" size={28} onClick={onBack}>
+          <ArrowLeft size={14} />
+        </IconButton>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-[13px] font-medium text-ink">
+            {file ? `${file.name}${file.kind === "daily" ? "" : ".md"}` : path.split("/").pop()}
+            {file && <span className="ml-1.5 font-normal text-faint">{KIND_LABEL[file.kind as Exclude<MemoryKind, "context" | "other">]}</span>}
+          </div>
+          <div className="truncate font-mono text-[11px] text-faint" title={path}>
+            {file ? relPath(file) : prettyPath(path)}
+          </div>
+        </div>
+        <span className="shrink-0 pr-1 text-[11.5px] text-faint tabular-nums">{lines} lines</span>
+      </div>
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        spellCheck={false}
+        data-own-escape
+        aria-label={file?.name ?? "Memory file"}
+        className="scroll-quiet min-h-0 flex-1 resize-none bg-transparent px-4 py-3 font-mono text-[12.5px] leading-relaxed text-ink outline-none"
+      />
+      <div className="flex shrink-0 items-center gap-2 border-t border-line px-3 py-2">
+        <span className="text-[11.5px] text-faint">{file ? `Changed ${timeAgo(file.modified)}` : ""}</span>
+        <Button size="sm" variant="primary" className="ml-auto" disabled={!dirty || saving} onClick={() => void save()}>
+          {saving ? <Spinner size={12} /> : "Save"}
+        </Button>
+      </div>
     </div>
   );
 }

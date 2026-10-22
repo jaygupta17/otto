@@ -17,7 +17,6 @@ import {
   inputPath,
   memoryCallText,
   memoryCalls,
-  memorySearch,
   normalizeToolName,
   type MemoryCall,
   patchFiles,
@@ -33,9 +32,8 @@ import { AgentClock } from "../ui/AgentClock";
 import { Markdown } from "./Markdown";
 import { useMemory } from "../../state/memory";
 import { useTeammates } from "../../state/teammates";
-import { MEMORY_TYPES, type MemoryType } from "../../lib/memory";
+import type { Teammate } from "../../lib/teammates";
 import { AgentMark } from "../ui/TeammateFace";
-import { scopeLabel, TypeChip } from "../panel/MemorySurface";
 import { Code, CopyButton, DiffView, FileIcon, OpenButton, OutputView, PathLabel, ScrollBox, Section, SplitToggle, langOf, useOpenFile, useSplitDiff } from "./ToolParts";
 
 type Json = Record<string, unknown>;
@@ -645,9 +643,16 @@ const MEMORY_ACTION: Record<string, string> = {
   memory_import: "Imported",
 };
 
+/** Old chats still carry memory-tool calls; show them plainly without the live panel's types. */
+function memoryScopeLabel(scope: string, roster: Record<string, Teammate> | null) {
+  if (scope === "user") return "About you";
+  if (scope === "project") return "This project";
+  return roster?.[scope]?.name ?? scope;
+}
+
 function MemoryCallCard({ c }: { c: MemoryCall }) {
   const roster = useTeammates((s) => s.byId);
-  const type = typeof c.input.type === "string" && (MEMORY_TYPES as readonly string[]).includes(c.input.type) ? (c.input.type as MemoryType) : null;
+  const type = str(c.input.type);
   const scope = str(c.input.scope);
   const text = memoryCallText(c);
   return (
@@ -656,11 +661,11 @@ function MemoryCallCard({ c }: { c: MemoryCall }) {
       <div className={`flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-faint ${text ? "mt-1.5" : ""}`}>
         <StatusDot status={c.status} />
         <span className="text-muted">{MEMORY_ACTION[c.action] ?? normalizeToolName(c.action)}</span>
-        {type && <TypeChip type={type} />}
+        {type && <span className="rounded-md bg-hover px-1.5 py-px text-[11.5px] font-medium text-muted">{type.charAt(0).toUpperCase() + type.slice(1)}</span>}
         {scope && (
           <span className="flex items-center gap-1">
             {roster?.[scope] && <AgentMark id={scope} size={14} />}
-            {scopeLabel(scope, roster)}
+            {memoryScopeLabel(scope, roster)}
           </span>
         )}
       </div>
@@ -694,7 +699,7 @@ function MemoryBody({ b, input, calls }: { b: ToolBlock; input: Json; calls: Mem
       )}
       {!live(b) && (
         <button
-          onClick={() => useMemory.getState().show(memorySearch(calls))}
+          onClick={() => useMemory.getState().show()}
           className="flex items-center gap-1.5 text-[12.5px] text-muted hover:text-ink hover:underline"
         >
           <Bookmark size={12} /> Show in Memory

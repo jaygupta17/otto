@@ -5,7 +5,7 @@
  */
 import { create } from "zustand";
 import { readGlobalConfig, updateGlobalConfig, type AgentConfig } from "../lib/opencode/config";
-import { withMemoryPlugin } from "../lib/memory";
+import { installMemory, removeMemory } from "../lib/memory";
 import { CATALOG, compileAgent, hash, listNames, readTeammates, startingAgent, STARTER_TEAM, TEAMMATE_PROMPT_VERSION, updateTeammates, type Teammate } from "../lib/teammates";
 import { useChat } from "./chat";
 import { useExtensions } from "./extensions";
@@ -169,12 +169,17 @@ export const useTeammates = create<State>((set, get) => ({
 
 /**
  * Write each teammate's compiled agent into opencode.json in one go. Teammates
- * come with memory, so the plugin goes in too unless the user turned it off
- * (OpenCode installs it in the background after the reload).
+ * come with memory: turning it on creates the markdown folder and the
+ * injected context file first; turning it off removes the instruction and the
+ * old plugin. Both are idempotent, so a save costs nothing when it's already
+ * in the right state.
  */
 async function writeAgents(list: Teammate[], patch: AgentPatch = {}) {
   const memory = !useTeammates.getState().memoryOff;
-  await updateGlobalConfig(client(), (cfg) => {
+  const c = client();
+  if (memory) await installMemory(c);
+  else await removeMemory(c);
+  await updateGlobalConfig(c, (cfg) => {
     const agents = { ...(cfg.agents ?? {}) };
     for (const t of list) {
       const next = compileAgent(t, agents[t.id]);
@@ -184,7 +189,7 @@ async function writeAgents(list: Teammate[], patch: AgentPatch = {}) {
       }
       agents[t.id] = next;
     }
-    return memory ? withMemoryPlugin({ ...cfg, agents }) : { ...cfg, agents };
+    return { ...cfg, agents };
   });
   await afterConfigWrite();
 }

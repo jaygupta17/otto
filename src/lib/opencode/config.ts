@@ -45,6 +45,8 @@ export interface GlobalConfig {
   model?: string | { providerID: string; model: string; variant?: string };
   default_agent?: string;
   permissions?: PermissionRule[];
+  /** Files injected into every new session's context. */
+  instructions?: string[];
   agents?: Record<string, AgentConfig>;
   commands?: Record<string, CommandConfig>;
   mcp?: { servers?: Record<string, McpServerConfig>; [k: string]: unknown };

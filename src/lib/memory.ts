@@ -1,272 +1,351 @@
 /**
- * Teammate memory, on top of the simple-memory OpenCode plugin
- * (@knikolov/opencode-plugin-simple-memory, MIT). Otto doesn't run a memory
- * engine: the plugin gives agents nine `memory_*` tools and stores what they
- * save as plain logfmt files in `<project>/.opencode/memory/`. Otto installs
- * it, reads those files for the Memory panel, and edits them in the plugin's
- * own format, so the agent and the app always see the same thing.
+ * Teammate memory: plain markdown in the OpenCode config folder, not a
+ * plugin. One file, `memory/context.md`, is added to OpenCode's global
+ * `instructions` so every new session starts with it; the rest is read on
+ * demand through the tools agents already have (read, write, edit, grep).
  *
- * Format (one memory per line, daily files `YYYY-MM-DD.logfmt`):
- *   ts=2026-05-28T10:00:00.000Z type=context scope=api content="…" issue=#51 tags=a,b
- * Edits and deletes append an audit line to `deletions.logfmt`, as the
- * plugin's own `memory_update` / `memory_forget` do.
+ * Layout, under the global config directory (usually ~/.config/opencode):
+ *   memory/
+ *     context.md              the only injected file; kept under 40 lines
+ *     daily/YYYY-MM-DD.md     append-only, one line per event
+ *     projects/<project>.md   state, decisions, open threads
+ *     learnings/<topic>.md    durable, non-obvious findings
+ *     agents/<agent-id>.md    private scratchpad
+ *
+ * Otto owns the injection line and the folder's shape; the files themselves
+ * belong to the agents and the user, and the Memory panel edits the same
+ * files. Nothing here ever deletes a memory: turning memory off removes the
+ * instruction and the old plugin, and leaves every file where it is.
  */
 import type { OpenCode } from "./opencode/client";
-import type { GlobalConfig } from "./opencode/config";
+import { configLocation, sh, updateGlobalConfig, type GlobalConfig } from "./opencode/config";
 
 // ---------------------------------------------------------------------------
-// The plugin
+// Layout
 // ---------------------------------------------------------------------------
 
+export const MEMORY_DIR = "memory";
+export const CONTEXT_FILE = "context.md";
+/** The injected file stays short: it is paid for on every request. */
+export const CONTEXT_LINE_LIMIT = 40;
+
+/**
+ * The plugin Otto used to install. It's gone from new machines, and install
+ * and remove both strip it so upgraded ones stop loading memory tools that
+ * write to a folder this app no longer reads.
+ */
 export const MEMORY_PLUGIN = "@knikolov/opencode-plugin-simple-memory";
-/**
- * Pinned: OpenCode doesn't update plugins on its own, and a new major could
- * change the file format under the Memory panel. 2.0.0 is the first release
- * with the OpenCode 2 entrypoint. Read the source before bumping.
- */
-export const MEMORY_PLUGIN_VERSION = "2.0.0";
-/**
- * `autoLoad` puts relevant memories in front of each reply. `autoSave` stays
- * off: its "remember …" matcher also fires on "do you remember…" and
- * "remember to…", and teammates already save explicitly (see the prompt).
- */
-export const MEMORY_PLUGIN_OPTIONS = { autoLoad: true, autoSave: false };
+
+export interface MemoryPaths {
+  /** Absolute path of the memory folder. */
+  root: string;
+  context: string;
+  daily: string;
+  projects: string;
+  learnings: string;
+  agents: string;
+}
+
+const trimSlash = (p: string) => p.replace(/\/+$/, "") || "/";
+
+/** The memory folder for a config dir. Split out so it can be tested without a server. */
+export function memoryPathsAt(configDir: string): MemoryPaths {
+  const root = `${trimSlash(configDir)}/${MEMORY_DIR}`;
+  return {
+    root,
+    context: `${root}/${CONTEXT_FILE}`,
+    daily: `${root}/daily`,
+    projects: `${root}/projects`,
+    learnings: `${root}/learnings`,
+    agents: `${root}/agents`,
+  };
+}
+
+/** Where memory lives on the connected machine. */
+export async function memoryRoot(client: OpenCode): Promise<string> {
+  const { dir } = await configLocation(client);
+  return memoryPathsAt(dir).root;
+}
+
+export async function memoryPaths(client: OpenCode): Promise<MemoryPaths> {
+  const { dir } = await configLocation(client);
+  return memoryPathsAt(dir);
+}
+
+// ---------------------------------------------------------------------------
+// Global config: the instructions entry and the old plugin
+// ---------------------------------------------------------------------------
 
 type PluginEntry = string | { package?: string; options?: Record<string, unknown> };
 
-const isMemorySpec = (spec: unknown) => typeof spec === "string" && (spec === MEMORY_PLUGIN || spec.startsWith(`${MEMORY_PLUGIN}@`));
-const isMemoryEntry = (e: PluginEntry) => isMemorySpec(typeof e === "string" ? e : e?.package);
+/** True for any instruction that points at our context file, absolute or not. */
+export function isContextInstruction(value: unknown): value is string {
+  return typeof value === "string" && /(^|[\\/])memory[\\/]context\.md$/.test(value.trim());
+}
 
-/** Installed in the global config, under either key OpenCode reads. */
+/** Memory is on when a new session is told to read `memory/context.md`. */
 export function memoryInstalled(cfg: GlobalConfig): boolean {
-  return [cfg.plugins, cfg.plugin].some((list) => Array.isArray(list) && (list as PluginEntry[]).some(isMemoryEntry));
+  return Array.isArray(cfg.instructions) && cfg.instructions.some(isContextInstruction);
 }
 
-/** Adds the pinned plugin unless some version of it is already there (that one is the user's call). */
-export function withMemoryPlugin(cfg: GlobalConfig): GlobalConfig {
-  if (memoryInstalled(cfg)) return cfg;
-  const plugins = Array.isArray(cfg.plugins) ? (cfg.plugins as PluginEntry[]) : [];
-  return { ...cfg, plugins: [...plugins, { package: `${MEMORY_PLUGIN}@${MEMORY_PLUGIN_VERSION}`, options: { ...MEMORY_PLUGIN_OPTIONS } }] };
+/** Keeps every other instruction, replaces our entry with the absolute path, never duplicates it. */
+export function withMemoryInstructions(cfg: GlobalConfig, contextPath: string): GlobalConfig {
+  const list = Array.isArray(cfg.instructions) ? cfg.instructions.filter((v): v is string => typeof v === "string") : [];
+  const others = list.filter((v) => !isContextInstruction(v));
+  return { ...cfg, instructions: [...others, contextPath] };
 }
 
-/** Removes every entry for the plugin. The memory files stay where they are. */
+/** Removes only our entry. Other instructions and the files stay. */
+export function withoutMemoryInstructions(cfg: GlobalConfig): GlobalConfig {
+  const next = { ...cfg };
+  if (!Array.isArray(next.instructions)) return next;
+  const kept = next.instructions.filter((v) => !isContextInstruction(v));
+  if (kept.length) next.instructions = kept;
+  else delete next.instructions;
+  return next;
+}
+
+const isMemorySpec = (spec: unknown) => typeof spec === "string" && (spec === MEMORY_PLUGIN || spec.startsWith(`${MEMORY_PLUGIN}@`));
+const isMemoryPluginEntry = (e: PluginEntry) => isMemorySpec(typeof e === "string" ? e : e?.package);
+
+/** Removes every entry for the old plugin from either key OpenCode reads. */
 export function withoutMemoryPlugin(cfg: GlobalConfig): GlobalConfig {
   const next = { ...cfg };
   for (const key of ["plugins", "plugin"] as const) {
     const list = next[key];
     if (!Array.isArray(list)) continue;
-    const kept = (list as PluginEntry[]).filter((e) => !isMemoryEntry(e));
+    const kept = (list as PluginEntry[]).filter((e) => !isMemoryPluginEntry(e));
     if (kept.length) next[key] = kept;
     else delete next[key];
   }
   return next;
 }
 
-/** The plugin's tools, for per-tool permissions. Actions match the tool names. */
-export const MEMORY_TOOLS: { action: string; label: string; hint?: string }[] = [
-  { action: "memory_remember", label: "Save a memory" },
-  { action: "memory_recall", label: "Look up memories" },
-  { action: "memory_context", label: "Gather memories for a task" },
-  { action: "memory_list", label: "List what's remembered" },
-  { action: "memory_update", label: "Change a memory" },
-  { action: "memory_forget", label: "Forget memories" },
-  { action: "memory_compact", label: "Tidy memory files", hint: "Removes exact duplicates" },
-  { action: "memory_export", label: "Export memories" },
-  { action: "memory_import", label: "Import memories" },
-];
-
-export const isMemoryTool = (name: string) => /^memory_[a-z]+$/.test(name);
-
 // ---------------------------------------------------------------------------
-// Records
+// Templates and small pure helpers
 // ---------------------------------------------------------------------------
 
-export const MEMORY_TYPES = ["preference", "decision", "context", "pattern", "learning", "blocker"] as const;
-export type MemoryType = (typeof MEMORY_TYPES)[number];
-
-export const TYPE_LABEL: Record<MemoryType, string> = {
-  preference: "Preference",
-  decision: "Decision",
-  context: "Context",
-  pattern: "Pattern",
-  learning: "Learning",
-  blocker: "Blocker",
-};
-
-/** The scope teammates use for facts about the user that every teammate should know. */
-export const USER_SCOPE = "user";
-/** The scope for facts about the project itself. Any other scope is a teammate's id. */
-export const PROJECT_SCOPE = "project";
-
-export interface Memory {
-  ts: string;
-  type: MemoryType;
-  scope: string;
-  content: string;
-  issue?: string;
-  tags?: string[];
+/** A fresh context.md: the shape every session should keep. */
+export function contextTemplate(): string {
+  return [
+    "<!-- Injected into every new session. Keep this under 40 lines; rewrite it, don't append. -->",
+    "",
+    "# Memory",
+    "",
+    "## Now",
+    "",
+    "## Next",
+    "",
+    "## Blocked",
+    "",
+    "## Decisions",
+    "",
+    "## Pointers",
+    "",
+  ].join("\n");
 }
 
-export interface MemoryEntry extends Memory {
-  /** Absolute path of the daily file it lives in. */
-  file: string;
-  /** The exact line, to find it again before an edit. */
-  raw: string;
+/** A fresh project file. */
+export function projectTemplate(name: string): string {
+  return [`# ${name}`, "", "## State", "", "## Decisions", "", "## Open threads", ""].join("\n");
 }
 
-const isMemoryType = (v: string): v is MemoryType => (MEMORY_TYPES as readonly string[]).includes(v);
+/** Visible lines, ignoring one trailing newline. */
+export function lineCount(text: string): number {
+  if (!text) return 0;
+  const lines = text.split("\n");
+  return text.endsWith("\n") ? lines.length - 1 : lines.length;
+}
 
-// Ported from the plugin (src/index.ts @ 2.0.0) so both sides agree byte for byte.
+/** "Piper Chen" or "/home/me/projects/otto" → "piper-chen" / "otto". */
+export function projectSlug(name: string): string {
+  const base =
+    name
+      .trim()
+      .replace(/\/+$/, "")
+      .split("/")
+      .pop() || "project";
+  return (
+    base
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 48)
+      .replace(/-+$/, "") || "project"
+  );
+}
 
-const escapeValue = (v: string) => v.replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/"/g, '\\"');
+const pad = (n: number) => String(n).padStart(2, "0");
 
-function unescapeValue(v: string) {
-  let out = "";
-  for (let i = 0; i < v.length; i++) {
-    const c = v[i];
-    if (c !== "\\") {
-      out += c;
-      continue;
-    }
-    const n = v[++i];
-    if (n === "n") out += "\n";
-    else if (n === "r") out += "\r";
-    else if (n === '"') out += '"';
-    else if (n === "\\") out += "\\";
-    else if (n !== undefined) out += `\\${n}`;
+/** Machine-local day for a daily file: YYYY-MM-DD. */
+export function dayStamp(date: Date = new Date()): string {
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+/** One line for a daily file: "- 14:05 what happened". Newlines collapse. */
+export function formatDailyLine(text: string, date: Date = new Date()): string {
+  const one = text.replace(/\s*\n\s*/g, " ").trim();
+  return `- ${pad(date.getHours())}:${pad(date.getMinutes())} ${one}`;
+}
+
+/** Absolute path of a day's file, without checking the server. */
+export function dailyPath(paths: Pick<MemoryPaths, "root">, date: Date = new Date()): string {
+  return `${paths.root}/daily/${dayStamp(date)}.md`;
+}
+
+// ---------------------------------------------------------------------------
+// Paths
+// ---------------------------------------------------------------------------
+
+/** POSIX-normalize a path: no `.` segments, repeated slashes collapsed. */
+function normalizePath(path: string): string {
+  const absolute = path.startsWith("/");
+  const parts: string[] = [];
+  for (const part of path.split("/")) {
+    if (!part || part === ".") continue;
+    if (part === "..") throw new Error("That path leaves the memory folder.");
+    parts.push(part);
   }
-  return out;
+  return `${absolute ? "/" : ""}${parts.join("/")}`;
 }
 
-const needsQuotes = (v: string) => v === "" || /\s|"|\\/.test(v);
-const field = (k: string, v: string, quote = false) => (!quote && !needsQuotes(v) ? `${k}=${v}` : `${k}="${escapeValue(v)}"`);
-
-function parseFields(line: string): Record<string, string> {
-  const out: Record<string, string> = {};
-  let i = 0;
-  while (i < line.length) {
-    while (line[i] === " ") i++;
-    const start = i;
-    while (i < line.length && line[i] !== "=" && line[i] !== " ") i++;
-    const key = line.slice(start, i);
-    if (!key || line[i] !== "=") break;
-    i++;
-    if (line[i] === '"') {
-      i++;
-      let v = "";
-      while (i < line.length) {
-        const c = line[i];
-        if (c === '"') {
-          i++;
-          break;
-        }
-        if (c === "\\" && i + 1 < line.length) {
-          v += c + line[i + 1];
-          i += 2;
-          continue;
-        }
-        v += c;
-        i++;
-      }
-      out[key] = unescapeValue(v);
-      continue;
-    }
-    const vs = i;
-    while (i < line.length && line[i] !== " ") i++;
-    out[key] = line.slice(vs, i);
-  }
-  return out;
-}
-
-export function parseMemory(line: string): Memory | null {
-  const f = parseFields(line);
-  if (!f.ts || !f.type || !f.scope || !isMemoryType(f.type)) return null;
-  return { ts: f.ts, type: f.type, scope: f.scope, content: f.content || "", issue: f.issue, tags: f.tags ? f.tags.split(",").filter(Boolean) : undefined };
-}
-
-export function encodeMemory(m: Memory): string {
-  const parts = [field("ts", m.ts), field("type", m.type), field("scope", m.scope), field("content", m.content, true)];
-  if (m.issue) parts.push(field("issue", m.issue));
-  if (m.tags?.length) parts.push(field("tags", m.tags.join(",")));
-  return parts.join(" ");
-}
-
-function encodeDeletion(m: Memory, reason: string): string {
-  const parts = [
-    field("ts", new Date().toISOString()),
-    field("action", "deleted"),
-    field("original_ts", m.ts),
-    field("type", m.type),
-    field("scope", m.scope),
-    field("content", m.content, true),
-    field("reason", reason, true),
-  ];
-  if (m.issue) parts.push(field("issue", m.issue));
-  if (m.tags?.length) parts.push(field("tags", m.tags.join(",")));
-  return parts.join(" ");
+/**
+ * Resolves a path the panel or an agent handed us against the memory root.
+ * Throws for anything that leaves the folder, including `..` and absolute
+ * paths outside it. Symlinks aren't resolved here: the file API is the
+ * backstop, and agents only ever see the same folder.
+ */
+export function resolveMemoryPath(root: string, path: string): string {
+  if (typeof path !== "string" || !path.trim()) throw new Error("Choose a memory file.");
+  if (path.includes("\0")) throw new Error("That isn't a file path.");
+  const cleanRoot = trimSlash(root);
+  const raw = path.trim().replace(/\\/g, "/");
+  if (raw.split("/").includes("..")) throw new Error("That path leaves the memory folder.");
+  const full = normalizePath(raw.startsWith("/") ? raw : `${cleanRoot}/${raw}`);
+  if (full === cleanRoot || !full.startsWith(`${cleanRoot}/`)) throw new Error("That path leaves the memory folder.");
+  return full;
 }
 
 // ---------------------------------------------------------------------------
 // Files
 // ---------------------------------------------------------------------------
 
-export const memoryDir = (root: string) => `${root.replace(/\/$/, "")}/.opencode/memory`;
-const DELETIONS = "deletions.logfmt";
-const dayFile = (root: string, ts: string) => `${memoryDir(root)}/${ts.split("T")[0]}.logfmt`;
+export type MemoryKind = "context" | "daily" | "project" | "learning" | "agent" | "other";
 
-/** Is `name` a folder directly inside `dir`? */
-async function hasFolder(client: OpenCode, root: string, dir: string, name: string) {
-  const entries = await client.listDir(dir, root);
-  return entries.some((e) => e.type === "directory" && e.path.replace(/\/$/, "").split("/").pop() === name);
+export interface MemoryFile {
+  kind: MemoryKind;
+  /** Display name: "context", "2026-10-22", "otto", "tauri-paths", "patch". */
+  name: string;
+  /** Absolute path on the machine. */
+  path: string;
+  size: number;
+  /** Epoch milliseconds. */
+  modified: number;
 }
 
-/** File names in the memory folder, or null when the project has none yet. */
-async function memoryFiles(client: OpenCode, root: string): Promise<string[] | null> {
-  const dir = memoryDir(root);
+export interface MemoryState {
+  root: string;
+  /** context.md, or "" when it doesn't exist yet. */
+  context: string;
+  files: MemoryFile[];
+}
+
+/** Classify a path relative to the memory root. */
+export function classifyMemoryPath(relative: string): { kind: MemoryKind; name: string } {
+  const clean = relative.replace(/^\.?\//, "");
+  if (clean === CONTEXT_FILE) return { kind: "context", name: "context" };
+  const [dir, ...rest] = clean.split("/");
+  const file = rest.join("/");
+  const name = file.replace(/\.md$/i, "");
+  if (!name) return { kind: "other", name: clean };
+  switch (dir) {
+    case "daily":
+      return { kind: "daily", name };
+    case "projects":
+      return { kind: "project", name };
+    case "learnings":
+      return { kind: "learning", name };
+    case "agents":
+      return { kind: "agent", name };
+    default:
+      return { kind: "other", name: clean };
+  }
+}
+
+async function readText(client: OpenCode, path: string): Promise<string | null> {
   try {
-    const entries = await client.listDir(dir, root);
-    return entries.filter((e) => e.type === "file").map((e) => e.path.split("/").pop()!);
+    return await client.readFile(path);
   } catch (e) {
-    // A missing folder comes back as a bare 500: check before calling it an error.
-    const base = root.replace(/\/$/, "");
-    if (!(await hasFolder(client, root, base, ".opencode"))) return null;
-    if (!(await hasFolder(client, root, `${base}/.opencode`, "memory"))) return null;
+    if ((e as { status?: number }).status === 404) return null;
     throw e;
   }
 }
 
-/** Every memory saved in this project, newest first. */
-export async function readMemories(client: OpenCode, root: string): Promise<MemoryEntry[]> {
-  const dir = memoryDir(root);
-  const names = await memoryFiles(client, root);
-  if (!names) return [];
-  const files = names.filter((n) => n.endsWith(".logfmt") && n !== DELETIONS);
-  const out: MemoryEntry[] = [];
-  await Promise.all(
-    files.map(async (n) => {
-      const file = `${dir}/${n}`;
-      const text = await client.readFile(file, root);
-      for (const raw of text.split("\n")) {
-        const m = parseMemory(raw);
-        if (m) out.push({ ...m, file, raw });
-      }
-    }),
-  );
-  return out.sort((a, b) => b.ts.localeCompare(a.ts));
-}
-
-async function readText(client: OpenCode, root: string, file: string) {
-  try {
-    return await client.readFile(file, root);
-  } catch (e) {
-    if ((e as { status?: number }).status === 404) return "";
-    throw e;
+/** `find -printf` gives relative path, bytes and epoch seconds in one pass. */
+function parseFindOutput(output: string, root: string): MemoryFile[] {
+  const out: MemoryFile[] = [];
+  for (const row of output.split("\n")) {
+    if (!row) continue;
+    const [relative, size, modified] = row.split("\t");
+    if (!relative) continue;
+    const { kind, name } = classifyMemoryPath(relative);
+    out.push({
+      kind,
+      name,
+      path: `${trimSlash(root)}/${relative}`,
+      size: Number(size) || 0,
+      modified: Math.round((Number(modified) || 0) * 1000),
+    });
   }
+  return out;
 }
 
-const joinLines = (lines: string[]) => (lines.length ? `${lines.join("\n")}\n` : "");
+/** macOS `stat -f` fallback: absolute paths, bytes, epoch seconds. */
+function parseStatOutput(output: string, root: string): MemoryFile[] {
+  const prefix = `${trimSlash(root)}/`;
+  const out: MemoryFile[] = [];
+  for (const row of output.split("\n")) {
+    if (!row) continue;
+    const [absolute, size, modified] = row.split("\t");
+    if (!absolute || !absolute.startsWith(prefix)) continue;
+    const { kind, name } = classifyMemoryPath(absolute.slice(prefix.length));
+    out.push({ kind, name, path: absolute, size: Number(size) || 0, modified: Math.round((Number(modified) || 0) * 1000) });
+  }
+  return out;
+}
 
-// One write at a time per machine, so two quick edits don't read the same old file.
+/** Every file under memory/, without reading any of them. */
+export async function listMemoryFiles(client: OpenCode, root: string): Promise<MemoryFile[]> {
+  const found = await client.exec(`find ${sh(root)} -type f -printf '%P\\t%s\\t%T@\\n' 2>/dev/null`, { timeoutMs: 20_000 }).catch(() => null);
+  if (found && found.exit === 0 && found.output.trim()) return parseFindOutput(found.output, root);
+  if (found && found.exit === 0) return [];
+  // BSD find has no -printf (macOS). This is the basic fallback.
+  const fallback = await client.exec(`find ${sh(root)} -type f -exec stat -f '%N\\t%z\\t%m' {} + 2>/dev/null`, { timeoutMs: 20_000 }).catch(() => null);
+  if (!fallback || fallback.exit !== 0) return [];
+  return parseStatOutput(fallback.output, root);
+}
+
+/** context.md and the file index, for the Memory panel. */
+export async function readMemoryState(client: OpenCode): Promise<MemoryState> {
+  const paths = await memoryPaths(client);
+  const [context, files] = await Promise.all([readText(client, paths.context), listMemoryFiles(client, paths.root)]);
+  return { root: paths.root, context: context ?? "", files };
+}
+
+export async function readMemoryFile(client: OpenCode, path: string): Promise<string> {
+  const { root } = await memoryPaths(client);
+  return (await readText(client, resolveMemoryPath(root, path))) ?? "";
+}
+
+export async function writeMemoryFile(client: OpenCode, path: string, text: string): Promise<string> {
+  const { root } = await memoryPaths(client);
+  const full = resolveMemoryPath(root, path);
+  await client.writeFile(full, text);
+  return full;
+}
+
 let chain: Promise<unknown> = Promise.resolve();
 function serial<T>(run: () => Promise<T>): Promise<T> {
   const p = chain.then(run, run);
@@ -274,46 +353,54 @@ function serial<T>(run: () => Promise<T>): Promise<T> {
   return p;
 }
 
-async function appendLine(client: OpenCode, root: string, file: string, line: string) {
-  const text = await readText(client, root, file);
-  const lines = text.split("\n").filter((l) => l.length > 0);
-  await client.writeFile(file, joinLines([...lines, line]), root);
-}
-
-/** Re-read the entry's file and replace (or drop) its line. Fails if it changed meanwhile. */
-async function rewriteLine(client: OpenCode, root: string, entry: MemoryEntry, next: string | null) {
-  const lines = (await readText(client, root, entry.file)).split("\n").filter((l) => l.length > 0);
-  const i = lines.indexOf(entry.raw);
-  if (i < 0) throw new Error("This memory changed since you opened it. Refresh and try again.");
-  if (next === null) lines.splice(i, 1);
-  else lines[i] = next;
-  await client.writeFile(entry.file, joinLines(lines), root);
-}
-
-export function addMemory(client: OpenCode, root: string, m: Omit<Memory, "ts">): Promise<Memory> {
+/**
+ * Appends one line to today's (or `date`'s) daily file. Reads first so a
+ * missing folder doesn't matter; keeps the line on one line.
+ */
+export function appendDaily(client: OpenCode, text: string, date: Date = new Date()): Promise<string> {
   return serial(async () => {
-    const memory: Memory = { ...m, ts: new Date().toISOString(), scope: m.scope.trim(), content: m.content.trim() };
-    await appendLine(client, root, dayFile(root, memory.ts), encodeMemory(memory));
-    return memory;
+    const paths = await memoryPaths(client);
+    const file = dailyPath(paths, date);
+    const line = formatDailyLine(text, date);
+    const existing = (await readText(client, file)) ?? "";
+    const sep = existing && !existing.endsWith("\n") ? "\n" : "";
+    await client.writeFile(file, `${existing}${sep}${line}\n`);
+    return file;
   });
 }
 
-/** Same as the plugin's memory_update: new timestamp, audit line for the old text. */
-export function updateMemory(client: OpenCode, root: string, entry: MemoryEntry, patch: Pick<Memory, "content" | "type">): Promise<void> {
+/** Creates `projects/<slug>.md` with the usual headings when it's missing. */
+export function ensureProjectFile(client: OpenCode, name: string): Promise<string> {
   return serial(async () => {
-    const next: Memory = { ts: new Date().toISOString(), type: patch.type, scope: entry.scope, content: patch.content.trim(), issue: entry.issue, tags: entry.tags };
-    await rewriteLine(client, root, entry, encodeMemory(next));
-    await appendLine(client, root, `${memoryDir(root)}/${DELETIONS}`, encodeDeletion(entry, `Updated in Otto to: ${next.content}`));
+    const paths = await memoryPaths(client);
+    const slug = projectSlug(name);
+    const file = `${paths.projects}/${slug}.md`;
+    const existing = await readText(client, file);
+    if (existing === null || !existing.trim()) await client.writeFile(file, projectTemplate(name.trim() || slug));
+    return file;
   });
 }
 
-/** Same as the plugin's memory_forget for one memory. */
-export function forgetMemory(client: OpenCode, root: string, entry: MemoryEntry): Promise<void> {
-  return serial(async () => {
-    await rewriteLine(client, root, entry, null);
-    await appendLine(client, root, `${memoryDir(root)}/${DELETIONS}`, encodeDeletion(entry, "Deleted in Otto"));
-  });
+// ---------------------------------------------------------------------------
+// Install and remove
+// ---------------------------------------------------------------------------
+
+/**
+ * Turns memory on: creates the folder and a starter context.md (only when
+ * missing), adds the absolute context path to the global instructions, and
+ * removes the old plugin. Safe to call on every save; it never duplicates
+ * anything and never touches a file that already has content.
+ */
+export async function installMemory(client: OpenCode): Promise<MemoryPaths> {
+  const paths = await memoryPaths(client);
+  await client.exec(`mkdir -p ${[paths.daily, paths.projects, paths.learnings, paths.agents].map(sh).join(" ")}`, { timeoutMs: 20_000 });
+  const existing = await readText(client, paths.context);
+  if (existing === null || !existing.trim()) await client.writeFile(paths.context, contextTemplate());
+  await updateGlobalConfig(client, (cfg) => withMemoryInstructions(withoutMemoryPlugin(cfg), paths.context));
+  return paths;
 }
 
-/** Stable key for lists. */
-export const memoryKey = (m: MemoryEntry) => `${m.file}\n${m.raw}`;
+/** Turns memory off: removes our instruction and the old plugin, leaves every file. */
+export async function removeMemory(client: OpenCode): Promise<void> {
+  await updateGlobalConfig(client, (cfg) => withoutMemoryInstructions(withoutMemoryPlugin(cfg)));
+}
