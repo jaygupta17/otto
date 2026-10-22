@@ -74,7 +74,10 @@ export const useSchedules = create<State>((set, get) => ({
     try {
       set({ error: null });
       const s = svc();
-      const [env, data] = await Promise.all([s.env(), s.load()]);
+      // Sequential: both go through the service's lazily built store, and the
+      // env probe is what tells us where it lives.
+      const env = await s.env();
+      const data = await s.load();
       set({ env, list: data.schedules, rev: data.rev });
       // Once per connection, keep the runner, credentials, cron block and agent
       // tool in step with this machine. A focus refresh only re-reads the file.
@@ -187,7 +190,9 @@ async function install(s: ScheduleService) {
       useSchedules.setState({ rev: out.rev, list: out.schedules, env: state.env ? { ...state.env, hasCron: out.warnings.length === 0 } : state.env });
     }
   } catch {
-    /* no credentials yet, or a machine that cannot take them */
+    // Retry on the next focus/open: a stopped machine or a missing password is
+    // often temporary.
+    if (prepared === s) prepared = null;
   }
   await ensureSchedulePlugin(s.client).catch(() => {});
 }
