@@ -6,6 +6,10 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 ## [Unreleased]
 
+### Fixed
+
+- Long conversations open without a long wait or a failed fetch. History now loads in small pages, and a finished turn refreshes only the last few messages instead of downloading the whole session again.
+
 ## [0.12.0] - 2026-10-22
 
 ### Added
