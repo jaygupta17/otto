@@ -371,10 +371,11 @@ export class ScheduleStore {
       const draft = mutate(current.schedules.map((s) => ({ ...s })));
       const next = normalizeSchedules(draft.schedules);
       const rev = current.rev + 1;
-      const changed = changedIds(current.schedules, next);
       await this.writeRunner();
       if (opts.creds) await this.writeCredentials(opts.creds);
-      for (const s of next) if (changed.has(s.id)) await this.writeTask(s);
+      // Payloads are derived and cheap; writing them all repairs a deleted
+      // file or a migrated v1 schedule that never had one.
+      for (const s of next) await this.writeTask(s);
       const body = serializeSchedules(next, rev);
       const tmp = `${this.file}.tmp-${this.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
       await this.host.write(tmp, body);
@@ -555,9 +556,3 @@ export class ScheduleStore {
   }
 }
 
-function changedIds(before: Schedule[], after: Schedule[]): Set<string> {
-  const prev = new Map(before.map((s) => [s.id, JSON.stringify(s)]));
-  const out = new Set<string>();
-  for (const s of after) if (prev.get(s.id) !== JSON.stringify(s)) out.add(s.id);
-  return out;
-}

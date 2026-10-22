@@ -606,13 +606,6 @@ export function createScheduleStore(options) {
     }
   }
 
-  function changedIds(before, after) {
-    const prev = new Map(before.map((s) => [s.id, JSON.stringify(s)]));
-    const out = new Set();
-    for (const s of after) if (prev.get(s.id) !== JSON.stringify(s)) out.add(s.id);
-    return out;
-  }
-
   async function transact(mutate, options2) {
     const settings = options2 || {};
     return withLock(async () => {
@@ -630,10 +623,9 @@ export function createScheduleStore(options) {
       const draft = mutate(current.schedules.map((s) => ({ ...s })));
       const next = normalizeSchedules(draft.schedules);
       const rev = current.rev + 1;
-      const changed = changedIds(current.schedules, next);
       await writeRunner();
       if (settings.creds) await writeCredentials(settings.creds);
-      for (const s of next) if (changed.has(s.id)) await writeTask(s);
+      for (const s of next) await writeTask(s);
       const tmp = file + ".tmp-" + now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
       await writeFile(tmp, serializeSchedules(next, rev));
       await rename(tmp, file);

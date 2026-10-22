@@ -370,6 +370,10 @@ describe("runner install", () => {
     expect(session.title).toBe("Scheduled: Morning");
     await store().remove("sch_a", 2);
     expect((await readdir(join(ROOT, ".otto", "tasks"))).sort()).toEqual(["sch_b.prompt.json", "sch_b.session.json"]);
+    // A deleted payload is rebuilt by the next change, even if that schedule didn't change.
+    await rm(join(ROOT, ".otto", "tasks", "sch_b.prompt.json"));
+    await store().setEnabled("sch_b", false, 3);
+    expect(await readFile(join(ROOT, ".otto", "tasks", "sch_b.prompt.json"), "utf8")).toContain("Check the tests");
   });
 
   test("install writes credentials with app-only permissions", async () => {
