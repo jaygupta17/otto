@@ -6,6 +6,10 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 ## [Unreleased]
 
+### Added
+
+- Agents can create, change and run schedules from chat with the `otto_schedule` tool. The app and the tool write through one rev-locked file, so neither overwrites the other, and the Schedules view shows who created a schedule and how its last run went.
+
 ## [0.11.1] - 2026-10-21
 
 ### Fixed
