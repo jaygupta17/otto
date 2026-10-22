@@ -50,6 +50,13 @@ interface RuntimeModule {
   parseSchedules(text: string): { schedules: RuntimeSchedule[]; rev: number; legacy: boolean };
   permissionAction(input: { action: string }): string;
   TOOL_SCHEMA: { properties: { action: { enum: string[] } }; required: string[] };
+  dispatch(store: RuntimeStore, input: Record<string, unknown>, context: { sessionID?: string; agent?: string }): Promise<Record<string, unknown>>;
+  callTool(
+    store: RuntimeStore,
+    input: Record<string, unknown>,
+    context: { sessionID?: string; agent?: string },
+    assert: (action: string, resource: string) => Promise<void>,
+  ): Promise<Record<string, unknown>>;
   RUNNER_SCRIPT: string;
   CRON_BEGIN: string;
   CRON_END: string;
@@ -223,6 +230,96 @@ describe("store", () => {
     expect((await store.load()).schedules.map((s) => s.id)).toEqual(["sch_keep"]);
     const tasks = await readFile(join(ROOT, ".otto", "tasks", "sch_keep.prompt.json"), "utf8");
     expect(tasks).toContain("Check the tests");
+  });
+});
+
+describe("tool actions", () => {
+  const ctx = { sessionID: "ses_tool", agent: "build" };
+
+  test("create stamps the agent session and validates ranges", async () => {
+    const module = await load();
+    const store = makeStore(module);
+    const out = await module.dispatch(store, { action: "create", name: "Nightly", prompt: "Run tests", frequency: { kind: "daily", hour: 2, minute: 30 }, directory: "/work" }, ctx);
+    const made = out.schedule as RuntimeSchedule;
+    expect(made.createdBy).toBe("agent:ses_tool");
+    expect(made.createdByAgent).toBe("build");
+    expect(made.enabled).toBe(true);
+    expect(made.directory).toBe("/work");
+    expect(made.id.startsWith("sch_")).toBe(true);
+    expect((await store.load()).schedules).toHaveLength(1);
+
+    await expect(module.dispatch(store, { action: "create", name: "Bad", prompt: "p", frequency: { kind: "daily", hour: 24, minute: 0 } }, ctx)).rejects.toThrow(/hour/);
+    await expect(module.dispatch(store, { action: "create", name: "Bad", prompt: "p", frequency: { kind: "custom", cron: "0 0 * *" } }, ctx)).rejects.toThrow(/cron/);
+    await expect(module.dispatch(store, { action: "create", name: "Bad", prompt: "p", frequency: { kind: "weekly", days: [], hour: 9 } }, ctx)).rejects.toThrow(/days/);
+  });
+
+  test("create refuses a timezone that is not this machine's", async () => {
+    const module = await load();
+    const store = makeStore(module);
+    const here = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const wrong = here === "UTC" ? "Asia/Tokyo" : "UTC";
+    await expect(module.dispatch(store, { action: "create", name: "Zone", prompt: "p", frequency: { kind: "daily", hour: 9, minute: 0 }, timezone: wrong }, ctx)).rejects.toThrow(/timezone/);
+    const ok = await module.dispatch(store, { action: "create", name: "Zone", prompt: "p", frequency: { kind: "hourly", minute: 5 }, timezone: here }, ctx);
+    expect((ok.schedule as RuntimeSchedule).frequency).toEqual({ kind: "hourly", minute: 5 });
+  });
+
+  test("update changes only the fields it names", async () => {
+    const module = await load();
+    const store = makeStore(module);
+    const made = (await module.dispatch(store, { action: "create", name: "Nightly", prompt: "Run tests", frequency: { kind: "daily", hour: 2, minute: 30 }, directory: "/work" }, ctx)).schedule as RuntimeSchedule;
+    const out = await module.dispatch(store, { action: "update", id: made.id, name: "Renamed" }, ctx);
+    const after = out.schedule as RuntimeSchedule;
+    expect(after.name).toBe("Renamed");
+    expect(after.prompt).toBe("Run tests");
+    expect(after.directory).toBe("/work");
+    await expect(module.dispatch(store, { action: "update", id: made.id }, ctx)).rejects.toThrow(/at least one/);
+  });
+
+  test("update with a rev refuses a newer change", async () => {
+    const module = await load();
+    const store = makeStore(module);
+    const made = (await module.dispatch(store, { action: "create", name: "Nightly", prompt: "Run tests", frequency: { kind: "daily", hour: 2, minute: 30 } }, ctx)).schedule as RuntimeSchedule;
+    const listed = await module.dispatch(store, { action: "list" }, ctx);
+    expect(listed.rev).toBe(1);
+    await module.dispatch(store, { action: "update", id: made.id, prompt: "Human edit", rev: 1 }, ctx);
+    const stale = await module.callTool(store, { action: "update", id: made.id, prompt: "Agent edit", rev: 1 }, ctx, async () => {});
+    expect(stale.stale).toBe(true);
+    expect(stale.rev).toBe(2);
+    expect(((await store.load()).schedules[0]).prompt).toBe("Human edit");
+  });
+
+  test("asks the matching permission before acting", async () => {
+    const module = await load();
+    const store = makeStore(module);
+    const made = (await module.dispatch(store, { action: "create", name: "Nightly", prompt: "Run tests", frequency: { kind: "daily", hour: 2, minute: 30 } }, ctx)).schedule as RuntimeSchedule;
+    const seen: string[] = [];
+    const assert = async (action: string, resource: string) => {
+      seen.push(`${action}|${resource}`);
+    };
+    await module.callTool(store, { action: "list" }, ctx, assert);
+    await module.callTool(store, { action: "update", id: made.id, name: "X" }, ctx, assert);
+    await module.callTool(store, { action: "delete", id: made.id }, ctx, assert);
+    expect(seen).toEqual(["otto_schedule.read|*", "otto_schedule.write|" + made.id, "otto_schedule.delete|" + made.id]);
+  });
+
+  test("an unknown action is a JSON error, not a crash", async () => {
+    const module = await load();
+    const out = await module.callTool(makeStore(module), { action: "explode" }, ctx, async () => {});
+    expect(out.error).toBe("failed");
+    expect(String(out.message)).toContain("Unknown action");
+  });
+
+  test("setEnabled, delete and list", async () => {
+    const module = await load();
+    const store = makeStore(module);
+    const made = (await module.dispatch(store, { action: "create", name: "Nightly", prompt: "Run tests", frequency: { kind: "daily", hour: 2, minute: 30 } }, ctx)).schedule as RuntimeSchedule;
+    await module.dispatch(store, { action: "setEnabled", id: made.id, enabled: false }, ctx);
+    expect((await store.load()).schedules[0].enabled).toBe(false);
+    const list = await module.dispatch(store, { action: "list" }, ctx);
+    expect((list.schedules as (RuntimeSchedule & { when?: string })[])[0].when).toBe("Every day at 02:30");
+    await module.dispatch(store, { action: "delete", id: made.id }, ctx);
+    expect((await store.load()).schedules).toHaveLength(0);
+    await expect(module.dispatch(store, { action: "delete", id: "sch_nope" }, ctx)).rejects.toThrow(/No schedule/);
   });
 });
 

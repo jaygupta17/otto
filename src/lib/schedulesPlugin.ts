@@ -296,7 +296,7 @@ function normalizeFrequency(f) {
     case "weekly":
       return { kind: "weekly", days: Array.from(new Set(f.days)).sort((a, b) => a - b), hour: f.hour, minute: f.minute };
     default:
-      return { kind: "custom", cron: f.cron };
+      return { kind: "custom", cron: String(f.cron).trim().replace(/\\s+/g, " ") };
   }
 }
 
@@ -862,7 +862,7 @@ function newId() {
 }
 
 /** Run one action. The caller checks permission first; this does the work. */
-async function dispatch(store, input, context) {
+export async function dispatch(store, input, context) {
   const action = input.action;
   if (action === "list") {
     const data = await store.load();
@@ -944,6 +944,26 @@ function failure(e) {
   return { error: "failed", message: (e && e.message) || String(e) };
 }
 
+/**
+ * One tool call: map the action to a permission, ask, run it, and turn store
+ * errors into JSON the model can act on. A permission rejection propagates.
+ */
+export async function callTool(store, input, context, assertPermission) {
+  let permission;
+  try {
+    permission = permissionAction(input);
+  } catch (e) {
+    return failure(e);
+  }
+  const target = input.id || input.name || "*";
+  await assertPermission(permission, target);
+  try {
+    return await dispatch(store, input, context);
+  } catch (e) {
+    return failure(e);
+  }
+}
+
 function makeTool(ctx, store) {
   return {
     name: "otto_schedule",
@@ -953,29 +973,18 @@ function makeTool(ctx, store) {
     options: { codemode: false },
     execute: async (input, context) => {
       const action = input && input.action;
-      let permission;
-      try {
-        permission = permissionAction(input);
-      } catch (e) {
-        return { content: JSON.stringify(failure(e)), metadata: { action } };
-      }
-      const target = input.id || input.name || "*";
       // A deny or a rejection must reach the model as a failed tool call, so
-      // it is deliberately outside the catch below.
-      await ctx.permission.assert({
-        sessionID: context.sessionID,
-        agent: context.agent,
-        source: { type: "tool", messageID: context.messageID, id: context.id },
-        action: permission,
-        resources: [target],
-        save: [target],
-      });
-      let result;
-      try {
-        result = await dispatch(store, input, context);
-      } catch (e) {
-        result = failure(e);
-      }
+      // callTool lets it propagate rather than folding it into the JSON.
+      const result = await callTool(store, input, context, (permission, resource) =>
+        ctx.permission.assert({
+          sessionID: context.sessionID,
+          agent: context.agent,
+          source: { type: "tool", messageID: context.messageID, id: context.id },
+          action: permission,
+          resources: [resource],
+          save: [resource],
+        }),
+      );
       return { content: JSON.stringify(result), metadata: { action } };
     },
   };
