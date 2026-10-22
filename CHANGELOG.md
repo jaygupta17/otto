@@ -6,6 +6,8 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-10-22
+
 ### Changed
 
 - The chat fades in earlier above the composer, with a soft uneven edge instead of a straight band; the fade stays inside the conversation pane.
@@ -273,7 +275,8 @@ First public release.
 - Scheduled tasks that run on the agent machine.
 - Project file browser with syntax highlighting.
 
-[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.13.0...HEAD
+[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.13.1...HEAD
+[0.13.1]: https://github.com/jaygupta17/otto/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/jaygupta17/otto/compare/v0.12.1...v0.13.0
 [0.12.1]: https://github.com/jaygupta17/otto/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/jaygupta17/otto/compare/v0.11.1...v0.12.0
