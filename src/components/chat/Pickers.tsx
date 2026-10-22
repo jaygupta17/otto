@@ -2,6 +2,7 @@ import { Check, ChevronDown, Folder, FolderGit2, FolderPlus, FolderSearch, GitBr
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ModelInfo } from "@opencode/client";
 import { useChat, wsKey } from "../../state/chat";
+import { useConnection } from "../../state/connection";
 import { AgentMark } from "../ui/TeammateFace";
 import { useAgentName, useTeammates } from "../../state/teammates";
 import { isOfferedAgent } from "../../lib/teammates";
@@ -95,6 +96,8 @@ function ModelMenu({ sessionId, touch = false, onDone }: { sessionId: string | n
   const broken = useChat((s) => s.brokenModels);
   const setModel = useChat((s) => s.setModel);
   const refreshCatalog = useChat((s) => s.refreshCatalog);
+  const catalog = useConnection((s) => s.catalog);
+  const catalogError = useChat((s) => s.catalogError);
   const { ref, info } = useCurrentModel(sessionId);
 
   useEffect(() => {
@@ -194,7 +197,11 @@ function ModelMenu({ sessionId, touch = false, onDone }: { sessionId: string | n
         </div>
       )}
       <div className="scroll-quiet max-h-[420px] min-h-0 flex-1 overflow-y-auto overscroll-contain p-1.5">
-        {models.length === 0 && <div className="p-6 text-center text-[13px] text-muted">No models yet. Connect a provider in Settings.</div>}
+        {models.length === 0 && (
+          <div className="p-6 text-center text-[13px] text-muted" title={catalog === "degraded" ? catalogError : undefined}>
+            {catalog === "ready" ? "No models yet. Connect a provider in Settings." : catalog === "degraded" ? "Models didn't load. Reconnect to try again." : "Loading models…"}
+          </div>
+        )}
         {models.length > 0 && groups.length === 0 && <div className="p-6 text-center text-[13px] text-muted">No models match "{q}".</div>}
         {recentModels.length > 0 && (
           <div className="mb-1">

@@ -139,7 +139,13 @@ function Hello({ mate, compact }: { mate: Teammate; compact: boolean }) {
 
 export function Starters({ mate, center = false }: { mate: Teammate | undefined; center?: boolean }) {
   const empty = useChat((s) => !(s.drafts.new ?? "").trim());
-  const ready = useConnection((s) => s.status === "ready");
+  const models = useChat((s) => s.models);
+  const connected = useConnection((s) => s.status === "ready");
+  const catalog = useConnection((s) => s.catalog);
+  // Starters fill the draft only, but offering them before the catalog is
+  // ready suggests a conversation that can't be sent yet. Loaded models count
+  // even if the readiness wait gave up first.
+  const ready = connected && (catalog === "ready" || models.length > 0);
   if (!empty || !ready) return null;
   const pick = (text: string) => {
     useChat.getState().setDraft("new", text);

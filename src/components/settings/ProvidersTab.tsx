@@ -74,7 +74,8 @@ export function ProvidersTab() {
                 onDone={() => {
                   setEditing(null);
                   load();
-                  void useChat.getState().refreshCatalog();
+                  // A user just changed providers: one failure toast is useful here.
+                  void useChat.getState().refreshCatalog({ silent: false });
                 }}
               />
             )}
