@@ -7,6 +7,7 @@ import { create } from "zustand";
 import type { AgentInfo, ModelInfo, SessionInfo, V2Event } from "@opencode/client";
 import { OpenCode, OpenCodeError, type ModelRef, type PermissionRequestLite, type SessionRevert } from "../lib/opencode/client";
 import { applyEvent, eventSessionID, projectHistory, type Delivery, type UIMessage } from "../lib/opencode/projection";
+import { fetchTimelinePage, withTimeout } from "../lib/opencode/timeline";
 import { uid } from "../lib/id";
 import { kv } from "../lib/kv";
 import { useWorkspaces } from "./workspaces";
@@ -108,6 +109,15 @@ interface State {
 
 const empty = (): Timeline => ({ messages: [], loaded: false, loading: false });
 
+// A session's messages carry tool output and images inline: one long session
+// can return tens of MB for a page of 120. Read small pages instead of the
+// whole history, and refresh only the tail after a turn.
+export const TIMELINE_PAGE = 12;
+export const TIMELINE_OLDER = 12;
+export const TIMELINE_TAIL = 4;
+export const TIMELINE_TIMEOUT_MS = 12_000;
+const TIMELINE_ERROR = "Couldn't load this conversation. It may be too large for this connection — try again.";
+
 let queue: V2Event[] = [];
 let frame = 0;
 let fallback: ReturnType<typeof setTimeout> | undefined;
@@ -126,6 +136,8 @@ let askGeneration = 0;
 let sessionGeneration = 0;
 /** Bumped whenever busy changes locally (a send, an event) and on reset; an older snapshot must not overwrite it. */
 let busyGeneration = 0;
+/** Bumped on reset; a timeline read still in flight must not land in a new workspace's store. */
+let timelineGeneration = 0;
 
 export const useChat = create<State>((set, get) => ({
   client: null,
@@ -276,6 +288,7 @@ export const useChat = create<State>((set, get) => ({
     askGeneration++;
     sessionGeneration++;
     busyGeneration++;
+    timelineGeneration++;
     set({ client: null, sessions: {}, sessionsLoaded: false, sessionsError: undefined, busy: {}, retrying: {}, unread: {}, timelines: {}, permissions: {}, forms: {}, parents: {}, delegated: {}, agents: [], models: [], catalogError: undefined, defaultModel: null, homeDir: null, activeId: null, pickedModel: null, pickedAgent: null, projectDir: null });
   },
 
@@ -467,13 +480,13 @@ export const useChat = create<State>((set, get) => ({
     const cur = get().timelines[id];
     if (cur?.loading) return;
     if (cur?.loaded && !force) return;
+    const gen = timelineGeneration;
     pendingWhileLoading.set(id, []);
     set((s) => ({ timelines: { ...s.timelines, [id]: { ...(s.timelines[id] ?? empty()), loading: true, error: undefined } } }));
     try {
-      const [r, inbox] = await Promise.all([client.messages(id, { limit: 120, order: "desc" }), client.inbox(id).catch(() => [])]);
-      let messages = projectHistory([...r.data].reverse());
-      // Messages sent during a run that the agent hasn't read yet.
-      for (const it of inbox) if (it.type === "user") messages.push({ kind: "user", id: it.id, text: it.payload.text ?? "", time: it.time.created, pending: true, delivery: it.delivery });
+      const page = await fetchTimelinePage(client, id, { limit: TIMELINE_PAGE, retryLimit: TIMELINE_TAIL, timeoutMs: TIMELINE_TIMEOUT_MS, order: "desc" });
+      if (get().client !== client || gen !== timelineGeneration) return;
+      let messages = page.messages;
       // Keep optimistic sends that the server hasn't echoed yet.
       const optimistic = (get().timelines[id]?.messages ?? []).filter((m) => m.kind === "user" && m.pending && m.id.startsWith("local_"));
       messages = [...messages, ...optimistic.filter((o) => !messages.some((m) => m.kind === "user" && m.text === (o as { text: string }).text))];
@@ -485,14 +498,18 @@ export const useChat = create<State>((set, get) => ({
       const kids = childSessions(id, messages);
       const doers = childAgents(messages);
       set((s) => ({
-        timelines: { ...s.timelines, [id]: { messages, loaded: true, loading: false, older: r.cursor.next ?? null } },
+        timelines: { ...s.timelines, [id]: { messages, loaded: true, loading: false, older: page.older } },
         parents: Object.keys(kids).every((k) => s.parents[k] === kids[k]) ? s.parents : { ...s.parents, ...kids },
         delegated: Object.keys(doers).every((k) => s.delegated[k] === doers[k]) ? s.delegated : { ...s.delegated, ...doers },
       }));
       void inferChildren(id);
     } catch (e) {
-      pendingWhileLoading.delete(id);
-      set((s) => ({ timelines: { ...s.timelines, [id]: { ...(s.timelines[id] ?? empty()), loading: false, error: (e as Error).message } } }));
+      if (gen === timelineGeneration) pendingWhileLoading.delete(id);
+      if (get().client !== client || gen !== timelineGeneration) return;
+      // The raw failure (timeout, network, HTTP) is for the console; the user
+      // sees something they can act on and a Try again button.
+      console.warn(`loadTimeline(${id}) failed`, e);
+      set((s) => ({ timelines: { ...s.timelines, [id]: { ...(s.timelines[id] ?? empty()), loading: false, error: TIMELINE_ERROR } } }));
     }
   },
 
@@ -500,16 +517,20 @@ export const useChat = create<State>((set, get) => ({
     const client = get().client;
     const t = get().timelines[id];
     if (!client || !t?.older || t.loading) return;
+    const gen = timelineGeneration;
+    const cursor = t.older;
     set((s) => ({ timelines: { ...s.timelines, [id]: { ...t, loading: true } } }));
     try {
-      const r = await client.messages(id, { cursor: t.older, limit: 120 });
+      const r = await withTimeout((signal) => client.messages(id, { cursor, limit: TIMELINE_OLDER, signal }), TIMELINE_TIMEOUT_MS);
+      if (get().client !== client || gen !== timelineGeneration) return;
       const older = projectHistory([...r.data].reverse());
       set((s) => {
         const cur = s.timelines[id] ?? t;
         const ids = new Set(cur.messages.map((m) => m.id));
-        return { timelines: { ...s.timelines, [id]: { ...cur, loading: false, messages: [...older.filter((m) => !ids.has(m.id)), ...cur.messages], older: r.cursor.next ?? null } } };
+        return { timelines: { ...s.timelines, [id]: { ...cur, loading: false, messages: [...older.filter((m) => !ids.has(m.id)), ...cur.messages], older: r.cursor?.next ?? null } } };
       });
     } catch {
+      if (get().client !== client || gen !== timelineGeneration) return;
       set((s) => ({ timelines: { ...s.timelines, [id]: { ...(s.timelines[id] ?? t), loading: false } } }));
     }
   },

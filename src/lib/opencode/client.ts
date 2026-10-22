@@ -226,9 +226,10 @@ export class OpenCode {
   renameSession(id: string, title: string) {
     return this.request<void>("PATCH", `/api/session/${id}`, { body: { title } });
   }
-  messages(id: string, query: { limit?: number; cursor?: string; order?: "asc" | "desc" } = {}) {
+  messages(id: string, query: { limit?: number; cursor?: string; order?: "asc" | "desc"; signal?: AbortSignal } = {}) {
     return this.request<SessionMessagesResponse>("GET", `/api/session/${id}/message`, {
       query: { limit: query.limit ?? 200, order: query.cursor ? undefined : query.order ?? "desc", cursor: query.cursor },
+      signal: query.signal,
     });
   }
   prompt(id: string, input: { text: string; files?: { uri: string; name?: string }[]; delivery?: "steer" | "queue" }) {
@@ -263,8 +264,8 @@ export class OpenCode {
   revertClear(id: string) {
     return this.request<void>("DELETE", `/api/session/${id}/revert`);
   }
-  async inbox(id: string) {
-    const r = await this.request<{ data: InboxItem[] }>("GET", `/api/session/${id}/inbox`);
+  async inbox(id: string, signal?: AbortSignal) {
+    const r = await this.request<{ data: InboxItem[] }>("GET", `/api/session/${id}/inbox`, { signal });
     return r.data;
   }
   cancelInbox(id: string, inboxID: string) {
