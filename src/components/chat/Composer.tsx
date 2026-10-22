@@ -51,9 +51,13 @@ export function Composer({ sessionId, placeholder = "Do anything…", autoFocus 
   const catalog = useConnection((s) => s.catalog);
   const catalogError = useConnection((s) => s.catalogError);
   const retryConnection = useConnection((s) => s.retry);
+  const models = useChat((s) => s.models);
   // Send needs the catalog: a connected listener with no models would accept
-  // the text and fail the prompt.
-  const ready = connected && catalog === "ready";
+  // the text and fail the prompt. Models already in hand also count: the
+  // readiness budget can expire a moment before the catalog actually lands,
+  // and a later refresh must not leave send disabled for the rest of the
+  // session. A shell command (`!…`) doesn't need a model, so it stays sendable.
+  const ready = connected && (shellMode || catalog === "ready" || models.length > 0);
   const [sending, setSending] = useState(false);
   const [focused, setFocused] = useState(false);
   const [commands, setCommands] = useState<CommandInfo[] | null>(null);
@@ -268,9 +272,9 @@ export function Composer({ sessionId, placeholder = "Do anything…", autoFocus 
                   : `Queue a follow-up for ${doer}…`
                 : needsAgent
                   ? "Add a teammate to start"
-                  : catalog === "degraded"
+                  : catalog === "degraded" && !models.length
                     ? "Models didn't load"
-                    : catalog !== "ready"
+                    : catalog !== "ready" && !models.length
                       ? "Loading models…"
                       : placeholder
           }
@@ -357,7 +361,7 @@ export function Composer({ sessionId, placeholder = "Do anything…", autoFocus 
             </AnimatePresence>
           </div>
           {connected && catalog === "warming" && <div className="px-4 pb-2.5 text-[12.5px] text-muted">Loading models and agents…</div>}
-          {connected && catalog === "degraded" && (
+          {connected && catalog === "degraded" && !models.length && (
             <div className="flex items-center gap-2 px-4 pb-2.5 text-[12.5px] text-muted">
               <span className="min-w-0 flex-1" title={catalogError}>
                 Models didn't load, so sending is paused.
