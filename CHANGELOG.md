@@ -10,6 +10,10 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 - Agents can create, change and run schedules from chat with the `otto_schedule` tool. The app and the tool write through one rev-locked file, so neither overwrites the other, and the Schedules view shows who created a schedule and how its last run went.
 
+### Fixed
+
+- Starting or waking an agent machine no longer flashes "Couldn't load models" while OpenCode is still loading its plugins. The app waits for the model and agent catalog before it calls the connection ready, keeps Send paused until then, and picks the catalog up if it arrives late instead of leaving the picker empty.
+
 ## [0.11.1] - 2026-10-21
 
 ### Fixed
