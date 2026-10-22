@@ -24,7 +24,13 @@ declare module "bun:test" {
     toHaveLength(length: number): void;
     toBeGreaterThan(expected: number): void;
     toBeLessThan(expected: number): void;
+    toBeInstanceOf(expected: unknown): void;
+    toThrow(expected?: string | RegExp): void;
+    toMatchObject(expected: object): void;
     not: Matchers;
+    /** Bun resolves these; the matcher methods return nothing usable. */
+    rejects: Matchers;
+    resolves: Matchers;
   }
 
   export function expect(value: unknown): Matchers;

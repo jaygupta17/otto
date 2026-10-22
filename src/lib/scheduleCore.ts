@@ -25,7 +25,40 @@ export interface Schedule {
   frequency: Frequency;
   enabled: boolean;
   createdAt: number;
+  /** Who made it: the app, or an agent tool call (with its session id). */
+  createdBy?: "user" | `agent:${string}`;
+  /** Agent id behind an agent-created schedule, when it is known (for display). */
+  createdByAgent?: string;
+  /**
+   * Last run, as recorded by the runner or a manual run. Older Otto builds only
+   * had the log; `runs()` still reads that for history.
+   */
+  lastRun?: RunRecord;
+  /** Reserved: the IANA zone the frequency was written in. Not used for conversion yet. */
+  timezone?: string;
 }
+
+/** Does `f` have the shape (and ranges) a schedule in the file can have? */
+export function validFrequency(f: unknown): f is Frequency {
+  if (!f || typeof f !== "object") return false;
+  const v = f as Record<string, unknown>;
+  const int = (n: unknown, min: number, max: number) => typeof n === "number" && Number.isInteger(n) && n >= min && n <= max;
+  switch (v.kind) {
+    case "hourly":
+      return int(v.minute, 0, 59);
+    case "daily":
+    case "weekdays":
+      return int(v.hour, 0, 23) && int(v.minute, 0, 59);
+    case "weekly":
+      return int(v.hour, 0, 23) && int(v.minute, 0, 59) && Array.isArray(v.days) && v.days.length > 0 && v.days.every((d) => int(d, 0, 6));
+    case "custom":
+      return typeof v.cron === "string" && validCron(v.cron);
+    default:
+      return false;
+  }
+}
+
+export const isAgentCreated = (s: Pick<Schedule, "createdBy">) => !!s.createdBy?.startsWith("agent:");
 
 export interface RunRecord {
   at: number;
