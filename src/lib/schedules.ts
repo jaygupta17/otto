@@ -3,229 +3,241 @@
  * script), so they fire even when no device has Otto open.
  *
  * Layout on the server (all under $HOME/.otto, user-private):
- *   schedules.json            source of truth the app reads/writes
+ *   schedules.json            source of truth, `{version, rev, schedules}` (see scheduleStore)
+ *   schedules.lock            held while one writer changes the file
  *   server.env                local URL + password for the runner (chmod 600)
- *   bin/otto-run <id>       creates a session and sends the prompt
+ *   bin/otto-run <id>         creates a session and sends the prompt
  *   tasks/<id>.session.json   pre-built request bodies (no JSON parsing in bash)
  *   tasks/<id>.prompt.json
+ *   tasks/<id>.lock           one run per task at a time
  *   logs/<id>.log             "<iso> ok <sessionID>" / "<iso> error <why>"
+ *   state/<id>.json           last run, for the card (the runner writes it)
  * Crontab entries live in a marked block that we fully own.
+ *
+ * The app never writes the whole list: it sends one schedule (or one field)
+ * with the rev it last saw. A mismatch raises StaleScheduleError, and the UI
+ * reloads instead of clobbering an edit made by an agent or another device.
  */
 import type { OpenCode } from "./opencode/client";
-import { sh } from "./opencode/config";
+import type { RunRecord, Schedule, ServerEnv } from "./scheduleCore";
+import {
+  ScheduleStore,
+  normalizeRun,
+  shellQuote as q,
+  type Credentials,
+  type CronRead,
+  type ScheduleData,
+  type StoreHost,
+  type TransactResult,
+} from "./scheduleStore";
 
-export type Frequency =
-  | { kind: "hourly"; minute: number }
-  | { kind: "daily"; hour: number; minute: number }
-  | { kind: "weekdays"; hour: number; minute: number }
-  | { kind: "weekly"; days: number[]; hour: number; minute: number }
-  | { kind: "custom"; cron: string };
+// The scheduling math lives in ./scheduleCore (pure, testable). Re-export it so
+// existing imports from "./schedules" keep working.
+export { describe, nextRun, parseField, toCron, validCron, validFrequency, isAgentCreated } from "./scheduleCore";
+export type { Frequency, RunRecord, Schedule, ServerEnv } from "./scheduleCore";
+export { StaleScheduleError, ScheduleLockError } from "./scheduleStore";
+export type { Credentials } from "./scheduleStore";
 
-export interface Schedule {
-  id: string;
-  name: string;
-  prompt: string;
-  directory?: string;
-  agent?: string;
-  model?: { providerID: string; id: string; variant?: string };
-  /** In the USER's local time; converted to server time when installed. */
-  frequency: Frequency;
-  enabled: boolean;
-  createdAt: number;
-}
+// ---------------------------------------------------------------------------
+// Host: one OpenCode machine's files, crontab and runner
+// ---------------------------------------------------------------------------
 
-export interface RunRecord {
-  at: number;
-  ok: boolean;
-  sessionID?: string;
-  error?: string;
-}
+/** stdout of a command, minus the shell's trailing newline. */
+const text = (s: string) => s.replace(/\n+$/, "");
 
-export interface ServerEnv {
-  home: string;
-  /** Minutes east of UTC on the server. */
-  serverOffset: number;
-  hasCron: boolean;
-  os: string;
-}
-
-const DAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
-export function describe(f: Frequency): string {
-  const t = (h: number, m: number) => new Date(2000, 0, 1, h, m).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  switch (f.kind) {
-    case "hourly":
-      return f.minute === 0 ? "Every hour" : `Every hour at :${String(f.minute).padStart(2, "0")}`;
-    case "daily":
-      return `Every day at ${t(f.hour, f.minute)}`;
-    case "weekdays":
-      return `Weekdays at ${t(f.hour, f.minute)}`;
-    case "weekly":
-      return `${f.days.length === 7 ? "Every day" : f.days.map((d) => DAY[d]).join(", ")} at ${t(f.hour, f.minute)}`;
-    case "custom":
-      return `Cron: ${f.cron}`;
-  }
-}
-
-/** Local-time frequency → cron line in server time. */
-export function toCron(f: Frequency, serverOffset: number): string {
-  const localOffset = -new Date().getTimezoneOffset();
-  const shift = serverOffset - localOffset; // minutes to add to local time to get server time
-  const conv = (hour: number, minute: number) => {
-    let total = hour * 60 + minute + shift;
-    let dayShift = 0;
-    while (total < 0) {
-      total += 1440;
-      dayShift -= 1;
-    }
-    while (total >= 1440) {
-      total -= 1440;
-      dayShift += 1;
-    }
-    return { h: Math.floor(total / 60), m: total % 60, dayShift };
+function openCodeHost(client: OpenCode, dir: string): StoreHost {
+  return {
+    now: () => Date.now(),
+    sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+    async read(path) {
+      try {
+        return await client.readFile(path);
+      } catch (e) {
+        if ((e as { status?: number }).status === 404) return null;
+        throw e;
+      }
+    },
+    write: (path, body) => client.writeFile(path, body),
+    async rename(from, to) {
+      const r = await client.exec(`mv -f ${q(from)} ${q(to)}`);
+      if (r.exit !== 0) throw new Error(text(r.output) || `Couldn't replace ${to}.`);
+    },
+    async mkdir(path) {
+      const r = await client.exec(`mkdir ${q(path)} 2>/dev/null && echo __OTTO_MKDIR__`);
+      return r.exit === 0 && r.output.includes("__OTTO_MKDIR__");
+    },
+    async remove(path) {
+      await client.exec(`rm -rf ${q(path)}`);
+    },
+    async mtime(path) {
+      const r = await client.exec(`stat -c %Y ${q(path)} 2>/dev/null || stat -f %m ${q(path)} 2>/dev/null || true`);
+      const n = Number(text(r.output).split("\n").pop());
+      return Number.isFinite(n) && n > 0 ? n * 1000 : null;
+    },
+    async chmod(path, mode) {
+      await client.exec(`chmod ${mode.toString(8)} ${q(path)} 2>/dev/null || true`);
+    },
+    async readCrontab(): Promise<CronRead> {
+      const r = await client.exec(
+        [
+          `if ! command -v crontab >/dev/null 2>&1; then echo __OTTO_CRON_MISSING__; exit 0; fi`,
+          `out=$(crontab -l 2>&1); rc=$?`,
+          `printf '%s\\n' "$out"`,
+          `printf '__OTTO_CRON_RC__%s\\n' "$rc"`,
+        ].join("\n"),
+        { timeoutMs: 20_000 },
+      );
+      if (r.output.includes("__OTTO_CRON_MISSING__")) return { ok: false, reason: "missing" };
+      const lines = r.output.split("\n");
+      const marker = lines.findIndex((l) => l.startsWith("__OTTO_CRON_RC__"));
+      if (marker < 0) return { ok: false, reason: "failed", message: text(r.output).slice(0, 200) || "crontab -l failed" };
+      const rc = Number(lines[marker].slice("__OTTO_CRON_RC__".length)) || 0;
+      const body = text(lines.slice(0, marker).join("\n"));
+      if (rc === 0) return { ok: true, content: body };
+      // A user with no crontab yet is not a broken cron: the command works.
+      if (/no crontab/i.test(body)) return { ok: true, content: "" };
+      return { ok: false, reason: "failed", message: body.slice(0, 200) || "crontab -l failed" };
+    },
+    async writeCrontab(body) {
+      const tmp = `${dir}/.crontab.next`;
+      await client.writeFile(tmp, body);
+      const r = await client.exec(`crontab ${q(tmp)}; rc=$?; rm -f ${q(tmp)}; exit $rc`, { timeoutMs: 20_000 });
+      if (r.exit !== 0) throw new Error(text(r.output).slice(0, 200) || "crontab refused the change");
+    },
+    async readRunStates(ids) {
+      if (!ids.length) return {};
+      const script = [
+        `DIR=${q(dir)}`,
+        ...ids.map((id) => `if [ -f "$DIR/state/${id}.json" ]; then printf '__OTTO_RUN__${id}\\n'; cat "$DIR/state/${id}.json"; printf '\\n'; fi`),
+      ].join("\n");
+      const r = await client.exec(script, { timeoutMs: 20_000 });
+      const out: Record<string, RunRecord> = {};
+      const lines = r.output.split("\n");
+      for (let i = 0; i < lines.length; i++) {
+        if (!lines[i].startsWith("__OTTO_RUN__")) continue;
+        const id = lines[i].slice("__OTTO_RUN__".length);
+        const run = normalizeRun(safeJson(lines[i + 1]));
+        if (run) out[id] = run;
+      }
+      return out;
+    },
+    async prune(keep) {
+      if (!keep.length) {
+        await client.exec(`rm -rf ${q(`${dir}/tasks`)} ${q(`${dir}/logs`)} ${q(`${dir}/state`)}`);
+        return;
+      }
+      const pattern = ` ${keep.join(" ")} `;
+      const script = [
+        `cd ${q(dir)} 2>/dev/null || exit 0`,
+        `for f in tasks/*.json logs/*.log state/*.json; do`,
+        `  [ -e "$f" ] || continue`,
+        `  id=$(basename "$f" | cut -d. -f1)`,
+        `  case ${q(pattern)} in *" $id "*) ;; *) rm -f "$f";; esac`,
+        `done`,
+      ].join("\n");
+      await client.exec(script, { timeoutMs: 20_000 });
+    },
+    async runTask(id, taskDir) {
+      const r = await client.exec(
+        [`OTTO_DIR=${q(taskDir)} ${q(`${taskDir}/bin/otto-run`)} ${q(id)} >/dev/null 2>&1`, `cat ${q(`${taskDir}/state/${id}.json`)} 2>/dev/null || true`].join("\n"),
+        { timeoutMs: 120_000 },
+      );
+      const run = normalizeRun(safeJson(text(r.output).split("\n").pop() ?? ""));
+      return run;
+    },
   };
-  const days = (list: number[], dayShift: number) => list.map((d) => (((d + dayShift) % 7) + 7) % 7).sort().join(",");
-  switch (f.kind) {
-    case "hourly": {
-      const m = (((f.minute + shift) % 60) + 60) % 60;
-      return `${m} * * * *`;
-    }
-    case "daily": {
-      const c = conv(f.hour, f.minute);
-      return `${c.m} ${c.h} * * *`;
-    }
-    case "weekdays": {
-      const c = conv(f.hour, f.minute);
-      return `${c.m} ${c.h} * * ${days([1, 2, 3, 4, 5], c.dayShift)}`;
-    }
-    case "weekly": {
-      const c = conv(f.hour, f.minute);
-      return `${c.m} ${c.h} * * ${days(f.days.length ? f.days : [1], c.dayShift)}`;
-    }
-    case "custom":
-      return f.cron.trim();
+}
+
+function safeJson(s: string | undefined): unknown {
+  if (!s) return null;
+  try {
+    return JSON.parse(s);
+  } catch {
+    return null;
   }
 }
 
 // ---------------------------------------------------------------------------
-// Minimal cron evaluator (for "next run" and validation)
+// Service
 // ---------------------------------------------------------------------------
-
-function parseField(expr: string, min: number, max: number): Set<number> | null {
-  const out = new Set<number>();
-  for (const part of expr.split(",")) {
-    const m = /^(\*|\d+(?:-\d+)?)(?:\/(\d+))?$/.exec(part.trim());
-    if (!m) return null;
-    let lo = min;
-    let hi = max;
-    if (m[1] !== "*") {
-      const [a, b] = m[1].split("-").map(Number);
-      lo = a;
-      hi = b ?? (m[2] ? max : a);
-    }
-    const step = m[2] ? Number(m[2]) : 1;
-    if (lo < min || hi > max || lo > hi || step < 1) return null;
-    for (let v = lo; v <= hi; v += step) out.add(v === 7 && max === 7 ? 0 : v);
-  }
-  return out;
-}
-
-export function validCron(cron: string): boolean {
-  const f = cron.trim().split(/\s+/);
-  if (f.length !== 5) return false;
-  return !!(parseField(f[0], 0, 59) && parseField(f[1], 0, 23) && parseField(f[2], 1, 31) && parseField(f[3], 1, 12) && parseField(f[4], 0, 7));
-}
-
-/** Next fire time (epoch ms) of a server-time cron line, or null. */
-export function nextRun(cron: string, serverOffset: number, from = Date.now()): number | null {
-  const f = cron.trim().split(/\s+/);
-  if (f.length !== 5) return null;
-  const [mi, ho, dom, mon, dow] = [parseField(f[0], 0, 59), parseField(f[1], 0, 23), parseField(f[2], 1, 31), parseField(f[3], 1, 12), parseField(f[4], 0, 7)];
-  if (!mi || !ho || !dom || !mon || !dow) return null;
-  const domAny = f[2] === "*";
-  const dowAny = f[4] === "*";
-  // Walk minutes in server-local wall time.
-  let t = Math.floor(from / 60000) * 60000 + 60000;
-  for (let i = 0; i < 60 * 24 * 370; i++, t += 60000) {
-    const d = new Date(t + serverOffset * 60000);
-    if (!mi.has(d.getUTCMinutes()) || !ho.has(d.getUTCHours()) || !mon.has(d.getUTCMonth() + 1)) continue;
-    const domOk = dom.has(d.getUTCDate());
-    const dowOk = dow.has(d.getUTCDay());
-    if (domAny && dowAny ? true : domAny ? dowOk : dowAny ? domOk : domOk || dowOk) return t;
-  }
-  return null;
-}
-
-// ---------------------------------------------------------------------------
-// Server plumbing
-// ---------------------------------------------------------------------------
-
-const RUNNER = `#!/usr/bin/env bash
-# otto-run <id> — start a scheduled agent session. Installed by Otto; safe to delete.
-set -u
-DIR="\${OTTO_DIR:-$HOME/.otto}"
-ID="\${1:?task id}"
-[ -f "$DIR/server.env" ] || exit 1
-. "$DIR/server.env"
-[ -f "$DIR/tasks/$ID.prompt.json" ] || exit 0
-mkdir -p "$DIR/logs"
-LOG="$DIR/logs/$ID.log"
-ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
-AUTH="opencode:$OTTO_PASSWORD"
-SES=$(curl -fsS --max-time 30 -u "$AUTH" -H 'content-type: application/json' --data-binary @"$DIR/tasks/$ID.session.json" "$OTTO_URL/api/session" 2>&1) || { echo "$(ts) error could-not-create-session" >> "$LOG"; exit 1; }
-SID=$(printf '%s' "$SES" | grep -o '"id":"ses[^"]*"' | head -1 | cut -d'"' -f4)
-[ -n "$SID" ] || { echo "$(ts) error bad-session-response" >> "$LOG"; exit 1; }
-curl -fsS --max-time 30 -u "$AUTH" -H 'content-type: application/json' --data-binary @"$DIR/tasks/$ID.prompt.json" "$OTTO_URL/api/session/$SID/prompt" >/dev/null 2>&1 || { echo "$(ts) error prompt-failed $SID" >> "$LOG"; exit 1; }
-echo "$(ts) ok $SID" >> "$LOG"
-tail -n 40 "$LOG" > "$LOG.tmp" 2>/dev/null && mv "$LOG.tmp" "$LOG"
-`;
-
-const BEGIN = "# >>> otto schedules (managed by Otto; edit in the app) >>>";
-const END = "# <<< otto schedules <<<";
 
 export class ScheduleService {
   private envCache: ServerEnv | null = null;
+  private storeCache: { store: ScheduleStore; home: string } | null = null;
   constructor(readonly client: OpenCode) {}
 
   async env(): Promise<ServerEnv> {
     if (this.envCache) return this.envCache;
-    const r = await this.client.exec(`printf '%s\\n' "\${OTTO_HOME:-$HOME}"; date +%z; uname -s; command -v crontab >/dev/null 2>&1 && echo cron-yes || echo cron-no`);
-    const [home, tz, os, cron] = r.output.trim().split("\n");
+    const r = await this.client.exec(`printf '%s\\n' "\${OTTO_HOME:-$HOME}"; date +%z; uname -s`);
+    const [home, tz, os] = r.output.trim().split("\n");
     const sign = tz?.startsWith("-") ? -1 : 1;
     const digits = (tz ?? "+0000").replace(/[+-]/, "");
     const serverOffset = sign * (Number(digits.slice(0, 2)) * 60 + Number(digits.slice(2, 4)));
-    this.envCache = { home: home.trim(), serverOffset: Number.isFinite(serverOffset) ? serverOffset : 0, hasCron: cron?.trim() === "cron-yes", os: (os ?? "").trim() };
-    return this.envCache;
+    const env: ServerEnv = { home: home.trim(), serverOffset: Number.isFinite(serverOffset) ? serverOffset : 0, hasCron: true, os: (os ?? "").trim() };
+    const probe = await (await this.store(env)).probeCron();
+    env.hasCron = probe.hasCron;
+    this.envCache = env;
+    return env;
   }
 
-  private async dir() {
-    return `${(await this.env()).home}/.otto`;
+  private async store(env?: ServerEnv): Promise<ScheduleStore> {
+    const e = env ?? (await this.env());
+    if (this.storeCache?.home === e.home) return this.storeCache.store;
+    // The env probe builds the store before envCache exists; pass the facts in.
+    const store = new ScheduleStore(openCodeHost(this.client, `${e.home}/.otto`), { dir: `${e.home}/.otto`, offset: e.serverOffset });
+    this.storeCache = { store, home: e.home };
+    return store;
   }
 
+  async load(): Promise<ScheduleData> {
+    return (await this.store()).load();
+  }
+
+  /** Kept for callers that only want the list (e.g. the runner pre-flight). */
   async list(): Promise<Schedule[]> {
-    const dir = await this.dir();
-    try {
-      const text = await this.client.readFile(`${dir}/schedules.json`);
-      const data = JSON.parse(text) as { schedules?: Schedule[] };
-      return data.schedules ?? [];
-    } catch (e) {
-      if ((e as { status?: number }).status === 404) return [];
-      throw e;
-    }
+    return (await this.load()).schedules;
   }
 
+  async upsert(s: Schedule, baseRev: number, creds?: Credentials): Promise<TransactResult<Schedule>> {
+    return (await this.store()).upsert(s, baseRev, creds);
+  }
+
+  async remove(id: string, baseRev: number, creds?: Credentials): Promise<TransactResult<string>> {
+    return (await this.store()).remove(id, baseRev, creds);
+  }
+
+  async setEnabled(id: string, enabled: boolean, baseRev: number, creds?: Credentials): Promise<TransactResult<string>> {
+    return (await this.store()).setEnabled(id, enabled, baseRev, creds);
+  }
+
+  /** Runner script, credentials, payloads and cron block; no definition change. */
+  async install(creds: Credentials): Promise<{ rev: number; schedules: Schedule[]; warnings: string[] }> {
+    const store = await this.store();
+    const out = await store.install(creds);
+    const env = await this.env();
+    if (!out.warnings.some((w) => w.startsWith("cron-"))) this.envCache = { ...env, hasCron: true };
+    return out;
+  }
+
+  async runNow(id: string, creds?: Credentials): Promise<{ run: RunRecord | null; schedules: Schedule[]; rev: number }> {
+    return (await this.store()).runNow(id, creds);
+  }
+
+  /** Run history from the log the runner appends to. */
   async runs(id: string): Promise<RunRecord[]> {
     const dir = await this.dir();
     try {
-      const text = await this.client.readFile(`${dir}/logs/${id}.log`);
-      return text
+      const body = await this.client.readFile(`${dir}/logs/${id}.log`);
+      return body
         .trim()
         .split("\n")
         .filter(Boolean)
         .map((line) => {
           const [iso, status, ...rest] = line.split(" ");
           const ok = status === "ok";
-          return { at: Date.parse(iso), ok, sessionID: ok ? rest[0] : rest[1], error: ok ? undefined : rest[0] };
+          // A skipped run is logged as "skipped-running" with no reason field.
+          const error = ok ? undefined : status === "error" ? rest[0] : status;
+          return { at: Date.parse(iso), ok, sessionID: ok ? rest[0] : rest[1], error };
         })
         .reverse();
     } catch {
@@ -233,54 +245,7 @@ export class ScheduleService {
     }
   }
 
-  /** Persist schedules, refresh task payloads, runner, credentials and crontab. */
-  async save(schedules: Schedule[], creds: { password: string; localUrl: string }): Promise<void> {
-    const env = await this.env();
-    const dir = `${env.home}/.otto`;
-    await this.client.writeFile(`${dir}/schedules.json`, JSON.stringify({ version: 1, schedules }, null, 2) + "\n");
-    await this.client.writeFile(`${dir}/bin/otto-run`, RUNNER);
-    await this.client.writeFile(`${dir}/server.env`, `OTTO_URL=${sh(creds.localUrl)}\nOTTO_PASSWORD=${sh(creds.password)}\n`);
-    for (const s of schedules) {
-      const session: Record<string, unknown> = { title: `Scheduled: ${s.name}` };
-      if (s.directory) session.location = { directory: s.directory };
-      if (s.agent) session.agent = s.agent;
-      if (s.model) session.model = s.model;
-      await this.client.writeFile(`${dir}/tasks/${s.id}.session.json`, JSON.stringify(session));
-      await this.client.writeFile(`${dir}/tasks/${s.id}.prompt.json`, JSON.stringify({ text: s.prompt }));
-    }
-    const lines = schedules.filter((s) => s.enabled).map((s) => `${toCron(s.frequency, env.serverOffset)} OTTO_DIR=${sh(dir)} ${sh(dir + "/bin/otto-run")} ${s.id} >/dev/null 2>&1`);
-    const block = [BEGIN, ...lines, END].join("\n");
-    const keep = schedules.map((s) => s.id);
-    const ensureCron =
-      env.os === "Linux"
-        ? `if ! command -v crontab >/dev/null 2>&1; then (sudo -n apt-get update -qq && sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq cron) >/dev/null 2>&1 || true; fi; (sudo -n systemctl enable --now cron || sudo -n service cron start) >/dev/null 2>&1 || true;`
-        : "";
-    const cmd = [
-      `set -e`,
-      `chmod 700 ${sh(dir)} 2>/dev/null || true`,
-      `chmod 600 ${sh(dir + "/server.env")} && chmod 755 ${sh(dir + "/bin/otto-run")}`,
-      // Remove payloads/logs of deleted schedules.
-      `cd ${sh(dir)} && for f in tasks/*.json logs/*.log; do [ -e "$f" ] || continue; id=$(basename "$f" | cut -d. -f1); case " ${keep.join(" ")} " in *" $id "*) ;; *) rm -f "$f";; esac; done`,
-      ensureCron,
-      // OTTO_CRONTAB lets a dev server point at a fake crontab.
-      `CT="\${OTTO_CRONTAB:-crontab}"`,
-      `command -v "$CT" >/dev/null 2>&1 || { echo "cron is not available on this machine" >&2; exit 3; }`,
-      `( "$CT" -l 2>/dev/null | sed '/^# >>> otto schedules/,/^# <<< otto schedules <<<$/d'; printf '%s\\n' ${sh(block)} ) | "$CT" -`,
-    ]
-      .filter(Boolean)
-      .join("\n");
-    // Run under bash explicitly: the server shell may be zsh (macOS), whose glob rules differ.
-    const r = await this.client.exec(`bash -c ${sh(cmd)}`, { timeoutMs: 180_000 });
-    if (r.exit !== 0) throw new Error(r.output.trim() || "Couldn't install the schedule on the server.");
-    this.envCache = { ...env, hasCron: true };
-  }
-
-  async runNow(id: string): Promise<RunRecord | null> {
-    const dir = await this.dir();
-    const r = await this.client.exec(`OTTO_DIR=${sh(dir)} ${sh(dir + "/bin/otto-run")} ${sh(id)}; tail -n 1 ${sh(`${dir}/logs/${id}.log`)} 2>/dev/null`, { timeoutMs: 90_000 });
-    const last = r.output.trim().split("\n").pop() ?? "";
-    const [iso, status, a, b] = last.split(" ");
-    if (!iso) return null;
-    return status === "ok" ? { at: Date.parse(iso), ok: true, sessionID: a } : { at: Date.parse(iso), ok: false, error: a, sessionID: b };
+  private async dir() {
+    return `${(await this.env()).home}/.otto`;
   }
 }

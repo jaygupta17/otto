@@ -5,7 +5,7 @@ import { useSchedules } from "../../state/schedules";
 import { useChat } from "../../state/chat";
 import { useUI } from "../../state/ui";
 import { useActiveWorkspace } from "../../state/workspaces";
-import { describe, nextRun, toCron, validCron, type Frequency, type Schedule } from "../../lib/schedules";
+import { describe, isAgentCreated, nextRun, toCron, validCron, type Frequency, type Schedule } from "../../lib/schedules";
 import { basename, timeAgo } from "../../lib/format";
 import { uid } from "../../lib/id";
 import { useTrafficLights } from "../../hooks/useChrome";
@@ -42,6 +42,25 @@ export function SchedulesView({ compact = false, onBack }: { compact?: boolean; 
   useEffect(() => {
     if (client) void load();
   }, [client, load]);
+
+  // The agent can change schedules while this view is open, and another device
+  // can too. Refresh when the view gets focus back rather than on a timer.
+  useEffect(() => {
+    let last = 0;
+    const refresh = () => {
+      if (document.visibilityState === "hidden") return;
+      const now = Date.now();
+      if (now - last < 1000) return;
+      last = now;
+      void load();
+    };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [load]);
 
   const mac = useTrafficLights();
   return (
@@ -87,7 +106,7 @@ export function SchedulesView({ compact = false, onBack }: { compact?: boolean; 
                 </p>
 
                 {error && <div className="selectable mb-4 rounded-xl bg-danger-soft px-4 py-3 text-[13px] text-danger">{error}</div>}
-                {env && !env.hasCron && env.os !== "Linux" && <div className="mb-4 rounded-xl bg-info-soft px-4 py-3 text-[13px] text-info">This machine has no cron, so schedules can’t run here.</div>}
+                {env && !env.hasCron && <div className="mb-4 rounded-xl bg-info-soft px-4 py-3 text-[13px] text-info">This machine has no cron, so schedules can’t run here. They stay saved and work again once cron is installed.</div>}
 
                 {list === null ? (
                   <div className="flex justify-center py-16 text-muted">
@@ -132,7 +151,6 @@ export function SchedulesView({ compact = false, onBack }: { compact?: boolean; 
 }
 
 function ScheduleRow({ s, serverOffset, onEdit }: { s: Schedule; serverOffset: number; onEdit: () => void }) {
-  const runs = useSchedules((st) => st.runs[s.id]);
   const setEnabled = useSchedules((st) => st.setEnabled);
   const runNow = useSchedules((st) => st.runNow);
   const remove = useSchedules((st) => st.remove);
@@ -140,12 +158,13 @@ function ScheduleRow({ s, serverOffset, onEdit }: { s: Schedule; serverOffset: n
   const [menu, setMenu] = useState(false);
   const [running, setRunning] = useState(false);
   const next = useMemo(() => (s.enabled ? nextRun(toCron(s.frequency, serverOffset), serverOffset) : null), [s, serverOffset]);
-  const last = runs?.[0];
+  const last = s.lastRun;
+  const agent = isAgentCreated(s);
 
   return (
     <div className={`group flex items-center gap-3 px-4 py-3 transition-colors hover:bg-hover ${s.enabled ? "" : "opacity-60"}`}>
       <span
-        title={!last ? "Hasn't run yet" : last.ok ? `Last run ${timeAgo(last.at)} ago` : `Last run failed ${timeAgo(last.at)} ago`}
+        title={!last ? "Hasn't run yet" : last.ok ? `Last run ${ago(last.at)}` : `Last run failed ${ago(last.at)}`}
         className={`h-2 w-2 shrink-0 rounded-full ${!last ? "bg-line-strong" : last.ok ? "bg-ok" : "bg-danger"}`}
       />
       <button onClick={onEdit} className="min-w-0 flex-1 text-left">
@@ -154,6 +173,13 @@ function ScheduleRow({ s, serverOffset, onEdit }: { s: Schedule; serverOffset: n
           {describe(s.frequency)}
           {next && <span className="text-faint"> · next {formatNext(next)}</span>}
         </span>
+        {(agent || last) && (
+          <span className="block truncate text-[12px] text-faint">
+            {agent && <>Created by {s.createdByAgent ? s.createdByAgent.charAt(0).toUpperCase() + s.createdByAgent.slice(1) : "an agent"}</>}
+            {agent && last && " · "}
+            {last && (last.ok ? `Last ran ${ago(last.at)}` : `Last run failed ${ago(last.at)}`)}
+          </span>
+        )}
       </button>
       <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
         <IconButton
@@ -183,6 +209,12 @@ function ScheduleRow({ s, serverOffset, onEdit }: { s: Schedule; serverOffset: n
   );
 }
 
+/** `2h ago`, but "just now" rather than "now ago". */
+function ago(at: number) {
+  const t = timeAgo(at);
+  return t === "now" ? "just now" : `${t} ago`;
+}
+
 function formatNext(t: number) {
   const d = new Date(t);
   const now = new Date();
@@ -206,6 +238,9 @@ function ScheduleEditor({ initial, template, onClose }: { initial: Schedule | nu
   const [agent, setAgent] = useState(initial?.agent ?? "");
   const [model, setModel] = useState(initial?.model ?? null);
   const [freq, setFreq] = useState<Frequency>(initial?.frequency ?? template?.frequency ?? { kind: "weekdays", hour: 9, minute: 0 });
+  // The rev this editor read. A focus refresh may move the store's rev, but a
+  // save here must still notice that the schedule changed underneath it.
+  const [baseRev, setBaseRev] = useState(() => useSchedules.getState().rev);
   const [folders, setFolders] = useState<string[]>([]);
 
   useEffect(() => {
@@ -248,13 +283,25 @@ function ScheduleEditor({ initial, template, onClose }: { initial: Schedule | nu
       frequency: freq,
       enabled: initial?.enabled ?? true,
       createdAt: initial?.createdAt ?? Date.now(),
-    });
+      // Keep who made it (and its run history) when a person edits it later.
+      createdBy: initial?.createdBy ?? "user",
+      createdByAgent: initial?.createdByAgent,
+      lastRun: initial?.lastRun,
+      timezone: initial?.timezone,
+    }, initial ? baseRev : undefined);
     if (ok) onClose();
+    // A stale save reloaded the list; the next press of Save is a deliberate
+    // second attempt against the new rev rather than an endless loop.
+    else setBaseRev(useSchedules.getState().rev);
   }
 
   const runs = useSchedules((st) => (initial ? st.runs[initial.id] : undefined));
+  const loadRuns = useSchedules((st) => st.loadRuns);
   const remove = useSchedules((st) => st.remove);
   const open = useChat((st) => st.open);
+  useEffect(() => {
+    if (initial) void loadRuns(initial.id);
+  }, [initial, loadRuns]);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const folderOptions = [
     ...(home ? [{ value: home, label: "projects", icon: <Folder size={14} /> }] : []),
@@ -383,7 +430,14 @@ function ScheduleEditor({ initial, template, onClose }: { initial: Schedule | nu
         {initial &&
           (confirmDelete ? (
             <>
-              <Button variant="danger" size="sm" onClick={() => void remove(initial.id).then(onClose)}>
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={async () => {
+                  if (await remove(initial.id, baseRev)) onClose();
+                  else setBaseRev(useSchedules.getState().rev);
+                }}
+              >
                 Delete schedule
               </Button>
               <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(false)}>
