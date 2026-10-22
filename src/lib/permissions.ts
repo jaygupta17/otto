@@ -39,6 +39,11 @@ export const TOOLS: ToolMeta[] = [
   { action: "subagent", label: "Delegate to subagents", example: "explore" },
   { action: "question", label: "Ask you questions", },
   { action: "external_directory", label: "Leave the project", hint: "Files outside the project folder", example: "/tmp/*" },
+  // The otto_schedule tool (installed by Schedules) asks per action, not per tool.
+  { action: "otto_schedule.read", label: "See schedules", hint: "List schedules saved on the machine", example: "sch_*" },
+  { action: "otto_schedule.write", label: "Create and change schedules", hint: "Create, edit and pause schedules", example: "sch_*" },
+  { action: "otto_schedule.delete", label: "Delete schedules", example: "sch_*" },
+  { action: "otto_schedule.run", label: "Run a schedule now", example: "sch_*" },
 ];
 
 /** v1 keys OpenCode 2 ignores; dropped on save. */

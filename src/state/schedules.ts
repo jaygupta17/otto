@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { ScheduleService, StaleScheduleError, type Credentials, type RunRecord, type Schedule, type ServerEnv } from "../lib/schedules";
+import { ensureSchedulePlugin } from "../lib/schedulesPlugin";
 import { secrets } from "../lib/secrets";
 import { useChat } from "./chat";
 import { useConnection } from "./connection";
@@ -16,14 +17,17 @@ interface State {
   saving: boolean;
   load(): Promise<void>;
   loadRuns(id: string): Promise<void>;
-  upsert(s: Schedule): Promise<boolean>;
-  remove(id: string): Promise<boolean>;
+  /** `baseRev` is the rev the editor opened with; without it, the live rev is used. */
+  upsert(s: Schedule, baseRev?: number): Promise<boolean>;
+  remove(id: string, baseRev?: number): Promise<boolean>;
   setEnabled(id: string, enabled: boolean): Promise<boolean>;
   runNow(id: string): Promise<void>;
   reset(): void;
 }
 
 let service: ScheduleService | null = null;
+/** The service that has already had its derived files installed this session. */
+let prepared: ScheduleService | null = null;
 function svc() {
   const c = useChat.getState().client;
   if (!c) throw new Error("Not connected to a workspace.");
@@ -72,10 +76,12 @@ export const useSchedules = create<State>((set, get) => ({
       const s = svc();
       const [env, data] = await Promise.all([s.env(), s.load()]);
       set({ env, list: data.schedules, rev: data.rev });
-      for (const sc of data.schedules) void get().loadRuns(sc.id);
-      // Keep the runner, credentials, cron block and agent tool in step with
-      // this machine. Everything it writes is derived; the file is untouched.
-      void install(s);
+      // Once per connection, keep the runner, credentials, cron block and agent
+      // tool in step with this machine. A focus refresh only re-reads the file.
+      if (prepared !== s) {
+        prepared = s;
+        void install(s);
+      }
     } catch (e) {
       set({ error: (e as Error).message, list: get().list ?? [] });
     }
@@ -90,14 +96,19 @@ export const useSchedules = create<State>((set, get) => ({
     }
   },
 
-  async upsert(sc) {
+  async upsert(sc, baseRev) {
     const s = svc();
     const editing = get().list?.some((x) => x.id === sc.id) ?? false;
     set({ saving: true });
     try {
-      const out = await s.upsert(sc, get().rev, await credentials());
+      const out = await s.upsert(sc, baseRev ?? get().rev, await credentials());
       set({ list: out.schedules, rev: out.rev, saving: false });
-      toast({ tone: "ok", title: editing ? "Schedule updated" : "Schedule created" });
+      if (out.warnings.length) {
+        set((st) => ({ env: st.env ? { ...st.env, hasCron: false } : st.env }));
+        toast({ tone: "error", title: editing ? "Saved, but cron isn't set up" : "Created, but cron isn't set up", body: "The schedule is stored; it starts firing once cron works on this machine." });
+      } else toast({ tone: "ok", title: editing ? "Schedule updated" : "Schedule created" });
+      // A schedule saved before the view ever opened still gets the agent tool.
+      void ensureSchedulePlugin(s.client).catch(() => {});
       return true;
     } catch (e) {
       set({ saving: false });
@@ -110,10 +121,10 @@ export const useSchedules = create<State>((set, get) => ({
     }
   },
 
-  async remove(id) {
+  async remove(id, baseRev) {
     set({ saving: true });
     try {
-      const out = await svc().remove(id, get().rev, await credentials());
+      const out = await svc().remove(id, baseRev ?? get().rev, await credentials());
       set({ list: out.schedules, rev: out.rev, saving: false });
       toast({ tone: "ok", title: "Schedule deleted" });
       return true;
@@ -161,22 +172,24 @@ export const useSchedules = create<State>((set, get) => ({
 
   reset() {
     service = null;
+    prepared = null;
     set({ list: null, rev: 0, env: null, runs: {}, error: null, saving: false });
   },
 }));
 
-/** Derived files + cron. Failures must not hide the list. */
+/** Derived files, cron and the agent tool. Failures must not hide the list. */
 async function install(s: ScheduleService) {
   try {
     const out = await s.install(await credentials());
     const state = useSchedules.getState();
     // A save may have landed while this was reading; never walk the list back.
     if (out.rev >= state.rev) {
-      useSchedules.setState({ rev: out.rev, list: out.schedules, env: state.env ? { ...state.env, hasCron: !out.warnings.some((w) => w.startsWith("cron-")) } : state.env });
+      useSchedules.setState({ rev: out.rev, list: out.schedules, env: state.env ? { ...state.env, hasCron: out.warnings.length === 0 } : state.env });
     }
   } catch {
     /* no credentials yet, or a machine that cannot take them */
   }
+  await ensureSchedulePlugin(s.client).catch(() => {});
 }
 
 useChat.subscribe((s, prev) => {

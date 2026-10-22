@@ -33,7 +33,7 @@ import {
 
 // The scheduling math lives in ./scheduleCore (pure, testable). Re-export it so
 // existing imports from "./schedules" keep working.
-export { describe, nextRun, parseField, toCron, validCron } from "./scheduleCore";
+export { describe, nextRun, parseField, toCron, validCron, validFrequency, isAgentCreated } from "./scheduleCore";
 export type { Frequency, RunRecord, Schedule, ServerEnv } from "./scheduleCore";
 export { StaleScheduleError, ScheduleLockError } from "./scheduleStore";
 export type { Credentials } from "./scheduleStore";
@@ -180,12 +180,6 @@ export class ScheduleService {
     return env;
   }
 
-  /** Forget cached machine facts (after install, or when the connection changes). */
-  refresh() {
-    this.envCache = null;
-    this.storeCache = null;
-  }
-
   private async store(env?: ServerEnv): Promise<ScheduleStore> {
     const e = env ?? (await this.env());
     if (this.storeCache?.home === e.home) return this.storeCache.store;
@@ -241,7 +235,9 @@ export class ScheduleService {
         .map((line) => {
           const [iso, status, ...rest] = line.split(" ");
           const ok = status === "ok";
-          return { at: Date.parse(iso), ok, sessionID: ok ? rest[0] : rest[1], error: ok ? undefined : rest[0] };
+          // A skipped run is logged as "skipped-running" with no reason field.
+          const error = ok ? undefined : status === "error" ? rest[0] : status;
+          return { at: Date.parse(iso), ok, sessionID: ok ? rest[0] : rest[1], error };
         })
         .reverse();
     } catch {

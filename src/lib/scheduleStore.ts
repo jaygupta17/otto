@@ -26,8 +26,6 @@ export const CRON_END = "# <<< otto schedules <<<";
 export const STALE_LOCK_MS = 30_000;
 export const LOCK_RETRIES = 50;
 export const LOCK_WAIT_MS = 100;
-/** How long a single cron run may take before it is killed, where `timeout` exists. */
-export const RUN_TIMEOUT_SEC = 1800;
 
 export interface ScheduleFile {
   version: 2;
@@ -103,14 +101,6 @@ export class ScheduleLockError extends Error {
   constructor() {
     super("Another schedule change is still in progress. Try again in a moment.");
     this.name = "ScheduleLockError";
-  }
-}
-
-/** Raised (and caught) when the machine cannot install its cron block. */
-export class CronUnavailableError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "CronUnavailableError";
   }
 }
 
