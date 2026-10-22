@@ -76,7 +76,7 @@ export const ACCESSORIES = ["none", "antenna", "glasses", "headset", "cap", "spr
 export type Accessory = (typeof ACCESSORIES)[number];
 
 /** Bump when the base prompt changes; stale agents are recompiled on load. */
-export const TEAMMATE_PROMPT_VERSION = 6;
+export const TEAMMATE_PROMPT_VERSION = 7;
 
 export const MAX_STARTERS = 4;
 
@@ -435,7 +435,7 @@ export function teammatePrompt(t: Pick<Teammate, "id" | "name" | "job" | "instru
     `You run on a machine the user owns, with the tools available to you. The user talks to you from the Otto app on a laptop or phone, and may close it while you work; keep going until the task is done or you need them.`,
     BASE_PROMPT,
     t.leads ? LEAD_PROMPT : TEAM_PROMPT,
-    memoryPrompt(t.id),
+    memoryPrompt(t),
     voice ? `# Personality\nThis is who you are with the user. Keep it in every reply, without overdoing it.\n\n${voice}` : "",
     standing
       ? `# Standing instructions\nThese come from the user and apply to every conversation. Where they conflict with the guidance above, follow them.\n\n${standing}`
@@ -463,16 +463,21 @@ You're part of a team of AI teammates, and a lead may hand you work. When a task
 Other teammates may be listed in your subagent tool. Hand them work only when the user asks you to; otherwise do the work yourself.`;
 
 /**
- * How a teammate uses the memory plugin's tools. Scopes keep each teammate's
- * notes apart while facts about the user are shared by the whole team.
+ * How a teammate uses memory now that it's plain markdown: the lead owns the
+ * one injected file, everyone keeps their own notes and daily lines.
  */
-const memoryPrompt = (id: string) => `# Memory
-You have memory tools (memory_remember, memory_recall and the rest) when memory is on; use them so you get better across sessions. Look at how your tool list offers them: if there's no tool by that exact name, they live inside your code tool, so call them there (\`await tools.memory_recall({ query: "…" })\`) instead of by name. The user can read, edit and delete everything you save in Otto's Memory panel.
-- Save when the user asks you to remember something, and when you learn something that will matter next time: a decision, a preference, how they like work done, a recurring pattern, an open blocker. One fact per memory, in plain words.
-- Scope: \`user\` for facts about the user; \`project\` for facts about this project any teammate should know; \`${id}\` for what's specific to your own work.
-- When a new task may depend on earlier work, check memory_recall first. Memories relevant to the latest message may already be in your context.
-- When something you saved changes, update it with memory_update instead of adding a second one. Forget what the user asks you to forget.
-- Never save secrets, passwords, keys or tokens, or private details the user didn't ask you to keep.`;
+const memoryPrompt = (t: Pick<Teammate, "id"> & Partial<Pick<Teammate, "leads">>) => `# Memory
+Your memory is plain markdown in \`~/.config/opencode/memory\` (the OpenCode config folder on this machine; if the config lives elsewhere, it's the \`memory/\` folder beside \`opencode.json\`). The user can read and edit all of it in Otto's Memory panel.
+- \`context.md\` is injected into every new session, so it must stay under 40 lines. Rewrite it; never append. ${t.leads ? "You own it." : "The lead owns it; don't edit it."}
+- \`projects/<project>.md\` holds this project's state, decisions and open threads. Read it before you start work, and update it when something changes.
+- \`learnings/<topic>.md\` holds durable, non-obvious findings. Grep \`learnings/\` when a task touches something you may have learned before.
+- \`daily/YYYY-MM-DD.md\` is append-only: one line per event.
+- \`agents/${t.id}.md\` is your own scratchpad. Read and write it on demand.
+At the end of a task:
+- Append one line to today's \`daily/\` file, and update the project file with what changed and what's still open.
+- ${t.leads ? "Rewrite `context.md` so the next session starts oriented: Now, Next, Blocked, Decisions, Pointers." : "If something belongs in `context.md`, say so in your report to the lead."}
+- Add a learning only if it's durable and not obvious from the code or the project file.
+Never save secrets, keys or tokens, or raw transcripts: write short facts a future session can use.`;
 
 const BASE_PROMPT = `# How you work
 - Own the outcome. Take the task to done: gather what you need, do the work, check it, then report. Don't stop at a plan when you were asked to act.

@@ -18,13 +18,10 @@ import { useTeammates } from "../../state/teammates";
 import { TeammateFace } from "../ui/TeammateFace";
 import { CATALOG, hash, isOfferedAgent, listNames, STARTER_TEAM, type Teammate } from "../../lib/teammates";
 import { HireGallery } from "./HireGallery";
-import { MEMORY_TOOLS, isMemoryTool } from "../../lib/memory";
 import { COMPOSIO_SERVER } from "../../lib/composio";
 import { appEffect, KINDS, sample } from "../../lib/appPermissions";
 import { useConnectors } from "../../state/connectors";
 import { AppPermissions } from "./AppPermissions";
-
-const MEMORY_ALL = "memory_*";
 
 const NO_RULES: readonly { action: string; resource: string; effect: Effect }[] = [];
 const BUILTIN = new Set(["build", "plan", "general", "explore", "compaction", "title", "summary"]);
@@ -546,19 +543,6 @@ export function PermissionsEditor({ model, onChange, globalRules }: { model: Per
   };
   const inherited = (action: string) => inheritedEffect(action, { global: globalRules, agentGlobal: model.global });
 
-  // Last rule wins, so "All memory tools" must come before the per-tool rows.
-  // Re-emit every memory row from the keys, in that order, on each change.
-  const setMemoryKey = (action: string, effect: Effect | null) => {
-    const cur = model.keys[action] ?? { effect: null, patterns: [] };
-    const keys = { ...model.keys, [action]: { ...cur, effect } };
-    if (effect === null && cur.patterns.length === 0) delete keys[action];
-    const isMem = (a: string) => a === MEMORY_ALL || isMemoryTool(a);
-    const rest = Object.entries(keys).filter(([a]) => !isMem(a));
-    const mem = Object.entries(keys).filter(([a]) => isMem(a)).sort(([a], [b]) => Number(b === MEMORY_ALL) - Number(a === MEMORY_ALL));
-    onChange({ ...model, keys: Object.fromEntries([...rest, ...mem]), source: model.source.filter((r) => !(isMem(r.action) && r.resource === "*")) });
-  };
-  const memoryAll = model.keys[MEMORY_ALL]?.effect ?? null;
-
   // Apps have their own section; a machine set up before the plugin may still list the old server until it's swapped.
   const mcpNames = useMemo(() => [...new Set([...(mcp ?? []).map((m) => m.name), ...Object.keys(mcpConfig ?? {})])].filter((n) => n !== COMPOSIO_SERVER), [mcp, mcpConfig]);
   const appRules = useMemo(() => (hasApps ? serializeRules(model) : []), [hasApps, model]);
@@ -652,23 +636,6 @@ export function PermissionsEditor({ model, onChange, globalRules }: { model: Per
             );
           })
         )}
-      </PermGroup>
-
-      <PermGroup title="Memory">
-        <PermRow noAsk title="All memory tools" subtitle="Saving and recalling across sessions. Teammates never stop to ask, so it is on or off." code={MEMORY_ALL} value={memoryAll} inherited={inherited(MEMORY_ALL)} onChange={(v) => setMemoryKey(MEMORY_ALL, v)} />
-        {MEMORY_TOOLS.map((t) => (
-          <PermRow
-            key={t.action}
-            noAsk
-            indent
-            title={t.label}
-            subtitle={t.hint ?? t.action}
-            code={t.action}
-            value={model.keys[t.action]?.effect ?? null}
-            inherited={memoryAll ?? inherited(t.action)}
-            onChange={(v) => setMemoryKey(t.action, v)}
-          />
-        ))}
       </PermGroup>
 
       <AppPermissions model={model} onChange={onChange} globalRules={globalRules} />

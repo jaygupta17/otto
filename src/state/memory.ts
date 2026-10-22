@@ -1,37 +1,39 @@
 /**
- * Teammate memory for the Memory panel (see lib/memory). Whether the plugin is
- * on for this machine, and what each project folder remembers. Reloads when
- * an agent's memory tool finishes, so the panel never shows a stale list.
+ * The Memory panel's state: whether the `memory/context.md` instruction is
+ * installed, the current text of that file, and the index of everything else
+ * in the memory folder. Files are plain markdown on the connected machine;
+ * this store only reads and writes them through the OpenCode file API.
  */
 import { create } from "zustand";
-import { readGlobalConfig, updateGlobalConfig } from "../lib/opencode/config";
+import { readGlobalConfig } from "../lib/opencode/config";
 import { updateTeammates } from "../lib/teammates";
-import { addMemory, forgetMemory, isMemoryTool, memoryInstalled, readMemories, updateMemory, withMemoryPlugin, withoutMemoryPlugin, type Memory, type MemoryEntry } from "../lib/memory";
-import { onToolSettled, useChat } from "./chat";
+import { installMemory, memoryInstalled, memoryPaths, readMemoryFile, readMemoryState, removeMemory, writeMemoryFile, type MemoryFile } from "../lib/memory";
+import { useChat } from "./chat";
 import { useExtensions } from "./extensions";
 import { useTeammates } from "./teammates";
 import { toast, useUI } from "./ui";
 
-interface Folder {
-  entries: MemoryEntry[] | null;
-  error: string | null;
-}
-
 interface State {
-  /** The plugin is in the machine's config. null until checked. */
+  /** The instruction is in the machine's global config. null until checked. */
   installed: boolean | null;
-  byRoot: Record<string, Folder>;
-  /** Set by "Show in Memory" in a chat; the panel takes it as its search. */
-  query: string | null;
+  /** context.md; empty when it doesn't exist yet. */
+  context: string;
+  /** Every file in memory/, context.md included. null until loaded. */
+  files: MemoryFile[] | null;
+  /** Absolute path of the file open in the panel editor, if any. */
+  active: string | null;
+  loading: boolean;
+  error: string | null;
   checkInstalled(): Promise<void>;
-  load(root: string): Promise<void>;
+  load(): Promise<void>;
   setEnabled(on: boolean): Promise<boolean>;
-  add(root: string, m: Omit<Memory, "ts">): Promise<boolean>;
-  update(root: string, entry: MemoryEntry, patch: Pick<Memory, "content" | "type">): Promise<boolean>;
-  forget(root: string, entry: MemoryEntry): Promise<boolean>;
-  /** Open the panel, searching for `query`. */
-  show(query?: string): void;
-  takeQuery(): string | null;
+  /** Text of one file; also makes it the active one. */
+  read(path: string): Promise<string | null>;
+  saveContext(text: string): Promise<boolean>;
+  saveFile(path: string, text: string): Promise<boolean>;
+  closeFile(): void;
+  /** Open the Memory panel. */
+  show(): void;
   reset(): void;
 }
 
@@ -42,12 +44,14 @@ function client() {
 }
 
 let generation = 0;
-const loads: Record<string, number> = {};
 
 export const useMemory = create<State>((set, get) => ({
   installed: null,
-  byRoot: {},
-  query: null,
+  context: "",
+  files: null,
+  active: null,
+  loading: false,
+  error: null,
 
   async checkInstalled() {
     const gen = generation;
@@ -59,35 +63,38 @@ export const useMemory = create<State>((set, get) => ({
     }
   },
 
-  async load(root) {
+  async load() {
     const gen = generation;
-    const n = (loads[root] = (loads[root] ?? 0) + 1);
+    set({ loading: true, error: null });
     try {
-      const entries = await readMemories(client(), root);
-      if (gen !== generation || n !== loads[root]) return;
-      set((s) => ({ byRoot: { ...s.byRoot, [root]: { entries, error: null } } }));
+      const state = await readMemoryState(client());
+      if (gen !== generation) return;
+      set({ context: state.context, files: state.files, loading: false });
     } catch (e) {
-      if (gen !== generation || n !== loads[root]) return;
-      set((s) => ({ byRoot: { ...s.byRoot, [root]: { entries: s.byRoot[root]?.entries ?? null, error: (e as Error).message } } }));
+      if (gen !== generation) return;
+      set({ loading: false, error: (e as Error).message });
     }
   },
 
   async setEnabled(on) {
     try {
       const c = client();
-      // The roster flag first: teammate saves read it before writing the config.
+      // The roster flag first: writing agents reads it before touching the config.
       await updateTeammates(c, (f) => {
         if (on) delete f.memory;
         else f.memory = "off";
       });
       useTeammates.setState({ memoryOff: !on });
-      const cfg = await updateGlobalConfig(c, (cfg) => (on ? withMemoryPlugin(cfg) : withoutMemoryPlugin(cfg)));
-      set({ installed: memoryInstalled(cfg) });
+      let root = "";
+      if (on) root = (await installMemory(c)).root;
+      else await removeMemory(c);
+      set({ installed: on });
       if (useExtensions.getState().config) await useExtensions.getState().load(true);
+      await get().load();
       toast(
         on
-          ? { tone: "ok", title: "Memory is on", body: "Teammates can save and recall memories. The first time, it takes about a minute to set up." }
-          : { tone: "ok", title: "Memory is off", body: "Saved memories stay in each project's .opencode/memory folder." },
+          ? { tone: "ok", title: "Memory is on", body: `Teammates keep notes in ${root || "the memory folder"}. context.md is added to every new session.` }
+          : { tone: "ok", title: "Memory is off", body: "The folder and its files stay; context.md is no longer injected into new sessions." },
       );
       return true;
     } catch (e) {
@@ -96,71 +103,55 @@ export const useMemory = create<State>((set, get) => ({
     }
   },
 
-  async add(root, m) {
+  async read(path) {
+    set({ active: path, error: null });
     try {
-      await addMemory(client(), root, m);
-      await get().load(root);
+      return await readMemoryFile(client(), path);
+    } catch (e) {
+      set({ error: (e as Error).message });
+      return null;
+    }
+  },
+
+  async saveContext(text) {
+    try {
+      const { context } = await memoryPaths(client());
+      await writeMemoryFile(client(), context, text);
+      set({ context: text, error: null });
+      await get().load();
       return true;
     } catch (e) {
-      toast({ tone: "error", title: "Couldn't save memory", body: (e as Error).message });
+      toast({ tone: "error", title: "Couldn't save context.md", body: (e as Error).message });
       return false;
     }
   },
 
-  async update(root, entry, patch) {
+  async saveFile(path, text) {
     try {
-      await updateMemory(client(), root, entry, patch);
-      await get().load(root);
+      await writeMemoryFile(client(), path, text);
+      set({ error: null });
+      await get().load();
       return true;
     } catch (e) {
-      toast({ tone: "error", title: "Couldn't change memory", body: (e as Error).message });
-      void get().load(root);
+      toast({ tone: "error", title: "Couldn't save this file", body: (e as Error).message });
       return false;
     }
   },
 
-  async forget(root, entry) {
-    try {
-      await forgetMemory(client(), root, entry);
-      await get().load(root);
-      return true;
-    } catch (e) {
-      toast({ tone: "error", title: "Couldn't delete memory", body: (e as Error).message });
-      void get().load(root);
-      return false;
-    }
+  closeFile() {
+    set({ active: null });
   },
 
-  show(query) {
-    set({ query: query ?? null });
+  show() {
+    set({ active: null });
     useUI.getState().openPanel("memory");
-  },
-
-  takeQuery() {
-    const q = get().query;
-    if (q !== null) set({ query: null });
-    return q;
   },
 
   reset() {
     generation++;
-    set({ installed: null, byRoot: {}, query: null });
+    set({ installed: null, context: "", files: null, active: null, loading: false, error: null });
   },
 }));
-
-/** True when a finished tool call read or changed memory (directly or inside a script). */
-export function touchesMemory(name: string | undefined, metadata: Record<string, unknown> | undefined) {
-  if (name && isMemoryTool(name)) return true;
-  const calls = metadata?.toolCalls;
-  return Array.isArray(calls) && calls.some((c) => typeof c?.tool === "string" && isMemoryTool(c.tool));
-}
-
-// An agent saved, changed or forgot something: refresh the folders on screen.
-onToolSettled((t) => {
-  if (!touchesMemory(t.name, t.metadata)) return;
-  const s = useMemory.getState();
-  for (const root of Object.keys(s.byRoot)) void s.load(root);
-});
 
 // A new client means a different machine.
 useChat.subscribe((s, prev) => {

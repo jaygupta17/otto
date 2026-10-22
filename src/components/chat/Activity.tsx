@@ -36,7 +36,6 @@ import {
   inputOf,
   lineCount,
   memoryCalls,
-  memorySearch,
   subagentOf,
   subagentPhase,
   summarizeTools,
@@ -385,7 +384,7 @@ const ToolRow = memo(function ToolRow({ b: call, step }: { b: ToolBlock; step?: 
           <button
             aria-label="Show in Memory"
             title="Show in Memory"
-            onClick={() => useMemory.getState().show(memorySearch(mem))}
+            onClick={() => useMemory.getState().show()}
             className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-faint opacity-0 group-focus-within/row:opacity-100 group-hover/row:opacity-100 hover:bg-active hover:text-ink focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
           >
             <SquareArrowOutUpRight size={12} />
