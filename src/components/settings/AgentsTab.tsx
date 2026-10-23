@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from "motion/react";
-import { Bot, ChevronRight, Lock, Plus, RotateCcw, Trash2, X, ArrowLeft } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Bot, ChevronRight, Lock, MessageCircle, Plus, Search, X } from "lucide-react";
+import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { AgentInfo } from "@opencode/client";
 import { useChat } from "../../state/chat";
 import { AGENT_COLORS, agentColor } from "../../lib/agentColor";
@@ -9,12 +9,12 @@ import type { AgentConfig } from "../../lib/opencode/config";
 import { modelRefToString, modelStringToRef } from "../../lib/opencode/config";
 import { TOOLS, inheritedEffect, parseRules, serializeRules, effectFor, type Effect, type PermissionModel } from "../../lib/permissions";
 import { Button, IconButton } from "../ui/Button";
-import { TextField } from "../ui/Field";
 import { Spinner } from "../ui/AgentClock";
-import { DefaultMark, EffectPicker, Empty, Label, Row, Rows, SearchBox, Segmented, TextArea, Toggle } from "./common";
+import { DefaultMark, EffectPicker, Empty, FormRow, formInput, PhonePage, Row, SearchBox, Section, Segmented, TextArea, Toggle } from "./common";
 import { ModelSelect, type ModelValue } from "./ModelSelect";
 import { TeammateEditor } from "./TeammateEditor";
-import { useTeammates } from "../../state/teammates";
+import { useTeammates, useTeammateState } from "../../state/teammates";
+import { Sheet } from "../ui/Sheet";
 import { TeammateFace } from "../ui/TeammateFace";
 import { CATALOG, hash, isOfferedAgent, listNames, STARTER_TEAM, type Teammate } from "../../lib/teammates";
 import { HireGallery } from "./HireGallery";
@@ -42,7 +42,8 @@ interface Draft {
 
 type Origin = "builtin" | "custom" | "file";
 
-export function AgentsTab({ compact }: { compact: boolean }) {
+/** Teammates and agents: a list beside an editor; on phones, a list whose rows open pages (`onMessage` adds "New session" there). */
+export function AgentsTab({ compact, onMessage }: { compact: boolean; onMessage?: (id: string) => void }) {
   const agents = useChat((s) => s.agents);
   const config = useExtensions((s) => s.config);
   const load = useExtensions((s) => s.load);
@@ -123,105 +124,203 @@ export function AgentsTab({ compact }: { compact: boolean }) {
       </div>
     );
 
-  const showList = !compact || (!selected && !creating && hiring === false);
-  const showEditor = !compact || selected || creating || hiring !== false;
+  // On a phone, a profile offers to start a session (subagents only run inside someone else's).
+  const talk = (id: string, can: boolean) =>
+    compact && onMessage && can ? (
+      <Button
+        variant="primary"
+        className="h-11 px-6 text-[15px]"
+        icon={<MessageCircle size={16} />}
+        onClick={() => {
+          show({});
+          onMessage(id);
+        }}
+      >
+        New session
+      </Button>
+    ) : undefined;
+
+  const editor =
+    hiring !== false ? (
+      <HireGallery
+        profile={hiring}
+        onProfile={(id) => setHiring(id)}
+        onCustom={() => show({ creating: true })}
+        onEdit={(id) => show({ selected: id })}
+        onTalk={
+          onMessage &&
+          ((id) => {
+            show({});
+            onMessage(id);
+          })
+        }
+        compact={compact}
+      />
+    ) : creating ? (
+      <TeammateEditor
+        key="new"
+        onDone={(id) => {
+          setCreating(false);
+          setSelected(id);
+        }}
+      />
+    ) : selected && roster?.[selected] ? (
+      <TeammateEditor
+        key={`${selected}-${roster[selected].updated}`}
+        teammate={roster[selected]}
+        cfg={cfgAgents[selected]}
+        onDone={(id) => setSelected(id)}
+        actions={talk(selected, true)}
+      />
+    ) : selected ? (
+      <AgentEditor key={selected} id={selected} info={agents.find((a) => a.id === selected)} cfg={cfgAgents[selected]} origin={originOf(selected, cfgAgents[selected], agents.find((a) => a.id === selected))} onDone={(id) => setSelected(id)} actions={talk(selected, (agents.find((a) => a.id === selected)?.mode ?? cfgAgents[selected]?.mode) !== "subagent")} />
+    ) : noTeammates ? (
+      <MeetTheTeam onAdd={addStarters} onBrowse={() => show({ hiring: null })} compact={false} />
+    ) : (
+      <Empty icon={<Bot size={20} />} title="Pick a teammate" />
+    );
+
+  if (compact) {
+    const info = selected ? agents.find((a) => a.id === selected) : undefined;
+    const mate = selected ? roster?.[selected] : undefined;
+    const open = !!selected || creating || hiring !== false;
+    const title = typeof hiring === "string" ? (CATALOG.find((t) => t.id === hiring)?.name ?? "") : hiring === null ? "Hire a teammate" : creating ? "New teammate" : (mate?.name ?? info?.name ?? selected ?? "");
+    // Subagents only run inside someone else's session.
+    // Editing reads as a grouped settings page; the hire gallery keeps its plain page.
+    const grouped = hiring === false;
+    return (
+      <div>
+        <label className="mx-4 flex h-9 items-center gap-2 rounded-[10px] bg-active px-2.5">
+          <Search size={16} className="shrink-0 text-faint" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search" aria-label="Search teammates and agents" className="min-w-0 flex-1 bg-transparent text-[16px] outline-none placeholder:text-faint" />
+        </label>
+        {noTeammates && (
+          <div className="mx-4 mt-4">
+            <MeetTheTeam onAdd={addStarters} onBrowse={() => show({ hiring: null })} compact />
+          </div>
+        )}
+        {team.length > 0 && (
+          <section className="mt-5">
+            <h2 className="px-4 pb-1 text-[13px] font-medium text-muted">Teammates</h2>
+            {team.map((m) => (
+              <MateRow key={m.id} t={m} disabled={!!cfgAgents[m.id]?.disabled} onClick={() => show({ selected: m.id })} />
+            ))}
+          </section>
+        )}
+        {!q.trim() && !noTeammates && (
+          <button onClick={() => show({ hiring: null })} className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors active:bg-hover">
+            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-active text-ink">
+              <Plus size={20} />
+            </span>
+            <span className="min-w-0 flex-1 text-[16px] font-medium text-ink">Hire a teammate</span>
+            {missing.length > 0 && (
+              <span className="flex shrink-0 -space-x-2">
+                {missing.slice(0, 3).map((t) => (
+                  <TeammateFace key={t.id} seed={hash(t.id)} color={t.color} accessory={t.accessory} size={26} />
+                ))}
+              </span>
+            )}
+          </button>
+        )}
+        {list.length > 0 && (
+          <section className="mt-5">
+            <h2 className="px-4 pb-1 text-[13px] font-medium text-muted">Agents</h2>
+            {list.map((a) => {
+              const off = a.cfg?.disabled;
+              return (
+                <button key={a.id} onClick={() => show({ selected: a.id })} className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors active:bg-hover">
+                  <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-active">
+                    <span className="h-2.5 w-2.5 rounded-full" style={{ background: agentColor(a.id, a.cfg?.color ?? a.info?.color) }} />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className={`block truncate text-[16px] font-medium ${off ? "text-faint line-through" : "text-ink"}`}>{a.info?.name ?? a.id}</span>
+                    <span className="mt-0.5 block truncate text-[14px] text-muted">{modeLabel(a.info?.mode ?? a.cfg?.mode)}</span>
+                  </span>
+                  <ChevronRight size={18} className="shrink-0 text-faint" />
+                </button>
+              );
+            })}
+          </section>
+        )}
+        {q.trim() && team.length + list.length === 0 && <div className="mt-12 text-center text-[15px] text-muted">No one matches “{q.trim()}”</div>}
+        <div className="mt-4 flex items-center justify-between gap-3 px-4 py-2">
+          <span className="text-[15px] text-ink">Show internal agents</span>
+          <Toggle on={showHidden} onChange={setShowHidden} label="Show internal agents" />
+        </div>
+        {/* A profile in the gallery steps back to the gallery first. */}
+        <Sheet open={open} onClose={() => (typeof hiring === "string" ? setHiring(null) : show({}))} compact grouped={grouped} title={title}>
+          <PhonePage.Provider value={grouped}>
+            <div ref={editorRef} data-phone-page={grouped || undefined} className="px-4 pt-5 pb-8">
+              {editor}
+            </div>
+          </PhonePage.Provider>
+        </Sheet>
+      </div>
+    );
+  }
 
   return (
-    <div className={`flex gap-5 ${compact ? "flex-col" : "min-h-[540px]"}`}>
-      {showList && (
-        <div className={compact ? "" : "w-[200px] shrink-0"}>
-          <div className="mb-2 flex items-center gap-2">
-            <div className="min-w-0 flex-1">
-              <SearchBox value={q} onChange={setQ} placeholder="Find agent" />
-            </div>
-            <IconButton label="Hire a teammate" className="hairline" onClick={() => show({ hiring: null })}>
-              <Plus size={16} />
-            </IconButton>
+    <div className="flex min-h-[540px] gap-5">
+      <div className="w-[200px] shrink-0">
+        <div className="mb-2 flex items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <SearchBox value={q} onChange={setQ} placeholder="Find agent" />
           </div>
-          {/* Phone layout has no editor pane to hold the offer, so it sits in the list. */}
-          {compact && noTeammates && (
-            <div className="mt-3">
-              <MeetTheTeam onAdd={addStarters} onBrowse={() => show({ hiring: null })} compact />
-            </div>
-          )}
-          {team.length > 0 && (
-            <>
-              <div className="mb-1 mt-3 px-2.5 text-[12px] font-medium text-faint">Teammates</div>
-              <div className="space-y-0.5">
-                {team.map((m) => (
-                  <TeammateRow
-                    key={m.id}
-                    t={m}
-                    disabled={!!cfgAgents[m.id]?.disabled}
-                    active={selected === m.id && !creating && hiring === false}
-                    onClick={() => show({ selected: m.id })}
-                  />
-                ))}
-              </div>
-              {missing.length > 0 && !q.trim() && (
-                <button onClick={() => show({ hiring: null })} className={`mt-1 flex w-full items-center gap-2.5 rounded-xl px-2 py-1.5 text-left transition-colors ${hiring !== false ? "bg-active text-ink" : "text-muted hover:bg-hover hover:text-ink"}`}>
-                  <span className="flex shrink-0 -space-x-2">
-                    {missing.slice(0, 3).map((t) => (
-                      <TeammateFace key={t.id} seed={hash(t.id)} color={t.color} accessory={t.accessory} size={26} />
-                    ))}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate text-[13px]">Hire</span>
-                  <Plus size={14} className="shrink-0" />
-                </button>
-              )}
-              <div className="mb-1 mt-4 px-2.5 text-[12px] font-medium text-faint">Agents</div>
-            </>
-          )}
-          <div className="space-y-0.5">
-            {list.map((a) => (
-              <AgentRow
-                key={a.id}
-                id={a.id}
-                info={a.info}
-                cfg={a.cfg}
-                active={selected === a.id && !creating && hiring === false}
-                onClick={() => show({ selected: a.id })}
-              />
-            ))}
-          </div>
-          <label className="mt-3 flex items-center gap-2 px-2 text-[12px] text-muted">
-            <Toggle on={showHidden} onChange={setShowHidden} label="Show internal agents" /> Show internal agents
-          </label>
+          <IconButton label="Hire a teammate" className="hairline" onClick={() => show({ hiring: null })}>
+            <Plus size={16} />
+          </IconButton>
         </div>
-      )}
-      {showEditor && (
-        <div ref={editorRef} className="min-w-0 flex-1">
-          <AnimatePresence mode="wait" initial={false}>
-            <motion.div key={hiring !== false ? `hire:${hiring ?? ""}` : creating ? "new" : (selected ?? "none")} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, transition: { duration: 0.08 } }} transition={{ duration: 0.18 }}>
-              {/* A profile in the gallery has its own way back. */}
-              {compact && !hiring && (
-                <button className="mb-3 inline-flex items-center gap-1 text-[13px] font-medium text-muted" onClick={() => show({})}>
-                  <ArrowLeft size={15} /> All agents
-                </button>
-              )}
-              {hiring !== false ? (
-                <HireGallery profile={hiring} onProfile={(id) => setHiring(id)} onCustom={() => show({ creating: true })} onEdit={(id) => show({ selected: id })} compact={compact} />
-              ) : creating ? (
-                <TeammateEditor
-                  key="new"
-                  onDone={(id) => {
-                    setCreating(false);
-                    setSelected(id);
-                  }}
+        {team.length > 0 && (
+          <>
+            <div className="mb-1 mt-3 px-2.5 text-[12px] font-medium text-faint">Teammates</div>
+            <div className="space-y-0.5">
+              {team.map((m) => (
+                <TeammateRow
+                  key={m.id}
+                  t={m}
+                  disabled={!!cfgAgents[m.id]?.disabled}
+                  active={selected === m.id && !creating && hiring === false}
+                  onClick={() => show({ selected: m.id })}
                 />
-              ) : selected && roster?.[selected] ? (
-                <TeammateEditor key={`${selected}-${roster[selected].updated}`} teammate={roster[selected]} cfg={cfgAgents[selected]} onDone={(id) => setSelected(id)} />
-              ) : selected ? (
-                <AgentEditor key={selected} id={selected} info={agents.find((a) => a.id === selected)} cfg={cfgAgents[selected]} origin={originOf(selected, cfgAgents[selected], agents.find((a) => a.id === selected))} onDone={(id) => setSelected(id)} />
-              ) : noTeammates ? (
-                <MeetTheTeam onAdd={addStarters} onBrowse={() => show({ hiring: null })} compact={false} />
-              ) : (
-                <Empty icon={<Bot size={20} />} title="Pick a teammate" body="Teammates have a name, a job and standing instructions, and keep their own model and permissions." />
-              )}
-            </motion.div>
-          </AnimatePresence>
+              ))}
+            </div>
+            {missing.length > 0 && !q.trim() && (
+              <button onClick={() => show({ hiring: null })} className={`mt-1 flex w-full items-center gap-2.5 rounded-xl px-2 py-1.5 text-left transition-colors ${hiring !== false ? "bg-active text-ink" : "text-muted hover:bg-hover hover:text-ink"}`}>
+                <span className="flex shrink-0 -space-x-2">
+                  {missing.slice(0, 3).map((t) => (
+                    <TeammateFace key={t.id} seed={hash(t.id)} color={t.color} accessory={t.accessory} size={26} />
+                  ))}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-[13px]">Hire</span>
+                <Plus size={14} className="shrink-0" />
+              </button>
+            )}
+            <div className="mb-1 mt-4 px-2.5 text-[12px] font-medium text-faint">Agents</div>
+          </>
+        )}
+        <div className="space-y-0.5">
+          {list.map((a) => (
+            <AgentRow
+              key={a.id}
+              id={a.id}
+              info={a.info}
+              cfg={a.cfg}
+              active={selected === a.id && !creating && hiring === false}
+              onClick={() => show({ selected: a.id })}
+            />
+          ))}
         </div>
-      )}
+        <label className="mt-3 flex items-center gap-2 px-2 text-[12px] text-muted">
+          <Toggle on={showHidden} onChange={setShowHidden} label="Show internal agents" /> Show internal agents
+        </label>
+      </div>
+      <div ref={editorRef} className="min-w-0 flex-1">
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div key={hiring !== false ? `hire:${hiring ?? ""}` : creating ? "new" : (selected ?? "none")} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, transition: { duration: 0.08 } }} transition={{ duration: 0.18 }}>
+            {editor}
+          </motion.div>
+        </AnimatePresence>
+      </div>
     </div>
   );
 }
@@ -242,16 +341,16 @@ function MeetTheTeam({ onAdd, onBrowse, compact }: { onAdd: () => Promise<unknow
   return (
     <div className={compact ? "rounded-2xl border border-line p-4" : "mx-auto max-w-[520px] py-8"}>
       <h3 className={`font-semibold tracking-[-0.01em] ${compact ? "text-[15px]" : "text-[20px]"}`}>Meet Otto's team</h3>
-      <p className="mt-1 text-[13px] text-muted">Each has a job, a way of working and a memory of their own. Add them to this machine, then change anything.</p>
+      <p className="mt-1 text-[13px] text-muted">Each with a job and a memory of their own.</p>
       <ul className={`mt-4 grid gap-2 ${compact ? "" : "sm:grid-cols-2"}`}>
         {STARTER_TEAM.map((t) => (
           <li key={t.id} className="flex items-start gap-3 rounded-xl border border-line px-3 py-3">
             <TeammateFace seed={hash(t.id)} color={t.color} accessory={t.accessory} size={44} label={t.name} />
             <div className="min-w-0">
-              <div className="text-[13.5px] font-medium text-ink">
+              <div className="text-[13px] font-medium text-ink">
                 {t.name} <span className="font-normal text-muted">· {t.job}</span>
               </div>
-              <div className="mt-0.5 text-[12.5px] leading-snug text-muted">{t.tagline}</div>
+              <div className="mt-0.5 text-[12px] leading-snug text-muted">{t.tagline}</div>
             </div>
           </li>
         ))}
@@ -275,12 +374,28 @@ function MeetTheTeam({ onAdd, onBrowse, compact }: { onAdd: () => Promise<unknow
   );
 }
 
+/** A teammate on the phone's Team tab: face and what they're doing now, else their job. */
+function MateRow({ t, disabled, onClick }: { t: Teammate; disabled: boolean; onClick: () => void }) {
+  const state = useTeammateState(t.id);
+  const line = state === "needs" ? "Needs you" : state === "working" ? "Working" : t.job || t.tagline;
+  return (
+    <button onClick={onClick} className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors active:bg-hover">
+      <TeammateFace seed={t.face} color={t.color} accessory={t.accessory} size={44} state={state} />
+      <span className="min-w-0 flex-1">
+        <span className={`block truncate text-[16px] font-medium ${disabled ? "text-faint line-through" : "text-ink"}`}>{t.name}</span>
+        {line && <span className={`mt-0.5 block truncate text-[14px] ${state === "needs" ? "text-info" : "text-muted"}`}>{line}</span>}
+      </span>
+      <ChevronRight size={18} className="shrink-0 text-faint" />
+    </button>
+  );
+}
+
 function TeammateRow({ t, active, disabled, onClick }: { t: Teammate; active: boolean; disabled: boolean; onClick: () => void }) {
   return (
     <button onClick={onClick} className={`flex w-full items-center gap-2.5 rounded-xl px-2 py-1.5 text-left transition-colors ${active ? "bg-active" : "hover:bg-hover"}`}>
       <TeammateFace seed={t.face} color={t.color} accessory={t.accessory} size={26} />
       <span className="min-w-0 flex-1">
-        <span className={`block truncate text-[13.5px] ${disabled ? "text-faint line-through" : "text-ink"}`}>{t.name}</span>
+        <span className={`block truncate text-[13px] ${disabled ? "text-faint line-through" : "text-ink"}`}>{t.name}</span>
         {t.job && <span className="block truncate text-[12px] text-muted">{t.job}</span>}
       </span>
     </button>
@@ -293,7 +408,7 @@ function AgentRow({ id, info, cfg, active, onClick }: { id: string; info?: Agent
   return (
     <button onClick={onClick} className={`flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left transition-colors ${active ? "bg-active" : "hover:bg-hover"}`}>
       <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: agentColor(id, color) }} />
-      <span className={`min-w-0 flex-1 truncate text-[13.5px] ${disabled ? "text-faint line-through" : "text-ink"}`}>{info?.name ?? id}</span>
+      <span className={`min-w-0 flex-1 truncate text-[13px] ${disabled ? "text-faint line-through" : "text-ink"}`}>{info?.name ?? id}</span>
       {(info?.mode ?? cfg?.mode) !== "primary" && <span className="shrink-0 text-[12px] text-faint">{modeLabel(info?.mode ?? cfg?.mode)}</span>}
     </button>
   );
@@ -319,7 +434,7 @@ function draftFrom(id: string, info?: AgentInfo, cfg?: AgentConfig): Draft {
   };
 }
 
-function AgentEditor({ id, info, cfg, origin, onDone }: { id: string; info?: AgentInfo; cfg?: AgentConfig; origin: Origin; onDone: (id: string | null) => void }) {
+function AgentEditor({ id, info, cfg, origin, onDone, actions }: { id: string; info?: AgentInfo; cfg?: AgentConfig; origin: Origin; onDone: (id: string | null) => void; actions?: React.ReactNode }) {
   const update = useExtensions((s) => s.update);
   const globalRules = useExtensions((s) => s.config?.permissions) ?? NO_RULES;
   const initial = useMemo(() => draftFrom(id, info, cfg), [id, info, cfg]);
@@ -376,30 +491,32 @@ function AgentEditor({ id, info, cfg, origin, onDone }: { id: string; info?: Age
     if (ok) onDone(origin === "builtin" ? id : null);
   }
 
+  const color = d.color || agentColor(id);
   return (
     <div className="relative pb-20">
-      <div className="mb-5 flex items-start gap-3">
-
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: d.color || agentColor(id) }} />
-            <h3 className="truncate text-[20px] font-semibold">{info?.name ?? id}</h3>
-            {origin === "builtin" && <span className="rounded-full bg-sunken px-2 py-px text-[12px] font-medium text-muted">Built-in</span>}
+      {/* The same profile shape as a teammate's: who it is first, settings below. */}
+      <div className="mb-7 flex items-center gap-5 max-sm:flex-col max-sm:gap-3 max-sm:text-center">
+        <span className="grid h-[72px] w-[72px] shrink-0 place-items-center rounded-full text-white" style={{ background: color }}>
+          <Bot size={32} strokeWidth={1.75} />
+        </span>
+        <div className="min-w-0 flex-1 max-sm:w-full">
+          <div className="flex items-center gap-2 max-sm:justify-center">
+            <h3 className="truncate text-[22px] font-semibold tracking-[-0.01em]">{info?.name ?? id}</h3>
+            {origin === "builtin" && <span className="shrink-0 rounded-full bg-active px-2 py-px text-[12px] font-medium text-muted">Built-in</span>}
             {origin === "file" && (
-              <span className="flex items-center gap-1 rounded-full bg-sunken px-2 py-px text-[12px] font-medium text-muted">
+              <span className="flex shrink-0 items-center gap-1 rounded-full bg-active px-2 py-px text-[12px] font-medium text-muted" data-tip="Defined in a file on the server. Its instructions are edited there.">
                 <Lock size={10} /> From file
               </span>
             )}
           </div>
+          <p className="mt-0.5 line-clamp-2 text-[14px] leading-snug text-muted">{d.description.trim() || modeLabel(d.mode)}</p>
+          {actions && <div className="mt-4 flex gap-2 max-sm:justify-center">{actions}</div>}
         </div>
-        <div className="flex shrink-0 items-center gap-2 pt-1 text-[12.5px] text-muted">
-          Enabled <Toggle on={!d.disabled} onChange={(v) => set({ disabled: !v })} label="Enabled" />
-        </div>
-
       </div>
 
-      <div className="mb-5">
+      <div className="mb-7">
         <Segmented
+          stretch
           id="agent-section"
           value={section}
           onChange={setSection}
@@ -411,87 +528,85 @@ function AgentEditor({ id, info, cfg, origin, onDone }: { id: string; info?: Age
       </div>
 
       {section === "general" ? (
-        <div className="space-y-5">
-          {origin === "file" && <div className="rounded-xl bg-sunken px-3.5 py-2.5 text-[12.5px] text-muted">Defined in a file on the server. Its instructions are edited there.</div>}
-          <div>
-            <Label>Description</Label>
-            <TextField placeholder="What it’s for" value={d.description} onChange={(e) => set({ description: e.target.value })} disabled={!editableBasics} />
-          </div>
-          <div className="grid gap-5 sm:grid-cols-2">
-            <div>
-              <Label>Model</Label>
-              <ModelSelect value={d.model} onChange={(m) => set({ model: m })} inheritLabel="Use the session's model" />
+        <>
+          <Section title="About">
+            <div className="group-card overflow-hidden">
+              <FormRow label="Description" htmlFor="ag-desc" aside={origin === "file" ? "Edited in its file" : undefined}>
+                <input id="ag-desc" placeholder="What it’s for" value={d.description} onChange={(e) => set({ description: e.target.value })} disabled={!editableBasics} className={`${formInput} disabled:text-muted`} />
+              </FormRow>
             </div>
-            <div>
-              <Label>Available as</Label>
-              <Segmented
-                id="agent-mode"
-                value={d.mode}
-                onChange={(m) => set({ mode: m })}
-                options={[
-                  { id: "primary", label: "Agent" },
-                  { id: "subagent", label: "Subagent" },
-                  { id: "all", label: "Both" },
-                ]}
-              />
-            </div>
-          </div>
+          </Section>
+
           {editableBasics && (
-            <div>
-              <Label hint={origin === "builtin" ? "Empty keeps the built-in prompt" : undefined}>Instructions</Label>
-              <TextArea value={d.system} onChange={(v) => set({ system: v })} rows={8} placeholder="You are a meticulous code reviewer. Focus on correctness and security…" />
-            </div>
+            <Section title="Instructions" desc={origin === "builtin" ? "Empty keeps the built-in prompt." : undefined}>
+              <TextArea value={d.system} onChange={(v) => set({ system: v })} rows={7} placeholder="You are a meticulous code reviewer. Focus on correctness and security…" />
+            </Section>
           )}
-          <div>
-            <Label>Color</Label>
-            <div className="flex flex-wrap gap-2">
+
+          <Section title="Colour">
+            <div className="group-card grid grid-cols-8 place-items-center gap-1 p-4 sm:flex sm:flex-wrap sm:gap-3" role="radiogroup" aria-label="Colour">
               {COLORS.map((c) => (
-                <button key={c} type="button" onClick={() => set({ color: c })} className={`h-7 w-7 rounded-full transition-transform hover:scale-110 ${d.color === c ? "ring-2 ring-[var(--text)] ring-offset-2 ring-offset-[var(--surface-solid)]" : ""}`} style={{ background: c }} aria-label={c} />
+                <button key={c} type="button" role="radio" aria-checked={color === c} onClick={() => set({ color: c })} className={`h-7 w-7 rounded-full transition-transform hover:scale-110 ${color === c ? "ring-2 ring-[var(--text)] ring-offset-2 ring-offset-[var(--card-bg)]" : ""}`} style={{ background: c }} aria-label={c} />
               ))}
             </div>
-          </div>
-          <Rows>
-            <Row label="Max steps per turn">
-              <input
-                type="number"
-                min={1}
-                aria-label="Max steps per turn"
-                placeholder="No limit"
-                value={d.steps}
-                onChange={(e) => set({ steps: e.target.value })}
-                className="field h-8 w-[110px] rounded-lg px-2.5 text-right text-[13px] outline-none"
-              />
-            </Row>
-            <Row label="Hide from the agent menu">
-              <Toggle on={d.hidden} onChange={(v) => set({ hidden: v })} label="Hidden" />
-            </Row>
-          </Rows>
-        </div>
+          </Section>
+
+          <Section title="Work">
+            <div className="group-card divide-y divide-[var(--border)]">
+              <FormRow label="Model">
+                <div className="pt-1 pb-1.5">
+                  <ModelSelect value={d.model} onChange={(m) => set({ model: m })} inheritLabel="Use the session's model" />
+                </div>
+              </FormRow>
+              <Row label="Available as">
+                <Segmented
+                  id="agent-mode"
+                  size="sm"
+                  value={d.mode}
+                  onChange={(m) => set({ mode: m })}
+                  options={[
+                    { id: "primary", label: "Agent" },
+                    { id: "subagent", label: "Subagent" },
+                    { id: "all", label: "Both" },
+                  ]}
+                />
+              </Row>
+              <Row label="Max steps per turn" htmlFor="ag-steps">
+                <input id="ag-steps" type="number" min={1} placeholder="No limit" value={d.steps} onChange={(e) => set({ steps: e.target.value })} className="field h-8 w-[110px] rounded-lg px-2.5 text-right text-[13px] outline-none max-sm:h-9 max-sm:text-[16px]" />
+              </Row>
+              <Row label="Hide from the agent menu">
+                <Toggle on={d.hidden} onChange={(v) => set({ hidden: v })} label="Hide from the agent menu" />
+              </Row>
+              <Row label="Enabled">
+                <Toggle on={!d.disabled} onChange={(v) => set({ disabled: !v })} label="Enabled" />
+              </Row>
+            </div>
+          </Section>
+
+          {origin !== "file" && (
+            <div className="group-card overflow-hidden">
+              {confirmDelete ? (
+                <div className="p-4">
+                  <p className="text-[13px] text-muted max-sm:text-[14px]">{origin === "builtin" ? "Remove your overrides and go back to the built-in settings?" : "Remove this agent from the server config?"}</p>
+                  <div className="mt-3 flex gap-2">
+                    <Button variant="secondary" className="max-sm:h-11 max-sm:flex-1 max-sm:text-[15px]" onClick={() => setConfirmDelete(false)}>
+                      Cancel
+                    </Button>
+                    <Button variant="danger" className="max-sm:h-11 max-sm:flex-1 max-sm:text-[15px]" onClick={() => void remove()}>
+                      {origin === "builtin" ? "Reset" : "Delete"}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <button type="button" onClick={() => setConfirmDelete(true)} className="flex min-h-[48px] w-full items-center justify-center text-[13px] font-medium text-danger transition-colors hover:bg-hover active:bg-active max-sm:text-[15px]">
+                  {origin === "builtin" ? "Reset to defaults" : "Delete agent"}
+                </button>
+              )}
+            </div>
+          )}
+        </>
       ) : (
         <PermissionsEditor model={d.perms} onChange={(perms) => set({ perms })} globalRules={globalRules} />
-      )}
-
-      {origin !== "file" && (
-        <div className="mt-8 flex items-center justify-between rounded-2xl border border-line px-4 py-3">
-          <div>
-            <div className="text-[13.5px] font-medium">{origin === "builtin" ? "Reset to defaults" : "Delete agent"}</div>
-            <div className="text-[12px] text-muted">{origin === "builtin" ? "Removes your overrides for this built-in agent." : "Removes it from the server config."}</div>
-          </div>
-          {confirmDelete ? (
-            <div className="flex gap-2">
-              <Button size="sm" variant="ghost" onClick={() => setConfirmDelete(false)}>
-                Cancel
-              </Button>
-              <Button size="sm" variant="danger" onClick={() => void remove()}>
-                Confirm
-              </Button>
-            </div>
-          ) : (
-            <Button size="sm" variant="secondary" icon={origin === "builtin" ? <RotateCcw size={13} /> : <Trash2 size={13} />} onClick={() => setConfirmDelete(true)}>
-              {origin === "builtin" ? "Reset" : "Delete"}
-            </Button>
-          )}
-        </div>
       )}
 
       <AnimatePresence>
@@ -501,7 +616,7 @@ function AgentEditor({ id, info, cfg, origin, onDone }: { id: string; info?: Age
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 16 }}
             transition={{ type: "spring", stiffness: 500, damping: 36 }}
-            className="surface-overlay bg-raised sticky bottom-3 z-10 mt-6 flex items-center gap-3 rounded-2xl border border-line px-4 py-2.5 shadow-pop"
+            className="surface-overlay bg-raised sticky bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] z-10 mt-6 flex items-center gap-3 rounded-2xl border border-line px-4 py-2.5 shadow-pop"
           >
             <span className="flex-1 text-[13px] text-muted">Unsaved changes</span>
             <Button size="sm" variant="ghost" onClick={() => setD(initial)}>
@@ -572,19 +687,19 @@ export function PermissionsEditor({ model, onChange, globalRules }: { model: Per
 
   return (
     <div className="space-y-7">
-      <div className="rounded-2xl bg-raised p-4 hairline">
+      <div className="group-card p-4">
         <Summary effect={(a) => (a.startsWith("composio.") ? appEffect(a, { global: globalRules, agent: appRules }) : (model.keys[a]?.effect ?? inherited(a)))} apps={hasApps} />
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-3">
           <div>
-            <div className="text-[13.5px] font-medium">Everything else</div>
-            <div className="text-[12.5px] text-muted">Anything without its own choice below</div>
+            <div className="text-[13px] font-medium">Everything else</div>
+            <div className="text-[12px] text-muted">Anything without its own choice below</div>
           </div>
           <EffectPicker value={model.global} inherited={inheritedEffect("*", { global: globalRules, agentGlobal: null })} onChange={(v) => onChange({ ...model, global: v })} />
         </div>
         <div className="mt-3 flex flex-wrap gap-1.5 border-t border-line pt-3">
-          <span className="mr-1 self-center text-[12.5px] text-muted">Presets</span>
+          <span className="mr-1 self-center text-[12px] text-muted">Presets</span>
           {presets.map((p) => (
-            <button key={p.id} type="button" onClick={p.apply} className="rounded-full px-2.5 py-1 text-[12.5px] text-ink-2 hairline transition-colors hover:bg-hover hover:text-ink">
+            <button key={p.id} type="button" onClick={p.apply} className="rounded-full px-2.5 py-1 text-[12px] text-ink-2 hairline transition-colors hover:bg-hover hover:text-ink">
               {p.label}
             </button>
           ))}
@@ -615,7 +730,7 @@ export function PermissionsEditor({ model, onChange, globalRules }: { model: Per
             <Spinner />
           </div>
         ) : skills.length === 0 ? (
-          <div className="px-4 py-3 text-[12.5px] text-faint">No skills installed.</div>
+          <div className="px-4 py-3 text-[12px] text-faint">No skills installed.</div>
         ) : (
           skills.map((s) => {
             const pat = model.keys.skill?.patterns.find((p) => p.pattern === s.id);
@@ -646,7 +761,7 @@ export function PermissionsEditor({ model, onChange, globalRules }: { model: Per
             <Spinner />
           </div>
         ) : mcpNames.length === 0 ? (
-          <div className="px-4 py-3 text-[12.5px] text-faint">No MCP servers configured.</div>
+          <div className="px-4 py-3 text-[12px] text-faint">No MCP servers configured.</div>
         ) : (
           mcpNames.map((name) => {
             const action = `${name}_*`;
@@ -684,7 +799,7 @@ function Summary({ effect, apps }: { effect: (action: string) => Effect; apps: b
   if (never.length) lines.push({ tone: "bg-danger", text: `Never allowed to ${joinList(never)}` });
   return (
     <div>
-      <div className="text-[13.5px] font-medium text-ink">What this agent can do</div>
+      <div className="text-[13px] font-medium text-ink">What this agent can do</div>
       <ul className="mt-2 space-y-1.5">
         {lines.map((l) => (
           <li key={l.tone} className="flex items-start gap-2.5 text-[13px] leading-snug text-ink-2">
@@ -698,11 +813,12 @@ function Summary({ effect, apps }: { effect: (action: string) => Effect; apps: b
 }
 
 function PermGroup({ title, note, children }: { title: string; note?: string; children: React.ReactNode }) {
+  const phone = useContext(PhonePage);
   return (
     <div>
-      <div className="mb-2 text-[14px] font-semibold">{title}</div>
-      {note && <div className="-mt-1 mb-2 text-[12.5px] text-muted">{note}</div>}
-      <div className="divide-y divide-[var(--border)] overflow-hidden rounded-2xl bg-raised hairline">{children}</div>
+      <div className={phone ? "mb-1.5 px-4 text-[13px] font-medium text-muted" : "mb-2 text-[14px] font-semibold"}>{title}</div>
+      {note && <div className={phone ? "-mt-1 mb-1.5 px-4 text-[13px] text-muted" : "-mt-1 mb-2 text-[12px] text-muted"}>{note}</div>}
+      <div className="group-card divide-y divide-[var(--border)] overflow-hidden">{children}</div>
     </div>
   );
 }
@@ -749,7 +865,7 @@ function PermRow({
         >
           {canPattern && <ChevronRight size={13} className={`shrink-0 text-faint transition-transform ${open ? "rotate-90" : ""}`} />}
           <span className="min-w-0">
-            <span className="flex items-center gap-2 text-[13.5px] text-ink">
+            <span className="flex items-center gap-2 text-[13px] text-ink">
               <span className="truncate">{title}</span>
               {patterns && patterns.length > 0 && <span className="rounded-md bg-active px-1.5 text-[12px] font-medium text-ink">{patterns.length} rule{patterns.length === 1 ? "" : "s"}</span>}
             </span>
@@ -768,7 +884,7 @@ function PermRow({
         {open && canPattern && (
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.18 }} className="overflow-hidden">
             <div className="space-y-1.5 bg-sunken/60 px-4 py-3 pl-10">
-              <div className="text-[12.5px] text-muted">Specific {code === "shell" ? "commands" : code === "webfetch" ? "URLs" : "paths"}. Later rules win.</div>
+              <div className="text-[12px] text-muted">Specific {code === "shell" ? "commands" : code === "webfetch" ? "URLs" : "paths"}. Later rules win.</div>
               {patterns!.map((p, i) => (
                 <div key={i} className="flex items-center gap-2">
                   <code className="field min-w-0 flex-1 truncate rounded-lg px-2.5 py-1.5 font-mono text-[12px]">{p.pattern}</code>

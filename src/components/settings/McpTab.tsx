@@ -132,17 +132,17 @@ export function McpTab() {
         )}
       </Section>
       <Section title="Popular">
-        <div className="divide-y divide-[var(--border)] overflow-hidden rounded-2xl border border-line">
+        <div className="group-card divide-y divide-[var(--border)] overflow-hidden">
           {POPULAR.map((p) => {
             const installed = names.includes(p.name);
             return (
-              <div key={p.name} className="flex items-center gap-3 bg-raised px-4 py-2.5">
+              <div key={p.name} className="flex items-center gap-3 px-4 py-2.5">
                 <span className="grid w-5 shrink-0 place-items-center text-muted">{p.config.type === "remote" ? <Globe size={16} /> : <Terminal size={16} />}</span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[14px] font-medium">{p.label}</span>
                   <span className="block truncate text-[13px] text-muted">{p.desc}</span>
                 </span>
-                <Button size="sm" variant={installed && busy !== p.name ? "ghost" : "secondary"} disabled={installed || !!busy} onClick={() => void add(p.name, p.config)}>
+                <Button size="sm" className="max-sm:h-9 max-sm:px-3.5 max-sm:text-[14px]" variant={installed && busy !== p.name ? "ghost" : "secondary"} disabled={installed || !!busy} onClick={() => void add(p.name, p.config)}>
                   {busy === p.name ? (
                     <span className="flex items-center gap-1.5">
                       <Spinner size={12} /> Adding
@@ -173,7 +173,7 @@ function ServerRow({ name, cfg, live, busy, onToggle, onRemove }: { name: string
         <span className="grid w-5 shrink-0 place-items-center text-muted">{cfg?.type === "remote" ? <Globe size={16} /> : <Terminal size={16} />}</span>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="truncate text-[13.5px] font-semibold">{name}</span>
+            <span className="truncate text-[13px] font-semibold">{name}</span>
             <span className="flex items-center gap-1.5 text-[12px] text-muted">
               <StatusDot tone={st.tone} /> {st.label}
             </span>
@@ -235,7 +235,7 @@ function AddServer({ onClose, onAdd, existing }: { onClose: () => void; onAdd: (
   }
 
   return (
-    <div className="mb-4 rounded-2xl bg-raised p-4 hairline">
+    <div className="mb-4 group-card p-4">
       <div className="mb-4 flex items-center justify-between">
         <Segmented
           id="mcp-type"

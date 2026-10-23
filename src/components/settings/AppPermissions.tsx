@@ -8,7 +8,7 @@
  */
 import { AnimatePresence, motion } from "motion/react";
 import { Blocks, ChevronRight, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useContext, useEffect, useMemo, useState } from "react";
 import { APPS, appLogo, appName } from "../../lib/composio";
 import { serializeRules, type Effect, type PermissionModel, type PermissionRule } from "../../lib/permissions";
 import { actionTitle, appEffect, KINDS, kindPermission, loadAppCatalog, parseAppPermission, resourceLabel, sample, setAppRule, type AppCatalog, type Kind } from "../../lib/appPermissions";
@@ -16,7 +16,7 @@ import { useConnectors } from "../../state/connectors";
 import { useUI } from "../../state/ui";
 import { IconButton } from "../ui/Button";
 import { Spinner } from "../ui/AgentClock";
-import { EffectPicker, LoadMore, SearchBox } from "./common";
+import { EffectPicker, LoadMore, PhonePage, SearchBox } from "./common";
 
 const PAGE = 40;
 /** Where Settings → Apps sends you to change what teammates may do. */
@@ -49,26 +49,27 @@ export function AppPermissions({ model, onChange, globalRules }: Props) {
   const effect = (action: string, without?: string) => appEffect(action, { global: globalRules, agent: without ? serializeRules(setAppRule(model, without, { effect: null })) : agent });
   const set = (action: string, change: Parameters<typeof setAppRule>[2]) => onChange(setAppRule(model, action, change));
   const ctx = { model, effect, set, catalog };
+  const phone = useContext(PhonePage);
 
   return (
     <div id={APP_PERMISSIONS_ID} className="scroll-mt-4">
-      <div className="mb-2 text-[14px] font-semibold">Apps</div>
-      <div className="-mt-1 mb-2 text-[12.5px] text-muted">{key ? "What they may do in the apps you've connected. Blocked actions disappear from their tools." : "Connect Gmail, Calendar, Slack and more, then choose here what teammates may do in them."}</div>
+      <div className={phone ? "mb-1.5 px-4 text-[13px] font-medium text-muted" : "mb-2 text-[14px] font-semibold"}>Apps</div>
+      <div className={phone ? "-mt-1 mb-1.5 px-4 text-[13px] text-muted" : "-mt-1 mb-2 text-[12px] text-muted"}>{key ? "What they may do in the apps you've connected. Blocked actions disappear from their tools." : "Connect Gmail, Calendar, Slack and more, then choose here what teammates may do in them."}</div>
       {key ? (
-        <div className="divide-y divide-[var(--border)] overflow-hidden rounded-2xl bg-raised hairline">
+        <div className="group-card divide-y divide-[var(--border)] overflow-hidden">
           <AppCard app="*" {...ctx} />
           {accounts === null ? (
             <div className="flex justify-center py-3 text-muted">
               <Spinner />
             </div>
           ) : apps.length === 0 ? (
-            <div className="px-4 py-3 text-[12.5px] text-faint">No apps connected yet.</div>
+            <div className="px-4 py-3 text-[12px] text-faint">No apps connected yet.</div>
           ) : (
             apps.map((app) => <AppCard key={app} app={app} {...ctx} />)
           )}
         </div>
       ) : (
-        <button type="button" onClick={() => useUI.getState().openSettings("apps")} className="rounded-full px-3 py-1.5 text-[12.5px] text-ink-2 hairline transition-colors hover:bg-hover hover:text-ink">
+        <button type="button" onClick={() => useUI.getState().openSettings("apps")} className="rounded-full px-3 py-1.5 text-[12px] text-ink-2 hairline transition-colors hover:bg-hover hover:text-ink">
           Connect apps
         </button>
       )}
@@ -107,12 +108,12 @@ function AppCard({ app, model, effect, set, catalog }: { app: string } & Ctx) {
         <ChevronRight size={13} className={`shrink-0 text-faint transition-transform ${open ? "rotate-90" : ""}`} />
         <AppLogo app={app} />
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[13.5px] text-ink">{every ? "Every app" : appName(app)}</span>
+          <span className="block truncate text-[13px] text-ink">{every ? "Every app" : appName(app)}</span>
           <span className="block truncate text-[12px] text-muted">{every ? "Unless an app below says otherwise, and the 500+ apps they find themselves" : extra || "Same as every app"}</span>
         </span>
         <span className="flex shrink-0 items-center gap-2.5 max-sm:hidden" aria-hidden>
           {kinds.map((k) => (
-            <span key={k.kind} className="inline-flex items-center gap-1 text-[11.5px] text-muted" title={`${k.label}: ${MEANS[k.now]}`}>
+            <span key={k.kind} className="inline-flex items-center gap-1 text-[11px] text-muted" title={`${k.label}: ${MEANS[k.now]}`}>
               <span className={`h-1.5 w-1.5 rounded-full ${DOT[k.now]}`} />
               {SHORT[k.kind]}
             </span>
@@ -126,7 +127,7 @@ function AppCard({ app, model, effect, set, catalog }: { app: string } & Ctx) {
               {kinds.map((k) => (
                 <div key={k.kind} className="flex items-center gap-3 py-2.5 pr-4 pl-10 sm:pl-[60px]">
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[13.5px] text-ink">{k.label}</span>
+                    <span className="block truncate text-[13px] text-ink">{k.label}</span>
                     <span className="block truncate text-[12px] text-muted">{k.hint}</span>
                   </span>
                   <EffectPicker value={model.keys[k.action]?.effect ?? null} inherited={effect(sample(app, k.kind), k.action)} onChange={(v) => set(k.action, { effect: v })} />
@@ -148,7 +149,7 @@ function Remembered({ items, model, set, catalog }: { items: { action: string; p
   const change = (action: string, pattern: string, effect: Effect) => set(action, { patterns: (model.keys[action]?.patterns ?? []).map((p) => (p.pattern === pattern ? { ...p, effect } : p)) });
   return (
     <div className="py-2.5 pr-4 pl-10 sm:pl-[60px]">
-      <div className="mb-1.5 text-[12.5px] font-medium text-ink-2">Remembered</div>
+      <div className="mb-1.5 text-[12px] font-medium text-ink-2">Remembered</div>
       <div className="space-y-1.5">
         {items.map((r) => (
           <div key={`${r.action}\u0000${r.pattern}`} className="flex items-center gap-2">
@@ -192,7 +193,7 @@ function EveryAction({ app, model, effect, set, catalog }: { app: string } & Ctx
       {open && (
         <div className="pr-4 pb-3 pl-10 sm:pl-[60px]">
           {!all ? (
-            <div className="flex justify-center py-3 text-muted">{catalog ? <span className="text-[12.5px] text-faint">The list for {appName(app)} isn't available.</span> : <Spinner />}</div>
+            <div className="flex justify-center py-3 text-muted">{catalog ? <span className="text-[12px] text-faint">The list for {appName(app)} isn't available.</span> : <Spinner />}</div>
           ) : (
             <>
               <SearchBox value={q} onChange={(v) => (setQ(v), setShown(PAGE))} placeholder={`Search ${all.length} ${appName(app)} actions`} />
@@ -201,12 +202,12 @@ function EveryAction({ app, model, effect, set, catalog }: { app: string } & Ctx
                   <div key={a.permission} className="flex items-center gap-3 px-3 py-2">
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-[13px] text-ink">{a.title}</span>
-                      <span className="block truncate text-[11.5px] text-muted">{KINDS.find((k) => k.kind === a.kind)!.label}</span>
+                      <span className="block truncate text-[11px] text-muted">{KINDS.find((k) => k.kind === a.kind)!.label}</span>
                     </span>
                     <EffectPicker value={model.keys[a.permission]?.effect ?? null} inherited={effect(a.permission, a.permission)} onChange={(v) => set(a.permission, { effect: v })} />
                   </div>
                 ))}
-                {list.length === 0 && <div className="px-3 py-3 text-[12.5px] text-faint">Nothing matches “{q}”.</div>}
+                {list.length === 0 && <div className="px-3 py-3 text-[12px] text-faint">Nothing matches “{q}”.</div>}
               </div>
               <LoadMore active={shown < list.length} onVisible={() => setShown((n) => n + PAGE)} />
             </>

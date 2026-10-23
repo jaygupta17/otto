@@ -1,16 +1,54 @@
 import { motion } from "motion/react";
 import { Search } from "lucide-react";
-import { useEffect, useRef, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, type ReactNode } from "react";
 import type { Effect } from "../../lib/permissions";
+import { Hint } from "../ui/Tooltip";
+
+/**
+ * Inside a settings page pushed on a phone. The page bar already names it, so
+ * a tab's heading gives way to its description, and groups read like the
+ * grouped list one level up: muted headers, borderless cards.
+ */
+export const PhonePage = createContext(false);
 
 /** A settings section. `page` makes it the page's heading (first section of a tab). */
 export function Section({ title, desc, children, action, page }: { title: ReactNode; desc?: ReactNode; children: ReactNode; action?: ReactNode; page?: boolean }) {
+  const phone = useContext(PhonePage);
+  if (phone)
+    return (
+      <section className="mb-8 last:mb-0">
+        {page ? (
+          (desc || action) && (
+            <div className="mb-6 flex items-start justify-between gap-3 px-1">
+              <div className="min-w-0 text-[14px] leading-snug text-muted">{desc}</div>
+              {action}
+            </div>
+          )
+        ) : (
+          <div className="mb-1.5 flex min-h-7 items-end justify-between gap-3 px-4">
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <h3 className="text-[13px] font-medium text-muted">{title}</h3>
+                {typeof desc === "string" && <Hint>{desc}</Hint>}
+              </div>
+              {desc && typeof desc !== "string" && <div className="mt-0.5 text-[13px] text-muted">{desc}</div>}
+            </div>
+            {action}
+          </div>
+        )}
+        {children}
+      </section>
+    );
   return (
     <section className="mb-9 last:mb-0">
       <div className={`${page ? "mb-5" : "mb-3"} flex min-h-8 items-end justify-between gap-3`}>
+        {/* A plain-string description sits behind an ⓘ; anything richer (links, status) stays under the title. */}
         <div className="min-w-0">
-          {page ? <h2 className="text-[20px] font-semibold tracking-[-0.01em] text-ink">{title}</h2> : <h3 className="text-[14px] font-semibold text-ink">{title}</h3>}
-          {desc && <p className="mt-0.5 text-[13px] text-muted">{desc}</p>}
+          <div className="flex items-center gap-1.5">
+            {page ? <h2 className="text-[20px] font-semibold tracking-[-0.015em] text-ink">{title}</h2> : <h3 className="text-[13px] font-semibold text-ink">{title}</h3>}
+            {typeof desc === "string" && <Hint>{desc}</Hint>}
+          </div>
+          {desc && typeof desc !== "string" && <div className="mt-0.5 text-[12px] text-muted">{desc}</div>}
         </div>
         {action}
       </div>
@@ -20,26 +58,52 @@ export function Section({ title, desc, children, action, page }: { title: ReactN
 }
 
 export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <div className={`overflow-hidden rounded-2xl bg-raised hairline ${className}`}>{children}</div>;
+  return <div className={`group-card overflow-hidden ${className}`}>{children}</div>;
 }
 
 /** Grouped settings list: rows separated by hairlines inside one card. */
 export function Rows({ children }: { children: ReactNode }) {
-  return <div className="divide-y divide-[var(--border)] overflow-hidden rounded-2xl bg-raised hairline">{children}</div>;
+  return <div className="group-card divide-y divide-[var(--border)] overflow-hidden">{children}</div>;
 }
 
-/** Label on the left, control on the right. `hint` only when the label isn't self-explanatory. */
+/** Label on the left, control on the right. `hint` only when the label isn't self-explanatory; a string hint shows on hover of its ⓘ. */
 export function Row({ label, hint, children, htmlFor }: { label: ReactNode; hint?: ReactNode; children: ReactNode; htmlFor?: string }) {
+  const phone = useContext(PhonePage);
   return (
-    <div className="flex min-h-[52px] items-center justify-between gap-6 px-4 py-2.5">
-      <label htmlFor={htmlFor} className="min-w-0">
-        <span className="block text-[13.5px] text-ink">{label}</span>
-        {hint && <span className="mt-0.5 block text-[12.5px] text-muted">{hint}</span>}
+    <div className={`flex min-h-[52px] items-center justify-between px-4 py-2.5 ${phone ? "gap-4" : "gap-6"}`}>
+      <label htmlFor={htmlFor} className="flex min-w-0 flex-col">
+        <span className={`flex items-center gap-1.5 text-ink ${phone ? "text-[15px]" : "text-[13px]"}`}>
+          {label}
+          {typeof hint === "string" && <Hint>{hint}</Hint>}
+        </span>
+        {hint && typeof hint !== "string" && <span className="mt-0.5 block text-[12px] text-muted">{hint}</span>}
       </label>
       <div className="flex shrink-0 items-center gap-2">{children}</div>
     </div>
   );
 }
+
+/**
+ * A labelled field inside a group card, as in iOS forms: a small label over a
+ * borderless input (`formInput`), hairlines between rows. `aside` sits at the
+ * label's end for a quiet note (an @handle, a count).
+ */
+export function FormRow({ label, hint, aside, error, htmlFor, children }: { label: ReactNode; hint?: string; aside?: ReactNode; error?: string | null; htmlFor?: string; children: ReactNode }) {
+  return (
+    <div className="px-4 pt-2.5 pb-1.5">
+      <div className="flex items-center gap-1.5 text-[12px] font-medium text-muted">
+        <label htmlFor={htmlFor}>{label}</label>
+        {hint && <Hint>{hint}</Hint>}
+        {aside && <span className="ml-auto min-w-0 truncate font-normal text-faint">{aside}</span>}
+      </div>
+      {children}
+      {error && <div className="pb-1 text-[12px] text-danger">{error}</div>}
+    </div>
+  );
+}
+
+/** The input inside a `FormRow`; 16px on phones so iOS doesn't zoom in on focus. */
+export const formInput = "h-9 w-full bg-transparent text-[14px] text-ink outline-none placeholder:text-faint max-sm:text-[16px]";
 
 /** Themed range input with its value beside it. */
 export function Slider({ value, min, max, step = 0.01, format, onChange, label }: { value: number; min: number; max: number; step?: number; format: (v: number) => string; onChange: (v: number) => void; label: string }) {
@@ -57,7 +121,7 @@ export function Slider({ value, min, max, step = 0.01, format, onChange, label }
         className="slider min-w-0 flex-1"
         style={{ "--fill": `${fill}%` } as React.CSSProperties}
       />
-      <span className="w-10 text-right text-[12.5px] text-muted tabular-nums">{format(value)}</span>
+      <span className="w-10 text-right text-[12px] text-muted tabular-nums">{format(value)}</span>
     </span>
   );
 }
@@ -66,7 +130,7 @@ export function SearchBox({ value, onChange, placeholder, autoFocus }: { value: 
   return (
     <div className="field flex h-9 items-center gap-2 rounded-lg px-3">
       <Search size={14} className="text-faint" />
-      <input data-autofocus={autoFocus ? "" : undefined} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="min-w-0 flex-1 bg-transparent text-[13.5px] outline-none placeholder:text-faint" />
+      <input data-autofocus={autoFocus ? "" : undefined} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-faint" />
     </div>
   );
 }
@@ -86,15 +150,16 @@ export function Toggle({ on, onChange, disabled, label }: { on: boolean; onChang
   );
 }
 
-export function Segmented<T extends string>({ options, value, onChange, size = "md", id }: { options: { id: T; label: ReactNode }[]; value: T; onChange: (v: T) => void; size?: "sm" | "md"; id: string }) {
+/** `stretch` spans the width on phones, where a page's sections read as one control. */
+export function Segmented<T extends string>({ options, value, onChange, size = "md", id, stretch }: { options: { id: T; label: ReactNode }[]; value: T; onChange: (v: T) => void; size?: "sm" | "md"; id: string; stretch?: boolean }) {
   return (
-    <div className="inline-flex gap-0.5 rounded-xl bg-sunken p-0.5 hairline">
+    <div className={`inline-flex gap-0.5 rounded-xl bg-sunken p-0.5 hairline ${stretch ? "max-sm:flex max-sm:w-full" : ""}`}>
       {options.map((o) => (
         <button
           key={o.id}
           type="button"
           onClick={() => onChange(o.id)}
-          className={`relative rounded-lg font-medium transition-colors ${size === "sm" ? "px-2.5 py-1 text-[12px]" : "px-3 py-1.5 text-[13px]"} ${value === o.id ? "text-ink" : "text-muted hover:text-ink"}`}
+          className={`relative rounded-lg font-medium transition-colors ${size === "sm" ? "px-2.5 py-1 text-[12px]" : "px-3 py-1.5 text-[13px]"} ${stretch ? "max-sm:flex-1 max-sm:py-2 max-sm:text-[14px]" : ""} ${value === o.id ? "text-ink" : "text-muted hover:text-ink"}`}
         >
           {value === o.id && <motion.span layoutId={`seg-${id}`} className="seg-pill absolute inset-0 rounded-lg shadow-soft" transition={{ type: "spring", stiffness: 520, damping: 38 }} />}
           <span className="relative">{o.label}</span>
@@ -198,12 +263,12 @@ export function DefaultMark({ own, fallback, onReset, verbose }: { own: boolean;
 
 export function Empty({ icon, title, body, action }: { icon?: ReactNode; title: string; body?: ReactNode; action?: ReactNode }) {
   return (
-    <div className="rounded-2xl border border-line px-5 py-6">
+    <div className="empty-card rounded-2xl border border-line px-5 py-6">
       <div className="flex items-center gap-2 text-[14px] font-medium text-ink">
         <span className="text-muted">{icon}</span>
         {title}
       </div>
-      {body && <div className="mt-1 max-w-[440px] text-[14px] text-muted">{body}</div>}
+      {body && <div className="mt-1 max-w-[440px] text-[13px] text-muted">{body}</div>}
       {action && <div className="mt-4">{action}</div>}
     </div>
   );
@@ -217,16 +282,17 @@ export function TextArea({ value, onChange, placeholder, rows = 6, mono = false 
       placeholder={placeholder}
       rows={rows}
       spellCheck={!mono}
-      className={`field scroll-quiet w-full resize-y rounded-lg px-3 py-2 text-[14px] leading-relaxed outline-none placeholder:text-faint ${mono ? "font-mono text-[12.5px]" : ""}`}
+      className={`field scroll-quiet w-full resize-y rounded-lg px-3 py-2 text-[14px] leading-relaxed outline-none placeholder:text-faint ${mono ? "font-mono text-[12px]" : ""}`}
     />
   );
 }
 
 export function Label({ children, hint }: { children: ReactNode; hint?: ReactNode }) {
   return (
-    <div className="mb-1.5">
-      <span className="text-[12.5px] font-medium text-ink-2">{children}</span>
-      {hint && <span className="ml-2 text-[12px] text-faint">{hint}</span>}
+    <div className="mb-1.5 flex items-center gap-1.5">
+      <span className="text-[12px] font-medium text-ink-2">{children}</span>
+      {/* A word or two ("optional") reads inline; a sentence moves behind an ⓘ. */}
+      {typeof hint === "string" && hint.length > 28 ? <Hint>{hint}</Hint> : hint && <span className="ml-0.5 text-[12px] text-faint">{hint}</span>}
     </div>
   );
 }

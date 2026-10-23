@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowLeft, BookOpen, Lock, Plus, Puzzle, Trash2 } from "lucide-react";
+import { ArrowLeft, BookOpen, ChevronRight, Lock, Plus, Puzzle, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useExtensions } from "../../state/extensions";
 import type { SkillInfo } from "../../lib/opencode/client";
@@ -88,16 +88,27 @@ export function SkillsTab({ compact }: { compact: boolean }) {
         groups.map(([label, list]) =>
           list.length ? (
             <div key={label} className="mb-5">
-              <div className="mb-1.5 text-[13px] font-medium text-muted">
+              <div className={`mb-1.5 text-[13px] font-medium text-muted ${compact ? "px-4" : ""}`}>
                 {label} <span className="text-faint tabular-nums">{list.length}</span>
               </div>
-              <div className="divide-y divide-[var(--border)] overflow-hidden rounded-2xl border border-line">
-                {list.map((s) => (
-                  <button key={s.id} onClick={() => setOpen(s)} className="flex w-full items-baseline gap-3 bg-raised px-4 py-2.5 text-left transition-colors hover:bg-hover">
-                    <span className="w-44 shrink-0 truncate text-[14px] font-medium">{s.name}</span>
-                    <span className="min-w-0 flex-1 truncate text-[13px] text-muted">{s.description || "No description"}</span>
-                  </button>
-                ))}
+              <div className="group-card divide-y divide-[var(--border)] overflow-hidden">
+                {list.map((s) =>
+                  compact ? (
+                    // A phone has no room for two columns: name over description, and a way in.
+                    <button key={s.id} onClick={() => setOpen(s)} className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors active:bg-hover">
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[15px] font-medium">{s.name}</span>
+                        <span className="block truncate text-[13px] text-muted">{s.description || "No description"}</span>
+                      </span>
+                      <ChevronRight size={18} className="shrink-0 text-faint" />
+                    </button>
+                  ) : (
+                    <button key={s.id} onClick={() => setOpen(s)} className="flex w-full items-baseline gap-3 px-4 py-2.5 text-left transition-colors hover:bg-hover">
+                      <span className="w-44 shrink-0 truncate text-[14px] font-medium">{s.name}</span>
+                      <span className="min-w-0 flex-1 truncate text-[13px] text-muted">{s.description || "No description"}</span>
+                    </button>
+                  ),
+                )}
               </div>
             </div>
           ) : null,
@@ -167,7 +178,7 @@ function SkillEditor({ skill, editable, onDone, compact }: { skill: SkillInfo | 
         {view === "edit" && editable ? (
           <TextArea value={body} onChange={setBody} rows={16} mono />
         ) : (
-          <div className="rounded-2xl bg-raised px-5 py-4 hairline">
+          <div className="group-card px-5 py-4">
             {body.trim() ? <Markdown text={body} /> : <div className="flex items-center gap-2 text-[13px] text-faint"><BookOpen size={14} /> Nothing here yet.</div>}
           </div>
         )}

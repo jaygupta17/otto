@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "motion/react";
-import { Plus, Slash, Trash2, X } from "lucide-react";
+import { Plus, SquareSlash, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useExtensions } from "../../state/extensions";
 import type { CommandConfig } from "../../lib/opencode/config";
@@ -53,7 +53,7 @@ export function CommandsTab() {
         )}
       </AnimatePresence>
       {names.length === 0 && editing !== "new" ? (
-        <Empty icon={<Slash size={20} />} title="No custom commands" body="Save prompts you use often, like /review or /explain $ARGUMENTS." />
+        <Empty icon={<SquareSlash size={20} />} title="No custom commands" body="Save prompts you use often, like /review." />
       ) : (
         <Card className="divide-y divide-[var(--border)]">
           {names.map((n) => (
@@ -110,7 +110,7 @@ function CommandEditor({ name, cmd, existing, onClose }: { name: string | null; 
   }
 
   return (
-    <div className="mb-4 space-y-4 rounded-2xl bg-raised p-4 hairline">
+    <div className="mb-4 space-y-4 group-card p-4">
       <div className="flex items-center justify-between">
         <div className="text-[14px] font-semibold">{name ? `/${name}` : "New command"}</div>
         <IconButton label="Close" onClick={onClose}>
@@ -136,7 +136,7 @@ function CommandEditor({ name, cmd, existing, onClose }: { name: string | null; 
         </div>
       </div>
       <label className="flex items-center justify-between gap-3">
-        <span className="text-[13.5px]">Run as a subagent</span>
+        <span className="text-[13px]">Run as a subagent</span>
         <Toggle on={subagent} onChange={setSubagent} label="Run as subagent" />
       </label>
       <div className="flex items-center justify-between border-t border-line pt-3">

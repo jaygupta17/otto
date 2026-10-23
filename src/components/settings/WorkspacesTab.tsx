@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { ExternalLink, KeyRound, Moon, MoreHorizontal, Plus, Power, Trash2 } from "lucide-react";
+import { useContext, useEffect, useRef, useState } from "react";
+import { Check, ExternalLink, KeyRound, Moon, MoreHorizontal, Plus, Power, Trash2 } from "lucide-react";
 import { useUI, toast } from "../../state/ui";
 import { useWorkspaces, secretKeys, isCloud, type CloudId, type Workspace } from "../../state/workspaces";
 import { stopLocal } from "../../lib/providers/local";
@@ -10,7 +10,7 @@ import { Button, IconButton } from "../ui/Button";
 import { TextField } from "../ui/Field";
 import { Spinner } from "../ui/AgentClock";
 import { WorkspaceAvatar, statusText } from "../shell/Sidebar";
-import { Section } from "./common";
+import { PhonePage, Section } from "./common";
 import { Popover, MenuItem } from "../ui/Popover";
 import { CLOUD_OPS } from "../../lib/providers/ops";
 
@@ -54,6 +54,7 @@ export function WorkspacesTab() {
       <Section
         page
         title="Workspaces"
+        desc="Where your agents run."
         action={
           <Button
             size="sm"
@@ -67,7 +68,7 @@ export function WorkspacesTab() {
           </Button>
         }
       >
-        <div className="divide-y divide-[var(--border)] overflow-hidden rounded-2xl bg-raised hairline">
+        <div className="divide-y divide-[var(--border)] overflow-hidden group-card">
           {workspaces.map((w) => (
             <WorkspaceCard
               key={w.id}
@@ -96,6 +97,7 @@ function WorkspaceCard({ w, active, machine, onSelect, onMachine }: { w: Workspa
   const [confirm, setConfirm] = useState(false);
   const [menu, setMenu] = useState(false);
   const more = useRef<HTMLButtonElement>(null);
+  const phone = useContext(PhonePage);
 
   const ops = isCloud(w.provider) ? CLOUD_OPS[w.provider] : null;
 
@@ -128,6 +130,63 @@ function WorkspaceCard({ w, active, machine, onSelect, onMachine }: { w: Workspa
   // A disconnected workspace shows its machine state, not a stale connection.
   const state = active && status !== "idle" ? statusText(status) : asleep ? "Asleep" : sbState ? cap(sbState) : null;
 
+  const confirmText = ops ? `Remove from Otto? It stays in your ${ops.name} account.` : w.provider === "local" ? "Remove and stop its server? OpenCode stays installed." : "Remove from Otto?";
+  async function doRemove() {
+    // Any provider: a connect for this workspace may still be running.
+    if (useConnection.getState().workspaceId === w.id) useConnection.getState().disconnect();
+    if (w.provider === "local") await stopLocal(w.baseUrl).catch((e) => toast({ tone: "error", title: "Couldn't stop its server", body: (e as Error).message }));
+    try {
+      await remove(w.id);
+    } catch (e) {
+      // The list was put back: say why it didn't go.
+      toast({ tone: "error", title: "Couldn't remove workspace", body: (e as Error).message });
+    }
+  }
+
+  // A phone row is a choice, as in iOS lists: tap it to switch, a check marks
+  // the current one, and everything else waits behind ⋯.
+  if (phone)
+    return (
+      <div>
+        <div className="flex items-center pr-2">
+          <button onClick={active ? undefined : onSelect} aria-current={active || undefined} className="flex min-w-0 flex-1 items-center gap-3 py-3 pl-4 text-left transition-colors active:bg-hover">
+            <WorkspaceAvatar provider={w.provider} size={36} />
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[15px] text-ink">{w.name}</span>
+              <span className="block truncate text-[13px] text-muted">
+                {busy === "resume" ? "Waking…" : busy === "stop" ? "Going to sleep…" : state ?? host}
+                {w.version && ` · v${w.version.replace(/^v/, "")}`}
+              </span>
+            </span>
+            {active && <Check size={18} strokeWidth={2.25} className="shrink-0 text-ink" aria-label="Current workspace" />}
+          </button>
+          <IconButton ref={more} label={`Manage ${w.name}`} size={40} aria-haspopup="menu" active={menu} onClick={() => setMenu((v) => !v)} className="ml-1">
+            <MoreHorizontal size={18} />
+          </IconButton>
+          <Popover open={menu} onClose={() => setMenu(false)} anchor={more.current} placement="bottom-end" width={240}>
+            <div className="p-1">
+              {ops && (asleep ? <MenuItem icon={<Power size={14} />} label="Wake" onClick={() => (setMenu(false), void cloudAction("resume"))} /> : machine && <MenuItem icon={<Moon size={14} />} label="Sleep" onClick={() => (setMenu(false), void cloudAction("stop"))} />)}
+              {ops && <MenuItem icon={<ExternalLink size={14} />} label={`Open ${ops.name} dashboard`} onClick={() => (setMenu(false), openExternal(ops.dashboard))} />}
+              <MenuItem icon={<Trash2 size={14} />} label="Remove" danger onClick={() => (setMenu(false), setConfirm(true))} />
+            </div>
+          </Popover>
+        </div>
+        {confirm && (
+          <div className="px-4 pb-3">
+            <p className="text-[14px] leading-snug text-muted">{confirmText}</p>
+            <div className="mt-3 flex gap-2">
+              <Button variant="secondary" className="h-11 flex-1 text-[15px]" onClick={() => setConfirm(false)}>
+                Cancel
+              </Button>
+              <Button variant="danger" className="h-11 flex-1 text-[15px]" onClick={() => void doRemove()}>
+                Remove
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+
   return (
     <div className="flex items-center gap-3 px-4 py-3">
       <WorkspaceAvatar provider={w.provider} size={32} />
@@ -136,7 +195,7 @@ function WorkspaceCard({ w, active, machine, onSelect, onMachine }: { w: Workspa
           <span className="truncate text-[14px] font-medium">{w.name}</span>
           {active && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-ok" title="Current workspace" />}
         </div>
-        <div className="truncate text-[12.5px] text-muted">
+        <div className="truncate text-[12px] text-muted">
           {host}
           {state && ` · ${state}`}
           {w.version && ` · v${w.version.replace(/^v/, "")}`}
@@ -144,25 +203,11 @@ function WorkspaceCard({ w, active, machine, onSelect, onMachine }: { w: Workspa
       </div>
       {confirm ? (
         <>
-          <span className="text-[12.5px] text-muted">{ops ? `Remove from Otto? It stays in your ${ops.name} account.` : w.provider === "local" ? "Remove and stop its server? OpenCode stays installed." : "Remove from Otto?"}</span>
+          <span className="text-[12px] text-muted">{confirmText}</span>
           <Button size="sm" variant="ghost" onClick={() => setConfirm(false)}>
             Cancel
           </Button>
-          <Button
-            size="sm"
-            variant="danger"
-            onClick={async () => {
-              // Any provider: a connect for this workspace may still be running.
-              if (useConnection.getState().workspaceId === w.id) useConnection.getState().disconnect();
-              if (w.provider === "local") await stopLocal(w.baseUrl).catch((e) => toast({ tone: "error", title: "Couldn't stop its server", body: (e as Error).message }));
-              try {
-                await remove(w.id);
-              } catch (e) {
-                // The list was put back: say why it didn't go.
-                toast({ tone: "error", title: "Couldn't remove workspace", body: (e as Error).message });
-              }
-            }}
-          >
+          <Button size="sm" variant="danger" onClick={() => void doRemove()}>
             Remove
           </Button>
         </>

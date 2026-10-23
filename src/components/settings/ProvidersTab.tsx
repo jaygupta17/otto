@@ -1,5 +1,5 @@
 import { Check, Plug } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useContext, useEffect, useMemo, useState } from "react";
 import type { IntegrationInfo } from "@opencode/client";
 import { useChat } from "../../state/chat";
 import { toast } from "../../state/ui";
@@ -7,12 +7,13 @@ import { Button } from "../ui/Button";
 import { TextField } from "../ui/Field";
 import { Spinner } from "../ui/AgentClock";
 import { providerName } from "../chat/Pickers";
-import { Empty, LoadMore, SearchBox, Section } from "./common";
+import { Empty, LoadMore, PhonePage, SearchBox, Section } from "./common";
 
 const POPULAR = ["anthropic", "openai", "openrouter", "google", "opencode", "deepseek", "xai", "groq", "mistral"];
 const PAGE = 30;
 
 export function ProvidersTab() {
+  const phone = useContext(PhonePage);
   const client = useChat((s) => s.client);
   const [list, setList] = useState<IntegrationInfo[] | null>(null);
   const [q, setQ] = useState("");
@@ -53,17 +54,17 @@ export function ProvidersTab() {
         </div>
       )}
       {list && filtered.length === 0 && <div className="py-8 text-center text-[13px] text-faint">No providers match “{q}”.</div>}
-      <div className="divide-y divide-[var(--border)] overflow-hidden rounded-2xl bg-raised hairline">
+      <div className="divide-y divide-[var(--border)] overflow-hidden group-card">
         {visible.map((i) => (
-          <div key={i.id} className="px-4 py-2.5">
-            <div className="flex items-center gap-3">
-              <div className="min-w-0 flex-1 truncate text-[13.5px]">{providerName(i.id) === i.id ? i.name : providerName(i.id)}</div>
+          <div key={i.id} className={phone ? "px-4 py-2" : "px-4 py-2.5"}>
+            <div className="flex min-h-9 items-center gap-3">
+              <div className={`min-w-0 flex-1 truncate ${phone ? "text-[15px]" : "text-[13px]"}`}>{providerName(i.id) === i.id ? i.name : providerName(i.id)}</div>
               {i.connections.length ? (
-                <span className="flex items-center gap-1.5 text-[12.5px] text-ok">
+                <span className="flex items-center gap-1.5 text-[12px] text-ok">
                   <Check size={14} /> Connected
                 </span>
               ) : (
-                <Button size="sm" onClick={() => setEditing(editing === i.id ? null : i.id)}>
+                <Button size="sm" className={phone ? "h-9 px-3.5 text-[14px]" : undefined} onClick={() => setEditing(editing === i.id ? null : i.id)}>
                   Connect
                 </Button>
               )}
