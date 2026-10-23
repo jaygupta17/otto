@@ -34,8 +34,8 @@ export function SessionHistory({ sessionId, phone = false }: { sessionId: string
   return (
     <>
       {phone ? (
-        <button ref={anchor} type="button" onClick={toggle} aria-label={title} className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-hover">
-          <History size={19} />
+        <button ref={anchor} type="button" onClick={toggle} aria-label={title} className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-ink transition-colors active:bg-hover">
+          <History size={21} />
         </button>
       ) : (
         <IconButton ref={anchor} label={title} className="no-drag" onClick={toggle} active={open}>
@@ -107,7 +107,7 @@ function HistoryMenu({ sessionId, agent, phone, touch, onDone }: { sessionId: st
         {list.map((s) => (
           <HistoryRow key={s.id} s={s} active={s.id === sessionId} now={now} onPick={() => pick(s.id)} />
         ))}
-        {list.length === 0 && <div className="px-2 py-3 text-[12.5px] text-muted">{q ? `Nothing matches “${q.trim()}”.` : "No sessions yet."}</div>}
+        {list.length === 0 && <div className="px-2 py-3 text-[12px] text-muted">{q ? `Nothing matches “${q.trim()}”.` : "No sessions yet."}</div>}
       </div>
     </div>
   );

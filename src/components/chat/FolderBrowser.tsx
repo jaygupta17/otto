@@ -167,7 +167,7 @@ function Browser({ start, onPick, onCancel, compact }: { start?: string | null; 
   return (
     <div className="flex min-h-0 flex-col" style={{ height: compact ? "70vh" : "min(560px, 70vh)" }}>
       <div className="space-y-2 border-b border-line px-4 pt-3 pb-3">
-        <nav aria-label="Folder path" className="scroll-quiet flex items-center gap-0.5 overflow-x-auto text-[12.5px] whitespace-nowrap text-muted">
+        <nav aria-label="Folder path" className="scroll-quiet flex items-center gap-0.5 overflow-x-auto text-[12px] whitespace-nowrap text-muted">
           {crumbs.map((c, i) => (
             <span key={c.path} className="flex items-center gap-0.5">
               {i > 0 && <ChevronRight size={12} className="shrink-0 text-faint" />}
@@ -228,7 +228,7 @@ function Browser({ start, onPick, onCancel, compact }: { start?: string | null; 
               aria-selected={i === hi}
               onMouseMove={() => setHi(i)}
               onClick={() => go(e.path)}
-              className={`group flex items-center gap-2.5 rounded-lg px-2.5 ${compact ? "py-2.5" : "py-1.5"} text-[13.5px] ${i === hi ? "bg-hover" : ""}`}
+              className={`group flex items-center gap-2.5 rounded-lg px-2.5 ${compact ? "py-2.5" : "py-1.5"} text-[13px] ${i === hi ? "bg-hover" : ""}`}
             >
               <Folder size={15} className="shrink-0 text-muted" />
               <span className={`min-w-0 flex-1 truncate ${e.name.startsWith(".") ? "text-muted" : "text-ink"}`}>{e.name}</span>

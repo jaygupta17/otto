@@ -30,7 +30,7 @@ export const ScreenCard = memo(function ScreenCard({ blocks, live, sessionId }: 
     <div className="my-3 w-full max-w-[560px] overflow-hidden rounded-xl border border-line bg-raised">
       <div className="flex min-w-0 items-center gap-2.5 py-1.5 pr-1.5 pl-3">
         <span className="grid h-4 w-4 shrink-0 place-items-center text-muted">{live ? <AgentClock size={12} /> : <Monitor size={14} />}</span>
-        <div className="min-w-0 flex-1 truncate text-[12.5px]" title={page?.url}>
+        <div className="min-w-0 flex-1 truncate text-[12px]" title={page?.url}>
           <span className="text-ink-2">{page ? page.title || shortUrl(page.url) : "Agent's screen"}</span>
           {page?.title && <span className="ml-1.5 text-faint">{shortUrl(page.url)}</span>}
           {last && (
@@ -54,7 +54,7 @@ export const ScreenCard = memo(function ScreenCard({ blocks, live, sessionId }: 
         ) : panelScreen ? (
           <div className="grid aspect-video w-full place-items-center bg-black/90">
             <div className="flex flex-col items-center gap-3">
-              <div className="flex items-center gap-2 text-[12.5px] text-white/60">
+              <div className="flex items-center gap-2 text-[12px] text-white/60">
                 <PanelRight size={13} /> Showing in the panel
               </div>
               <Button size="sm" variant="glass" onClick={() => useComputer.getState().setView("preview")}>

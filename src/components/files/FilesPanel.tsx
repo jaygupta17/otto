@@ -147,7 +147,7 @@ function FindResults({ root, query }: { root: string; query: string }) {
         <Spinner />
       </div>
     );
-  if (!results.length) return <div className="py-6 text-center text-[12.5px] text-faint">No files match</div>;
+  if (!results.length) return <div className="py-6 text-center text-[12px] text-faint">No files match</div>;
   return (
     <>
       {results.map((r) => (

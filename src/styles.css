@@ -77,6 +77,37 @@
   color-scheme: dark;
 }
 
+/* Chat bubbles, derived so every theme gets them: the agent's a quiet tint of the
+   panel, yours solid ink (a lifted grey in dark, where white would glare). */
+:root {
+  --bubble: color-mix(in oklab, var(--bg-panel), var(--text) 6%);
+  --bubble-me: var(--text);
+  --bubble-me-text: var(--bg-panel);
+}
+[data-theme="dark"] {
+  --bubble: color-mix(in oklab, var(--bg-panel), var(--text) 8%);
+  --bubble-me: color-mix(in oklab, var(--bg-panel), var(--text) 19%);
+  --bubble-me-text: var(--text);
+}
+
+/* Tooltips: ink on light, a lifted grey on dark, same as your own bubble. */
+.tip {
+  background: var(--text);
+  color: var(--bg-panel);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.14);
+  animation: tip-in 120ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+[data-theme="dark"] .tip {
+  background: color-mix(in oklab, var(--bg-panel), var(--text) 19%);
+  color: var(--text);
+  box-shadow: 0 0 0 0.5px rgb(255 255 255 / 0.08), 0 6px 18px rgb(0 0 0 / 0.5);
+}
+@keyframes tip-in {
+  from {
+    opacity: 0;
+  }
+}
+
 @theme inline {
   --color-bg: var(--bg);
   --color-bg-deep: var(--bg-deep);
@@ -105,6 +136,9 @@
   --color-warn-soft: var(--warn-soft);
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
+  --color-bubble: var(--bubble);
+  --color-bubble-me: var(--bubble-me);
+  --color-on-bubble-me: var(--bubble-me-text);
   --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", system-ui, Roboto, "Helvetica Neue", sans-serif;
   --font-mono: "JetBrains Mono Variable", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --shadow-soft: var(--shadow-sm);
@@ -179,9 +213,10 @@ button {
   cursor: default;
 }
 
+/* Keyboard focus: a soft accent ring like the system's, not a black box. */
 :focus-visible {
-  outline: 2px solid var(--text);
-  outline-offset: 2px;
+  outline: 2px solid color-mix(in oklab, var(--info) 75%, transparent);
+  outline-offset: 1px;
   border-radius: 6px;
 }
 
@@ -227,6 +262,14 @@ input[type="range"] {
 }
 .scroll-quiet:hover::-webkit-scrollbar-thumb {
   background-color: var(--border-strong);
+}
+
+/* Rows that scroll sideways by swipe, like the phone's team strip: no bar at all. */
+.scroll-none {
+  scrollbar-width: none;
+}
+.scroll-none::-webkit-scrollbar {
+  display: none;
 }
 
 /* Legacy utility names, now flat surfaces (no blur). */
@@ -1039,6 +1082,17 @@ html[data-touch] #root {
   color: var(--muted);
 }
 
+/* Inside the agent's bubble, code sits on the panel colour so it reads as a card within it. */
+.bubble {
+  --code-bg: var(--bg-panel);
+}
+[data-theme="dark"] .bubble {
+  --code-bg: color-mix(in oklab, var(--bg-panel), black 18%);
+}
+.bubble .prose-chat {
+  max-width: none;
+}
+
 /* Shiki dual theme */
 .shiki,
 .shiki span {
@@ -1085,103 +1139,32 @@ html[data-touch] #root {
 /* Materials (unlayered so they win over utilities)                    */
 /* ------------------------------------------------------------------ */
 
-/* Without a photo every surface is a flat, solid color. With one, each
-   region gets a material picked for its job (see DESIGN.md → Materials):
-
-     chrome   sidebar        most see-through; it holds short labels only
-     thick    chat, editor   reading surfaces; contrast comes first
-     regular  composer       floats over content; lifted with an edge + shadow
-     thin     chips on home  small, separate pieces over the bare photo
-
-   The tint is a neutral black (dark) or white (light), never the panel
-   color mixed with the photo; that is what made the earlier glass muddy.
-   --glass is the user's "see-through" setting, 0 (solid) .. 0.85. */
-
+/* Every surface is a flat, solid color. */
 .surface-panel {
   background: var(--bg-panel);
 }
 .surface-sidebar {
   background: var(--bg);
 }
-
-[data-backdrop] {
-  /* 0 = background suits the theme, 1 = it fights it (set from JS). Every
-     material adds tint as it rises, so text keeps its contrast. */
-  --mismatch: 0;
-  --tint: 14 14 16;
-  --overlay: 26 26 29;
-  --pill: rgb(255 255 255 / 0.14);
-  --edge: rgb(255 255 255 / 0.09);
-  --edge-top: rgb(255 255 255 / 0.1);
-  --border: rgb(255 255 255 / 0.08);
-  --border-strong: rgb(255 255 255 / 0.15);
-  --hover: rgb(255 255 255 / 0.06);
-  --active: rgb(255 255 255 / 0.1);
-  --surface-raised: rgb(255 255 255 / 0.05);
-  --surface-sunken: rgb(0 0 0 / 0.2);
-  --code-bg: rgb(0 0 0 / 0.25);
-  --faint: #8a8a8e;
-  --photo-text-shadow: 0 1px 2px rgb(0 0 0 / 0.25), 0 2px 18px rgb(0 0 0 / 0.35);
-  --scrim: rgb(0 0 0 / calc(0.38 + var(--mismatch) * 0.3));
+/* A settings group: a raised card with a hairline; on a phone's pushed
+   settings page, the borderless card of a grouped list. */
+.group-card {
+  --card-bg: var(--surface-raised);
+  border-radius: 16px;
+  background: var(--card-bg);
+  box-shadow: inset 0 0 0 1px var(--border);
 }
-[data-theme="light"] [data-backdrop],
-[data-theme="light"][data-backdrop] {
-  --tint: 250 250 249;
-  --overlay: 252 252 251;
-  --pill: #fff;
-  --edge: rgb(0 0 0 / 0.07);
-  --edge-top: rgb(255 255 255 / 0.85);
-  --border: rgb(0 0 0 / 0.07);
-  --border-strong: rgb(0 0 0 / 0.13);
-  --hover: rgb(0 0 0 / 0.045);
-  --active: rgb(0 0 0 / 0.08);
-  --surface-raised: rgb(255 255 255 / 0.5);
-  --surface-sunken: rgb(255 255 255 / 0.55);
-  --code-bg: rgb(255 255 255 / 0.45);
-  --faint: #77777a;
-  --photo-text-shadow: 0 1px 14px rgb(255 255 255 / 0.55);
-  --scrim: rgb(255 255 255 / calc(0.42 + var(--mismatch) * 0.3));
+[data-phone-page] .group-card,
+[data-phone-page] .empty-card {
+  --card-bg: var(--bg-panel);
+  border-radius: 14px;
+  border-color: transparent;
+  background: var(--card-bg);
+  box-shadow: none;
 }
-
-/* Panel frost lives on a layer *behind* the content (::before), not on the
-   panel itself. A backdrop-filter on an ancestor turns it into a "backdrop
-   root", and any glass nested inside (composer, floating buttons) then has
-   nothing to blur and shows sharp text through it. */
-[data-backdrop] .surface-sidebar,
-[data-backdrop] .surface-panel {
-  background: transparent;
-  isolation: isolate;
-}
-[data-backdrop] .surface-sidebar::before,
-[data-backdrop] .surface-panel::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-}
-[data-backdrop] .surface-sidebar::before {
-  background: rgb(var(--tint) / min(0.88, calc(0.6 - var(--glass) * 0.5 * (1 - var(--mismatch)) + var(--mismatch) * 0.35)));
-  -webkit-backdrop-filter: blur(40px) saturate(1.5);
-  backdrop-filter: blur(40px) saturate(1.5);
-}
-[data-backdrop] .surface-panel::before {
-  background: rgb(var(--tint) / min(0.9, calc(0.9 - var(--glass) * 0.4 * (1 - var(--mismatch)) + var(--mismatch) * 0.1)));
-  -webkit-backdrop-filter: blur(50px) saturate(1.3);
-  backdrop-filter: blur(50px) saturate(1.3);
-}
-[data-backdrop] .surface-float {
-  background: rgb(var(--tint) / min(0.96, calc(0.8 - var(--glass) * 0.35 * (1 - var(--mismatch)) + var(--mismatch) * 0.15)));
-  -webkit-backdrop-filter: blur(32px) saturate(1.35);
-  backdrop-filter: blur(32px) saturate(1.35);
-  border-color: var(--edge);
-  box-shadow:
-    inset 0 1px 0 var(--edge-top),
-    0 18px 50px -18px rgb(0 0 0 / 0.55),
-    0 2px 8px rgb(0 0 0 / 0.12);
-}
-[data-backdrop] .surface-float:focus-within {
-  border-color: var(--border-strong);
+/* Fields on a grouped page are white on grey, like the cards around them. */
+[data-phone-page] .field {
+  background: var(--bg-panel);
 }
 .surface-thin {
   transition: background-color 0.15s;
@@ -1189,103 +1172,16 @@ html[data-touch] #root {
 .surface-thin:hover {
   background: var(--hover);
 }
-[data-backdrop] .surface-thin {
-  background: rgb(var(--tint) / min(0.94, calc(0.6 - var(--glass) * 0.3 * (1 - var(--mismatch)) + var(--mismatch) * 0.3)));
-  -webkit-backdrop-filter: blur(28px) saturate(1.3);
-  backdrop-filter: blur(28px) saturate(1.3);
-  box-shadow:
-    inset 0 1px 0 var(--edge-top),
-    inset 0 0 0 1px var(--edge);
-}
-[data-backdrop] .surface-thin:hover {
-  background: rgb(var(--tint) / min(0.97, calc(0.72 - var(--glass) * 0.3 * (1 - var(--mismatch)) + var(--mismatch) * 0.25)));
-}
-
-/* Overlays: menus, settings, palette, toasts. */
-[data-backdrop] .surface-overlay {
-  /* Same frost the chat panel used: follows the see-through setting. */
-  background: rgb(var(--tint) / min(0.9, calc(0.9 - var(--glass) * 0.4 * (1 - var(--mismatch)) + var(--mismatch) * 0.1)));
-  -webkit-backdrop-filter: blur(50px) saturate(1.3);
-  backdrop-filter: blur(50px) saturate(1.3);
-  border-color: var(--edge);
-  box-shadow:
-    inset 0 1px 0 var(--edge-top),
-    0 24px 64px -20px rgb(0 0 0 / 0.55),
-    0 2px 10px rgb(0 0 0 / 0.14);
-}
-/* Selected segment / tab pill: must stand out from a translucent track. */
+/* Selected segment / tab pill. */
 .seg-pill {
   background: var(--surface-raised);
-}
-[data-backdrop] .seg-pill {
-  background: var(--pill);
-}
-
-/* Phone session list over the photo: a light vertical shade, top and
-   bottom heavier, rising with --mismatch. No blur, so the photo stays sharp. */
-[data-backdrop] .list-scrim {
-  background: linear-gradient(
-    180deg,
-    rgb(var(--tint) / calc(0.3 + var(--mismatch) * 0.35)) 0%,
-    rgb(var(--tint) / calc(0.12 + var(--mismatch) * 0.4)) 40%,
-    rgb(var(--tint) / calc(0.35 + var(--mismatch) * 0.35)) 100%
-  );
-}
-
-/* Chat on the bare photo (desktop and phone): the list-scrim idea, heavier,
-   because long-form text needs more contrast than a list of titles. */
-[data-backdrop] .chat-scrim {
-  background: linear-gradient(
-    180deg,
-    rgb(var(--tint) / min(0.92, calc(0.55 + var(--mismatch) * 0.3))) 0%,
-    rgb(var(--tint) / min(0.9, calc(0.42 + var(--mismatch) * 0.38))) 30%,
-    rgb(var(--tint) / min(0.9, calc(0.46 + var(--mismatch) * 0.36))) 100%
-  );
 }
 .chat-surface {
   background: var(--bg-panel);
 }
-[data-backdrop] .chat-surface {
-  background: transparent;
-}
-/* Grey text on the photo: translucent white/black reads better than fixed greys. */
-[data-backdrop] .on-scrim {
-  --muted: rgb(255 255 255 / 0.66);
-  --faint: rgb(255 255 255 / 0.5);
-  --text-2: rgb(255 255 255 / 0.84);
-}
-[data-theme="light"][data-backdrop] .on-scrim {
-  --muted: rgb(0 0 0 / 0.6);
-  --faint: rgb(0 0 0 / 0.45);
-  --text-2: rgb(0 0 0 / 0.78);
-}
-
-/* Text set directly on the photo. */
-[data-backdrop] .on-photo {
-  text-shadow: var(--photo-text-shadow);
-  /* Grey text disappears on a busy photo; use translucent white (black in light) instead. */
-  --muted: rgb(255 255 255 / 0.74);
-  --faint: rgb(255 255 255 / 0.58);
-}
-[data-theme="light"][data-backdrop] .on-photo {
-  --muted: rgb(0 0 0 / 0.62);
-  --faint: rgb(0 0 0 / 0.48);
-}
-/* A soft pool of shade behind the home content so text never fights the photo.
-   `--scrim-y` follows the layout: the centred home keeps the pool on the prompt. */
-.home-scrim {
-  background: radial-gradient(60% 55% at 50% var(--scrim-y, 42%), var(--scrim), transparent 100%);
-}
-
 /* The fade behind the session composer follows the panel's own fill. */
 .panel-fill {
   background: var(--bg-panel);
-}
-[data-backdrop] .panel-fill {
-  background: transparent;
-}
-[data-backdrop] .panel-fade {
-  display: none;
 }
 
 /* ------------------------------------------------------------------ */

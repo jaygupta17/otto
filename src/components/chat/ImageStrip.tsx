@@ -38,7 +38,7 @@ export const ImageStrip = memo(function ImageStrip({ blocks }: { blocks: Block[]
             className="group relative block max-w-full overflow-hidden rounded-lg border border-line bg-sunken transition-colors hover:border-line-strong"
           >
             <img src={s.src} alt={s.name} loading="lazy" decoding="async" className="block max-h-[180px] max-w-[min(100%,320px)] object-contain" />
-            <span className="pointer-events-none absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/60 to-transparent px-2 pt-4 pb-1 text-left text-[11.5px] text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+            <span className="pointer-events-none absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/60 to-transparent px-2 pt-4 pb-1 text-left text-[11px] text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
               {s.name}
             </span>
           </button>

@@ -6,7 +6,6 @@ import { AppGlyph } from "../ui/Mark";
 import { Button } from "../ui/Button";
 import { TextField } from "../ui/Field";
 import { AgentClock, Spinner } from "../ui/AgentClock";
-import { Backdrop } from "../ui/Backdrop";
 import { SETUP_STEPS, newCheckpoint, provisionBoat, type ProvisionCheckpoint, type SetupStepId, type StepUpdate } from "../../lib/providers/provision";
 import { BOXD_BILLING_URL, BOXD_SIZES, BOXD_SLEEP, BoxdError, provisionBoxd, verifyBoxdKey } from "../../lib/providers/boxd";
 import { E2BClient, E2BError, E2B_BILLING_URL, E2B_KEYS_URL, E2B_SLEEP, provisionE2B } from "../../lib/providers/e2b";
@@ -410,7 +409,6 @@ export function Onboarding({ embedded = false, onDone, onCancel }: { embedded?: 
 
   return (
     <div className="relative flex h-full w-full flex-col overflow-hidden bg-panel">
-      <Backdrop />
       <header className="drag relative flex h-14 shrink-0 items-center gap-2 px-6 pt-[env(safe-area-inset-top)] sm:pl-[96px]" data-tauri-drag-region>
         <AppGlyph size={22} />
         <span className="text-[14px] font-semibold text-ink">Otto</span>
@@ -434,7 +432,7 @@ function Providers({ onPick, embedded, onExisting }: { onPick: (id: string) => v
     <div>
       <h1 className={`${embedded ? "text-[20px]" : "text-[28px] leading-tight"} font-semibold text-ink`}>{embedded ? "Add a workspace" : "Where should your agents run?"}</h1>
       <p className="mt-2 text-[15px] leading-relaxed text-muted">
-        {embedded ? "Start another cloud machine, use this computer, or connect a server you already run." : "Otto starts a cloud machine, installs the OpenCode agent and keeps it running. You just bring an API key."}
+        {embedded ? "Start another cloud machine, use this computer, or connect a server you already run." : "Otto starts a cloud machine, installs the agent and keeps it running. Bring an API key."}
       </p>
       <ul className="mt-7 divide-y divide-[var(--border)] overflow-hidden rounded-3xl border border-line bg-raised">
         {PROVIDERS.filter((p) => p.id !== "local" || (p.available && !hasLocal)).map((p) => (
@@ -453,7 +451,7 @@ function Providers({ onPick, embedded, onExisting }: { onPick: (id: string) => v
             {isCloud(p.id as CloudId) && p.available && (
               <button
                 onClick={() => onExisting(p.id as CloudId)}
-                className="shrink-0 border-l border-[var(--border)] px-4 text-[12.5px] text-muted transition-colors hover:bg-hover hover:text-ink"
+                className="shrink-0 border-l border-[var(--border)] px-4 text-[12px] text-muted transition-colors hover:bg-hover hover:text-ink"
                 title={`Attach to one of your existing ${p.name} sandboxes`}
               >
                 Attach…
@@ -462,7 +460,7 @@ function Providers({ onPick, embedded, onExisting }: { onPick: (id: string) => v
           </li>
         ))}
       </ul>
-      {!embedded && <p className="mt-4 text-[13px] text-muted">Keys stay on this device{navigator.userAgent.includes("Mac") ? ", in your Keychain" : ""}. "Attach" takes a machine you already have instead of making one.</p>}
+      {!embedded && <p className="mt-4 text-[13px] text-muted">Keys stay on this device{navigator.userAgent.includes("Mac") ? ", in your Keychain" : ""}.</p>}
     </div>
   );
 }
@@ -546,7 +544,7 @@ function ExistingForm({
         error={keyError ?? undefined}
         trailing={loading ? <Spinner size={15} /> : undefined}
       />
-      {!key && <p className="mt-2 text-[13px] text-muted">Paste the key first. Otto lists the machines on its account.</p>}
+      {!key && <p className="mt-2 text-[13px] text-muted">Paste a key to list its machines.</p>}
 
       {entries && entries.length > 0 && (
         <ul className="mt-4 divide-y divide-[var(--border)] overflow-hidden rounded-2xl border border-line bg-raised">

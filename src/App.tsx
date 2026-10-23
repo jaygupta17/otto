@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { MotionConfig } from "motion/react";
+import { LucideProvider } from "lucide-react";
 import { useWorkspaces } from "./state/workspaces";
 import { useConnection } from "./state/connection";
 import { useUI, initUI } from "./state/ui";
@@ -19,6 +20,7 @@ import { SubagentHost } from "./components/chat/Subagent";
 import { CommandPalette, ShortcutsSheet } from "./components/shell/CommandPalette";
 import { ScreenFocus } from "./components/panel/ScreenFocus";
 import { AppGlyph } from "./components/ui/Mark";
+import { TooltipLayer } from "./components/ui/Tooltip";
 
 export default function App() {
   const hydrated = useWorkspaces((s) => s.hydrated);
@@ -68,19 +70,23 @@ export default function App() {
   if (!booted || !hydrated) return <Splash />;
 
   return (
-    <MotionConfig reducedMotion="user">
-      {workspaces.length === 0 ? <Onboarding /> : compact ? <MobileApp /> : <AppShell compact={compact} />}
-      {workspaces.length > 0 && <Settings compact={compact} />}
-      {workspaces.length > 0 && <CommandPalette />}
-      {workspaces.length > 0 && <ShortcutsSheet compact={compact} />}
-      <Sheet open={addOpen} onClose={() => setAdd(false)} compact={compact}>
-        <Onboarding embedded onDone={() => setAdd(false)} onCancel={() => setAdd(false)} />
-      </Sheet>
-      {workspaces.length > 0 && <SubagentHost compact={compact} />}
-      {workspaces.length > 0 && <ScreenFocus />}
-      <DialogHost />
-      <Toasts />
-    </MotionConfig>
+    // Icons draw a touch lighter than Lucide's default, closer to SF Symbols beside system text.
+    <LucideProvider strokeWidth={1.75}>
+      <MotionConfig reducedMotion="user">
+        {workspaces.length === 0 ? <Onboarding /> : compact ? <MobileApp /> : <AppShell compact={compact} />}
+        {workspaces.length > 0 && <Settings compact={compact} />}
+        {workspaces.length > 0 && <CommandPalette />}
+        {workspaces.length > 0 && <ShortcutsSheet compact={compact} />}
+        <Sheet open={addOpen} onClose={() => setAdd(false)} compact={compact}>
+          <Onboarding embedded onDone={() => setAdd(false)} onCancel={() => setAdd(false)} />
+        </Sheet>
+        {workspaces.length > 0 && <SubagentHost compact={compact} />}
+        {workspaces.length > 0 && <ScreenFocus />}
+        <DialogHost />
+        <Toasts />
+        <TooltipLayer />
+      </MotionConfig>
+    </LucideProvider>
   );
 }
 

@@ -21,8 +21,8 @@ export const ChangedFiles = memo(function ChangedFiles({ blocks }: { blocks: Blo
   const shown = all ? files : files.slice(0, SHOWN);
 
   return (
-    <div className="my-3 w-full max-w-[560px] overflow-hidden rounded-xl border border-line bg-raised">
-      <div className="flex h-8 items-center gap-2 border-b border-line px-3 text-[12.5px] text-muted">
+    <div className="my-3 w-full max-w-[560px] overflow-hidden rounded-[16px] border border-line bg-raised">
+      <div className="flex h-8 items-center gap-2 border-b border-line px-3 text-[12px] text-muted">
         <span className="text-ink-2">
           {files.length === 1 ? "1 file changed" : `${files.length} files changed`}
         </span>
@@ -64,7 +64,7 @@ export const ChangedFiles = memo(function ChangedFiles({ blocks }: { blocks: Blo
         ))}
       </ul>
       {files.length > SHOWN && (
-        <button onClick={() => setAll(!all)} className="flex h-8 w-full items-center gap-1.5 border-t border-line px-3 text-[12.5px] text-muted hover:bg-hover hover:text-ink">
+        <button onClick={() => setAll(!all)} className="flex h-8 w-full items-center gap-1.5 border-t border-line px-3 text-[12px] text-muted hover:bg-hover hover:text-ink">
           <ChevronRight size={12} className={`transition-transform ${all ? "-rotate-90" : "rotate-90"}`} />
           {all ? "Show fewer" : `Show ${files.length - SHOWN} more`}
         </button>

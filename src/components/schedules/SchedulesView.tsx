@@ -17,8 +17,20 @@ import { AgentSelect } from "../settings/AgentSelect";
 import { Select, TimeSelect } from "../ui/Select";
 import { Popover, MenuItem } from "../ui/Popover";
 import { ModelSelect } from "../settings/ModelSelect";
+import { Hint } from "../ui/Tooltip";
+import { Sheet } from "../ui/Sheet";
+import { PanelToggle } from "../panel/SidePanel";
+import { kbd } from "../../hooks/useShortcuts";
 
 const DAYS = ["S", "M", "T", "W", "T", "F", "S"];
+/** When a workspace's schedules actually run, by provider. */
+const RUNS_WHILE: Record<string, string> = {
+  boat: " They run while the sandbox is awake.",
+  boxd: " They pause while the machine hibernates after being idle.",
+  e2b: " They pause with the sandbox.",
+  daytona: " They stop with the sandbox.",
+  local: " They run while this computer is awake.",
+};
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 const TEMPLATES: { name: string; prompt: string; frequency: Frequency; icon: typeof Sunrise }[] = [
@@ -27,7 +39,8 @@ const TEMPLATES: { name: string; prompt: string; frequency: Frequency; icon: typ
   { icon: FlaskConical, name: "Nightly tests", prompt: "Run the full test suite. If anything fails, investigate the cause and write a short report with suggested fixes.", frequency: { kind: "daily", hour: 2, minute: 0 } },
 ];
 
-export function SchedulesView({ compact = false, onBack }: { compact?: boolean; onBack?: () => void }) {
+/** Every schedule in the workspace. On phones it's a tab: the editor opens as its own page. */
+export function SchedulesView({ compact = false }: { compact?: boolean }) {
   const list = useSchedules((s) => s.list);
   const env = useSchedules((s) => s.env);
   const error = useSchedules((s) => s.error);
@@ -63,47 +76,54 @@ export function SchedulesView({ compact = false, onBack }: { compact?: boolean; 
   }, [load]);
 
   const mac = useTrafficLights();
+  const hint = `Agents that start on their own, even with Otto closed.${RUNS_WHILE[ws?.provider ?? ""] ?? ""}`;
+  const closeEditor = () => {
+    setEditing(null);
+    setTemplate(null);
+  };
   return (
     <div className="flex h-full flex-col">
-      <header className={`drag flex h-[52px] shrink-0 items-center gap-2 pr-3 ${compact ? "safe-top h-auto pt-2 pl-3" : !sidebarOpen && mac ? "pl-[84px]" : "pl-3"}`} data-tauri-drag-region>
-        {compact && onBack && (
-          <button onClick={onBack} className="grid h-11 w-11 place-items-center rounded-full bg-sunken" aria-label="Back">
-            <ArrowLeft size={20} />
-          </button>
-        )}
-        {!compact && !sidebarOpen && (
-          <IconButton label="Show sidebar" className="no-drag" onClick={() => toggleSidebar(true)}>
-            <PanelLeft size={17} />
-          </IconButton>
-        )}
-        <div className="flex-1" data-tauri-drag-region />
-      </header>
-      <div className="scroll-quiet min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-[720px] px-5 pb-16 sm:px-8">
+      {compact ? (
+        <header className="safe-top shrink-0 px-2">
+          <div className="flex h-[52px] items-center">
+            <h1 className="flex min-w-0 flex-1 items-center gap-1.5 pl-2 text-[17px] font-semibold">
+              Schedules
+              <Hint>{hint}</Hint>
+            </h1>
+            <button onClick={() => setEditing("new")} aria-label="New schedule" className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-ink transition-colors active:bg-hover">
+              <Plus size={22} />
+            </button>
+          </div>
+        </header>
+      ) : (
+        <header className={`drag flex h-[52px] shrink-0 items-center gap-2 pr-3 ${!sidebarOpen && mac ? "pl-[84px]" : "pl-3"}`} data-tauri-drag-region>
+          {!sidebarOpen && (
+            <IconButton label="Show sidebar" keys={kbd("⌘B")} className="no-drag" onClick={() => toggleSidebar(true)}>
+              <PanelLeft size={17} />
+            </IconButton>
+          )}
+          <div className="flex-1" data-tauri-drag-region />
+          <PanelToggle />
+        </header>
+      )}
+      <div data-scroll-root className="scroll-quiet min-h-0 flex-1 overflow-y-auto">
+        <div className={`mx-auto w-full max-w-[720px] ${compact ? "px-4 pt-2 pb-8" : "px-5 pb-16 sm:px-8"}`}>
           <AnimatePresence mode="wait" initial={false}>
-            {editing ? (
+            {editing && !compact ? (
               <motion.div key="edit" initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 16 }} transition={{ duration: 0.18 }}>
-                <ScheduleEditor
-                  initial={editing === "new" ? null : editing}
-                  template={template}
-                  onClose={() => {
-                    setEditing(null);
-                    setTemplate(null);
-                  }}
-                />
+                <ScheduleEditor initial={editing === "new" ? null : editing} template={template} onClose={closeEditor} />
               </motion.div>
             ) : (
               <motion.div key="list" initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -16 }} transition={{ duration: 0.18 }}>
-                <div className="mb-2 flex items-center justify-between gap-4 pt-6">
-                  <h1 className="text-[22px] font-semibold tracking-[-0.01em]">Scheduled</h1>
+                <div className={`mb-6 flex items-center justify-between gap-4 pt-6 ${compact ? "hidden" : ""}`}>
+                  <h1 className="flex items-center gap-2 text-[22px] font-semibold tracking-[-0.015em]">
+                    Scheduled
+                    <Hint>{hint}</Hint>
+                  </h1>
                   <Button variant="primary" icon={<Plus size={15} />} onClick={() => setEditing("new")}>
                     New
                   </Button>
                 </div>
-                <p className="mb-8 text-[13.5px] text-muted">
-                  Agents that start on their own, even with Otto closed.
-                  {ws?.provider === "boat" && " They run while the sandbox is awake."}{ws?.provider === "boxd" && " They pause while the machine hibernates after being idle."}{ws?.provider === "e2b" && " They pause with the sandbox."}{ws?.provider === "daytona" && " They stop with the sandbox."}{ws?.provider === "local" && " They run while this computer is awake."}
-                </p>
 
                 {error && <div className="selectable mb-4 rounded-xl bg-danger-soft px-4 py-3 text-[13px] text-danger">{error}</div>}
                 {env && !env.hasCron && <div className="mb-4 rounded-xl bg-info-soft px-4 py-3 text-[13px] text-info">This machine has no cron, so schedules can’t run here. They stay saved and work again once cron is installed.</div>}
@@ -114,8 +134,9 @@ export function SchedulesView({ compact = false, onBack }: { compact?: boolean; 
                   </div>
                 ) : list.length === 0 ? (
                   <>
-                    <h2 className="mb-3 text-[13px] font-medium text-muted">Start from an example</h2>
-                    <div className="grid gap-2.5 sm:grid-cols-3">
+                    <h2 className={`text-[13px] font-medium text-muted ${compact ? "mb-1.5 px-4" : "mb-3"}`}>Start from an example</h2>
+                    {/* Cards side by side where there's room; on a phone, one grouped list. */}
+                    <div className={compact ? "divide-y divide-[var(--border)] overflow-hidden rounded-[14px] bg-panel" : "grid gap-2.5 sm:grid-cols-3"}>
                       {TEMPLATES.map((t) => (
                         <button
                           key={t.name}
@@ -123,19 +144,20 @@ export function SchedulesView({ compact = false, onBack }: { compact?: boolean; 
                             setTemplate(t);
                             setEditing("new");
                           }}
-                          className="group flex flex-col items-start gap-6 rounded-2xl bg-raised p-4 text-left hairline transition-colors hover:bg-hover"
+                          className={compact ? "flex w-full items-center gap-3.5 px-4 py-3 text-left transition-colors active:bg-hover" : "group flex flex-col items-start gap-6 rounded-2xl bg-raised p-4 text-left hairline transition-colors hover:bg-hover"}
                         >
-                          <t.icon size={17} className="text-muted transition-colors group-hover:text-ink" />
-                          <span>
-                            <span className="block text-[14px] font-medium">{t.name}</span>
-                            <span className="mt-0.5 block text-[12.5px] text-muted">{describe(t.frequency)}</span>
+                          <t.icon size={compact ? 20 : 17} className={compact ? "shrink-0 text-ink-2" : "text-muted transition-colors group-hover:text-ink"} />
+                          <span className="min-w-0 flex-1">
+                            <span className={`block font-medium ${compact ? "text-[16px]" : "text-[14px]"}`}>{t.name}</span>
+                            <span className={`mt-0.5 block text-muted ${compact ? "text-[14px]" : "text-[12px]"}`}>{describe(t.frequency)}</span>
                           </span>
+                          {compact && <Plus size={18} className="shrink-0 text-faint" />}
                         </button>
                       ))}
                     </div>
                   </>
                 ) : (
-                  <div className="divide-y divide-[var(--border)] overflow-hidden rounded-2xl bg-raised hairline">
+                  <div className={`divide-y divide-[var(--border)] overflow-hidden ${compact ? "rounded-[14px] bg-panel" : "rounded-2xl bg-raised hairline"}`}>
                     {list.map((s) => (
                       <ScheduleRow key={s.id} s={s} serverOffset={env?.serverOffset ?? 0} onEdit={() => setEditing(s)} />
                     ))}
@@ -146,6 +168,11 @@ export function SchedulesView({ compact = false, onBack }: { compact?: boolean; 
           </AnimatePresence>
         </div>
       </div>
+      {compact && (
+        <Sheet open={!!editing} onClose={closeEditor} compact title={editing && editing !== "new" ? editing.name : "New schedule"}>
+          <div className="px-4 pb-8">{editing && <ScheduleEditor page initial={editing === "new" ? null : editing} template={template} onClose={closeEditor} />}</div>
+        </Sheet>
+      )}
     </div>
   );
 }
@@ -169,7 +196,7 @@ function ScheduleRow({ s, serverOffset, onEdit }: { s: Schedule; serverOffset: n
       />
       <button onClick={onEdit} className="min-w-0 flex-1 text-left">
         <span className="block truncate text-[14px] text-ink">{s.name}</span>
-        <span className="block truncate text-[12.5px] text-muted">
+        <span className="block truncate text-[12px] text-muted">
           {describe(s.frequency)}
           {next && <span className="text-faint"> · next {formatNext(next)}</span>}
         </span>
@@ -181,7 +208,7 @@ function ScheduleRow({ s, serverOffset, onEdit }: { s: Schedule; serverOffset: n
           </span>
         )}
       </button>
-      <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+      <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100">
         <IconButton
           label="Run now"
           size={30}
@@ -226,10 +253,13 @@ function formatNext(t: number) {
   return d.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" }) + ` ${time}`;
 }
 
-function ScheduleEditor({ initial, template, onClose }: { initial: Schedule | null; template: (typeof TEMPLATES)[number] | null; onClose: () => void }) {
+/** `page`: it's a phone page, whose header already says where you are and how to go back. */
+function ScheduleEditor({ initial, template, onClose, page = false }: { initial: Schedule | null; template: (typeof TEMPLATES)[number] | null; onClose: () => void; page?: boolean }) {
   const upsert = useSchedules((s) => s.upsert);
   const saving = useSchedules((s) => s.saving);
   const env = useSchedules((s) => s.env);
+  // Footer buttons at full touch size on a phone.
+  const tap = page ? "h-11 text-[15px]" : undefined;
   const home = useChat((s) => s.homeDir);
   const client = useChat((s) => s.client);
   const [name, setName] = useState(initial?.name ?? template?.name ?? "");
@@ -310,11 +340,15 @@ function ScheduleEditor({ initial, template, onClose }: { initial: Schedule | nu
   ];
 
   return (
-    <div className="pt-6">
-      <button className="-ml-1 mb-4 inline-flex items-center gap-1 rounded-md px-1 text-[13px] text-muted transition-colors hover:text-ink" onClick={onClose}>
-        <ArrowLeft size={14} /> Scheduled
-      </button>
-      <h2 className="mb-7 text-[22px] font-semibold tracking-[-0.01em]">{initial ? initial.name : "New schedule"}</h2>
+    <div className={page ? "pt-4" : "pt-6"}>
+      {!page && (
+        <>
+          <button className="-ml-1 mb-4 inline-flex items-center gap-1 rounded-md px-1 text-[13px] text-muted transition-colors hover:text-ink" onClick={onClose}>
+            <ArrowLeft size={14} /> Scheduled
+          </button>
+          <h2 className="mb-7 text-[22px] font-semibold tracking-[-0.01em]">{initial ? initial.name : "New schedule"}</h2>
+        </>
+      )}
 
       <div className="space-y-5">
         <TextField label="Name" placeholder="Morning standup" value={name} onChange={(e) => setName(e.target.value)} autoFocus={!initial} />
@@ -385,7 +419,7 @@ function ScheduleEditor({ initial, template, onClose }: { initial: Schedule | nu
               className="field mt-3 h-9 w-full rounded-lg px-3 font-mono text-[13px]"
             />
           )}
-          <p className={`mt-2 text-[12.5px] ${cronOk ? "text-muted" : "text-danger"}`}>
+          <p className={`mt-2 text-[12px] ${cronOk ? "text-muted" : "text-danger"}`}>
             {!cronOk ? "That cron expression isn’t valid." : freq.kind === "custom" ? `Server time, UTC${fmtOffset(env?.serverOffset ?? 0)}${next ? ` · next ${formatNext(next)}` : ""}` : next ? `Next ${formatNext(next)}` : ""}
           </p>
         </div>
@@ -433,6 +467,7 @@ function ScheduleEditor({ initial, template, onClose }: { initial: Schedule | nu
               <Button
                 variant="danger"
                 size="sm"
+                className={tap}
                 onClick={async () => {
                   if (await remove(initial.id, baseRev)) onClose();
                   else setBaseRev(useSchedules.getState().rev);
@@ -440,20 +475,20 @@ function ScheduleEditor({ initial, template, onClose }: { initial: Schedule | nu
               >
                 Delete schedule
               </Button>
-              <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(false)}>
+              <Button variant="ghost" size="sm" className={tap} onClick={() => setConfirmDelete(false)}>
                 Keep
               </Button>
             </>
           ) : (
-            <Button variant="ghost" size="sm" icon={<Trash2 size={13} />} onClick={() => setConfirmDelete(true)}>
+            <Button variant="ghost" size="sm" className={tap} icon={<Trash2 size={13} />} onClick={() => setConfirmDelete(true)}>
               Delete
             </Button>
           ))}
         <div className="flex-1" />
-        <Button variant="ghost" onClick={onClose}>
+        <Button variant="ghost" className={tap} onClick={onClose}>
           Cancel
         </Button>
-        <Button variant="primary" disabled={!valid || saving} onClick={() => void save()}>
+        <Button variant="primary" className={tap && `${tap} px-5`} disabled={!valid || saving} onClick={() => void save()}>
           {saving ? <Spinner size={14} /> : initial ? "Save" : "Create"}
         </Button>
       </div>

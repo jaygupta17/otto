@@ -142,7 +142,7 @@ export function ScreenFrame({
       )}
       {load.state === "loading" && (
         <div className="absolute inset-0 grid place-items-center">
-          <div className="flex items-center gap-2 text-[12.5px] text-white/70">
+          <div className="flex items-center gap-2 text-[12px] text-white/70">
             <Spinner size={12} /> {load.detail ?? "Connecting to the screen"}
           </div>
         </div>
@@ -188,7 +188,7 @@ export function LiveScreen({ active }: { active: boolean }) {
       <PanelEmpty
         icon={<MonitorPlay size={18} />}
         title="No screen to show"
-        body="The live view is for Boat workspaces, whose machines have a desktop and Chrome the agent can drive."
+        body="Only Boat machines have a desktop to watch."
       />
     );
   }
@@ -216,7 +216,7 @@ export function OnScreenNote() {
   return (
     <div className="grid aspect-video w-full place-items-center bg-black/90">
       <div className="flex flex-col items-center gap-3">
-        <div className="flex items-center gap-2 text-[12.5px] text-white/60">
+        <div className="flex items-center gap-2 text-[12px] text-white/60">
           <Maximize size={13} /> Showing full screen
         </div>
         <Button size="sm" variant="glass" onClick={() => useComputer.getState().setFocus(false)}>
@@ -298,7 +298,7 @@ export function ControlBar({
   return (
     <div className={`flex shrink-0 items-center gap-2 pr-2 pl-3 ${tall ? "h-[52px]" : "h-10 border-b border-line"}`} data-tauri-drag-region={tall || undefined}>
       <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${control ? "bg-info" : busy ? "bg-accent" : "bg-line-strong"}`} />
-      <span className="min-w-0 flex-1 truncate text-[12.5px] text-muted" data-tauri-drag-region={tall || undefined}>
+      <span className="min-w-0 flex-1 truncate text-[12px] text-muted" data-tauri-drag-region={tall || undefined}>
         {control ? (paused ? "You're in control · the agent is paused" : "You're in control") : busy ? "Watching the agent work" : "Watching"}
       </span>
       <IconButton label="Reconnect the stream" size={28} onClick={onReload} disabled={loading}>
@@ -397,9 +397,9 @@ function StepLog({ sessionId }: { sessionId: string | null }) {
   }, [timeline]);
   return (
     <div className="scroll-quiet min-h-0 flex-1 overflow-y-auto">
-      <div className="flex h-8 items-center px-3 text-[11.5px] font-medium tracking-wide text-faint uppercase">Browser steps</div>
+      <div className="flex h-8 items-center px-3 text-[12px] font-medium text-muted">Browser steps</div>
       {steps.length === 0 ? (
-        <div className="px-3 pb-4 text-[12.5px] leading-relaxed text-muted">When the agent uses the browser in this session, each step shows here.</div>
+        <div className="px-3 pb-4 text-[12px] leading-relaxed text-muted">When the agent uses the browser in this session, each step shows here.</div>
       ) : (
         <ol className="px-1.5 pb-3">
           {steps.map(({ b, step }) => {
@@ -414,7 +414,7 @@ function StepLog({ sessionId }: { sessionId: string | null }) {
                     <span className={step.failed ? "text-danger" : "text-ink-2"}>{step.verb}</span> <span className="text-ink">{step.target}</span>
                   </span>
                   {step.page && (
-                    <span className="block truncate text-[11.5px] text-faint" title={step.page.url}>
+                    <span className="block truncate text-[11px] text-faint" title={step.page.url}>
                       {step.page.title ? `${step.page.title} · ` : ""}
                       {shortUrl(step.page.url)}
                     </span>

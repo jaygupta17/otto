@@ -1,16 +1,17 @@
 /**
- * The right side of the window: a slim rail of tools at the edge, and the
- * panel it opens between the chat and the rail. Modeled on OpenChamber's
- * context panel: one surface at a time, its own remembered width, a resize
- * handle on the left edge, and an "expand" mode that covers the chat.
+ * The right side of the window: a panel beside the chat, opened from a button
+ * at the end of the chat's header. One surface at a time, switched from the
+ * menu at the start of the panel's own header; each keeps its own width, the
+ * left edge resizes, and "expand" covers the chat.
  */
 import { BackButton, usePage } from "../ui/Sheet";
-import { BookOpen, Bookmark, FolderTree, Gauge, Globe, Maximize2, Minimize2, SquareTerminal, X } from "lucide-react";
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { useUI, PANEL_DEFAULT_WIDTH, type PanelSurface } from "../../state/ui";
+import { BookOpen, Bookmark, Check, ChevronDown, FolderTree, Gauge, Globe, Maximize2, Minimize2, PanelRight, SquareTerminal, X } from "lucide-react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { useUI, PANEL_DEFAULT_WIDTH, FILES_OPEN_WIDTH, type PanelSurface } from "../../state/ui";
 import { useTerminals } from "../../state/terminals";
 import { useHandoff } from "../../state/computer";
 import { IconButton } from "../ui/Button";
+import { MenuItem, Popover } from "../ui/Popover";
 import { FilesSurface, ContextSurface } from "./Surfaces";
 import { TerminalSurface } from "./TerminalSurface";
 import { BrowserSurface } from "./BrowserSurface";
@@ -28,8 +29,8 @@ export const SURFACES: { id: PanelSurface; label: string; keys: string; icon: (s
 ];
 
 const MIN_W = 300;
-/** The chat keeps at least this much room next to a docked panel. */
-const MIN_CHAT = 360;
+/** The chat keeps at least this much room next to a docked panel, so it never turns into a ribbon. */
+const MIN_CHAT = 440;
 
 // ---------------------------------------------------------------------------
 // Chrome shared by every surface (desktop panel or phone page)
@@ -62,8 +63,9 @@ export function PanelHeader({ children, actions }: { children: ReactNode; action
       </div>
     );
   return (
-    <div className={`${docked ? "drag h-[52px]" : "h-12"} flex shrink-0 items-center gap-1 border-b border-line pr-2 pl-3`} data-tauri-drag-region>
+    <div className={`${docked ? "drag h-[52px]" : "h-12 border-b border-line"} flex shrink-0 items-center gap-1 pr-2 pl-3`} data-tauri-drag-region>
       <div className="flex min-w-0 flex-1 items-center gap-2" data-tauri-drag-region>
+        {docked && <SurfaceMenu />}
         {children}
       </div>
       <div className="no-drag flex shrink-0 items-center gap-0.5">
@@ -73,20 +75,24 @@ export function PanelHeader({ children, actions }: { children: ReactNode; action
             {expanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
           </IconButton>
         )}
-        <IconButton label="Close panel" size={28} onClick={onClose}>
-          <X size={15} />
-        </IconButton>
+        {/* Docked beside the chat, the header's panel button closes it; covering the chat, this is the way back. */}
+        {(!docked || expanded) && (
+          <IconButton label="Close panel" size={28} onClick={onClose}>
+            <X size={15} />
+          </IconButton>
+        )}
       </div>
     </div>
   );
 }
 
-/** Icon + label for a surface's header. */
+/** A surface's name for its header (docked, the menu before it already shows the icon). */
 export function PanelTitle({ surface, detail }: { surface: PanelSurface; detail?: ReactNode }) {
   const s = SURFACES.find((x) => x.id === surface)!;
+  const docked = useDocked();
   return (
     <span className="flex min-w-0 items-center gap-2 text-[13px]" data-tauri-drag-region>
-      <span className="text-muted">{s.icon(15)}</span>
+      {!docked && <span className="text-muted">{s.icon(15)}</span>}
       <span className="font-semibold text-ink">{s.label}</span>
       {detail && <span className="truncate text-faint">{detail}</span>}
     </span>
@@ -99,7 +105,7 @@ export function PanelEmpty({ icon, title, body, children }: { icon: ReactNode; t
     <div className="flex flex-1 flex-col items-center justify-center gap-2 px-8 py-10 text-center">
       <span className="mb-1 grid h-10 w-10 place-items-center rounded-xl bg-hover text-muted">{icon}</span>
       <div className="text-[14px] font-medium text-ink">{title}</div>
-      {body && <div className="max-w-[300px] text-[12.5px] leading-relaxed text-muted">{body}</div>}
+      {body && <div className="max-w-[300px] text-[12px] leading-relaxed text-muted">{body}</div>}
       {children && <div className="mt-3 flex flex-wrap justify-center gap-2">{children}</div>}
     </div>
   );
@@ -131,6 +137,7 @@ export function SidePanel({ root, sessionId, rowRef }: { root: string | null; se
   const panel = useUI((s) => s.panel);
   const expanded = useUI((s) => s.panelExpanded);
   const stored = useUI((s) => (s.panel ? s.panelWidths[s.panel] : undefined));
+  const fileOpen = useUI((s) => !!s.activeFile);
   const close = useUI((s) => s.closePanel);
   const [dragging, setDragging] = useState(false);
   const [rowW, setRowW] = useState(0);
@@ -157,7 +164,9 @@ export function SidePanel({ root, sessionId, rowRef }: { root: string | null; se
   }, [expanded]);
 
   const max = Math.max(MIN_W, rowW - MIN_CHAT);
-  const width = panel ? Math.min(max, Math.max(MIN_W, stored ?? PANEL_DEFAULT_WIDTH[panel])) : 0;
+  // A bare tree is narrow; an open file widens Files unless you've sized it yourself.
+  const fallback = panel === "files" && fileOpen ? FILES_OPEN_WIDTH : panel ? PANEL_DEFAULT_WIDTH[panel] : 0;
+  const width = panel ? Math.min(max, Math.max(MIN_W, stored ?? fallback)) : 0;
 
   const startResize = (e: React.PointerEvent) => {
     if (!panel) return;
@@ -192,7 +201,7 @@ export function SidePanel({ root, sessionId, rowRef }: { root: string | null; se
           aria-label="Resize panel"
           tabIndex={0}
           onPointerDown={startResize}
-          onDoubleClick={() => useUI.getState().setPanelWidth(panel, PANEL_DEFAULT_WIDTH[panel])}
+          onDoubleClick={() => useUI.getState().setPanelWidth(panel, fallback)}
           onKeyDown={(e) => {
             if (e.key === "ArrowLeft") useUI.getState().setPanelWidth(panel, Math.min(max, width + 24));
             if (e.key === "ArrowRight") useUI.getState().setPanelWidth(panel, Math.max(MIN_W, width - 24));
@@ -216,44 +225,76 @@ export function SidePanel({ root, sessionId, rowRef }: { root: string | null; se
 }
 
 // ---------------------------------------------------------------------------
-// Rail
+// Opening and switching
 // ---------------------------------------------------------------------------
 
-export function RightRail() {
-  const panel = useUI((s) => s.panel);
-  const toggle = useUI((s) => s.togglePanel);
-  const terms = useTerminals((s) => s.tabs.length);
+/** Something in the panel wants a look: the agent is waiting to hand over its screen, or opened a page. */
+function useWaiting() {
   const browsing = useUI((s) => !!s.browserRequest);
-  // The agent is waiting for the person to take over its screen.
-  const waiting = !!useHandoff(null);
+  return !!useHandoff(null) || browsing;
+}
+
+/** The chat header's last button: shows the panel at the surface it last had, or hides it. */
+export function PanelToggle() {
+  const open = useUI((s) => !!s.panel);
+  const toggle = useUI((s) => s.togglePanelOpen);
+  const waiting = useWaiting() && !open;
   return (
-    <nav aria-label="Tools" className="surface-sidebar relative z-[1] flex h-full w-11 shrink-0 flex-col items-center gap-1 border-l border-line pt-2">
-      {SURFACES.map((s) => {
-        const on = panel === s.id;
-        const badge = s.id === "terminal" && terms > 0 ? String(terms) : null;
-        const dot = s.id === "browser" && (waiting || browsing) && !on;
-        return (
-          <div key={s.id} className="group relative">
-            <button
-              aria-label={s.label}
-              aria-pressed={on}
-              onClick={() => toggle(s.id)}
-              className={`relative grid h-9 w-9 place-items-center rounded-lg transition-colors ${on ? "bg-active text-ink" : "text-muted hover:bg-hover hover:text-ink"}`}
-            >
-              {s.icon(18)}
-              {badge && (
-                <span className="absolute -top-0.5 -right-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-ink px-1 text-[10px] font-semibold text-bg tabular-nums">{badge}</span>
-              )}
-              {dot && <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-info" />}
-            </button>
-            {/* Tooltip on the left, like OpenChamber's rail. */}
-            <span className="pointer-events-none absolute top-1/2 right-full z-50 mr-2 -translate-y-1/2 whitespace-nowrap rounded-md border border-line bg-surface-solid px-2 py-1 text-[12px] text-ink opacity-0 shadow-md transition-opacity delay-300 group-hover:opacity-100">
-              {s.label} <span className="ml-1 text-faint">{kbd(s.keys)}</span>
-            </span>
-          </div>
-        );
-      })}
-    </nav>
+    <IconButton label={open ? "Hide panel" : "Show panel"} keys={kbd("⌘⇧\\")} active={open} aria-pressed={open} className="no-drag relative" onClick={toggle}>
+      <PanelRight size={17} />
+      {waiting && <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-info ring-2 ring-[var(--bg-panel)]" />}
+    </IconButton>
+  );
+}
+
+/** The surface's icon at the start of the panel header; opens a menu of every surface. */
+function SurfaceMenu() {
+  const panel = useUI((s) => s.panel);
+  const openPanel = useUI((s) => s.openPanel);
+  const terms = useTerminals((s) => s.tabs.length);
+  const waiting = useWaiting();
+  const [open, setOpen] = useState(false);
+  const anchor = useRef<HTMLButtonElement>(null);
+  const current = SURFACES.find((x) => x.id === panel);
+  if (!current) return null;
+  return (
+    <>
+      <button
+        ref={anchor}
+        type="button"
+        aria-label={`${current.label}. Switch panel`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        data-tip="Switch panel"
+        onClick={() => setOpen((v) => !v)}
+        className={`no-drag -ml-1 flex h-7 shrink-0 items-center gap-0.5 rounded-md pr-1 pl-1.5 text-muted transition-colors hover:bg-hover hover:text-ink ${open ? "bg-hover text-ink" : ""}`}
+      >
+        {current.icon(15)}
+        <ChevronDown size={12} className="opacity-70" />
+      </button>
+      <Popover open={open} onClose={() => setOpen(false)} anchor={anchor.current} width={224} label="Panels">
+        <div role="menu" className="p-1.5">
+          {SURFACES.map((x) => (
+            <MenuItem
+              key={x.id}
+              icon={x.icon(15)}
+              label={
+                <span className="flex items-center gap-1.5">
+                  {x.label}
+                  {x.id === "terminal" && terms > 0 && <span className="text-[12px] text-faint tabular-nums">{terms}</span>}
+                  {x.id === "browser" && waiting && x.id !== panel && <span className="h-1.5 w-1.5 rounded-full bg-info" />}
+                </span>
+              }
+              right={x.id === panel ? <Check size={14} className="text-ink" /> : <kbd className="font-sans text-[12px] text-faint">{kbd(x.keys)}</kbd>}
+              onClick={() => {
+                setOpen(false);
+                openPanel(x.id);
+              }}
+            />
+          ))}
+        </div>
+      </Popover>
+    </>
   );
 }
 

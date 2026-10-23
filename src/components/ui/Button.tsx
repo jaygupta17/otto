@@ -40,13 +40,14 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
   );
 });
 
-export const IconButton = forwardRef<HTMLButtonElement, ButtonHTMLAttributes<HTMLButtonElement> & { label: string; size?: number; active?: boolean }>(
-  function IconButton({ label, size = 32, active, className = "", children, ...rest }, ref) {
+export const IconButton = forwardRef<HTMLButtonElement, ButtonHTMLAttributes<HTMLButtonElement> & { label: string; size?: number; active?: boolean; /** Shortcut, shown dimmed in the tooltip. */ keys?: string }>(
+  function IconButton({ label, size = 32, active, keys, className = "", children, ...rest }, ref) {
     return (
       <button
         ref={ref}
         aria-label={label}
-        title={label}
+        data-tip={label}
+        data-tip-keys={keys}
         className={`inline-grid shrink-0 place-items-center rounded-md text-muted transition-colors duration-150 hover:bg-hover hover:text-ink active:bg-active disabled:opacity-40 ${active ? "bg-active text-ink" : ""} ${className}`}
         style={{ width: size, height: size }}
         {...rest}

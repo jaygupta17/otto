@@ -8,7 +8,7 @@ import { terminalSession, useTerminals } from "../../state/terminals";
 import type { TermStatus } from "../../lib/terminal";
 import { IconButton, Button } from "../ui/Button";
 import { Spinner } from "../ui/AgentClock";
-import { PanelEmpty, PanelHeader, useSurfaceVisible } from "./SidePanel";
+import { PanelEmpty, PanelHeader, PanelTitle, useSurfaceVisible } from "./SidePanel";
 
 export function TerminalSurface({ root }: { root: string | null }) {
   const tabs = useTerminals((s) => s.tabs);
@@ -42,9 +42,7 @@ export function TerminalSurface({ root }: { root: string | null }) {
       >
         <div className="no-drag scroll-quiet flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto" role="tablist" aria-label="Terminals">
           {tabs.length === 0 && (
-            <span className="flex items-center gap-2 text-[13px] font-semibold" data-tauri-drag-region>
-              <SquareTerminal size={15} className="text-muted" /> Terminal
-            </span>
+            <PanelTitle surface="terminal" />
           )}
           {tabs.map((t) => {
             const on = t.id === activeId;
@@ -58,7 +56,6 @@ export function TerminalSurface({ root }: { root: string | null }) {
                 onAuxClick={(e) => e.button === 1 && void close(t.id)}
                 className={`group flex h-7 max-w-[180px] shrink-0 cursor-default items-center gap-1.5 rounded-lg pr-1 pl-2.5 text-[13px] transition-colors ${on ? "bg-active text-ink" : "text-muted hover:bg-hover hover:text-ink"}`}
               >
-                <SquareTerminal size={13} className="shrink-0" />
                 <span className="truncate">{t.title}</span>
                 <button
                   aria-label={`Close ${t.title}`}
@@ -141,7 +138,7 @@ function TermView({ id, visible }: { id: string; visible: boolean }) {
     <div className="relative flex min-h-0 flex-1 flex-col">
       <div ref={ref} className="min-h-0 flex-1 py-2 pl-3 pr-1" onClick={() => terminalSession(id)?.focus()} />
       {status !== "live" && (
-        <div className="pointer-events-none absolute top-2 right-3 flex items-center gap-1.5 rounded-full border border-line bg-surface-solid px-2.5 py-1 text-[11.5px] text-muted shadow-sm">
+        <div className="pointer-events-none absolute top-2 right-3 flex items-center gap-1.5 rounded-full border border-line bg-surface-solid px-2.5 py-1 text-[11px] text-muted shadow-sm">
           {status === "exited" ? (
             "Exited"
           ) : (

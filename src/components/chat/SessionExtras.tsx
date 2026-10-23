@@ -39,7 +39,7 @@ export function InboxTray({ sessionId }: { sessionId: string }) {
           {items.map((m) => (
             <div key={m.id} className="flex items-center gap-2 border-b border-line px-3 py-2 last:border-b-0">
               <CornerDownRight size={13} className="shrink-0 text-faint" />
-              <span className="min-w-0 flex-1 truncate text-[13.5px] text-ink-2">{m.text}</span>
+              <span className="min-w-0 flex-1 truncate text-[13px] text-ink-2">{m.text}</span>
               <button
                 onClick={() => void setDelivery(sessionId, m.id, m.delivery === "steer" ? "queue" : "steer")}
                 title={m.delivery === "steer" ? "Read after the current step. Click to wait for the run to finish." : "Read when the run finishes. Click to send after the current step."}
@@ -151,7 +151,7 @@ function CommandLine({ item, root, now }: { item: Extract<Running, { kind: "comm
   return (
     <div className="group/bg flex h-7 min-w-0 items-center gap-2 rounded-md px-1.5 text-[13px]">
       <SquareTerminal size={13} className="shrink-0 text-muted" />
-      <span className="shimmer min-w-0 truncate font-mono text-[12.5px]" title={item.command}>
+      <span className="shimmer min-w-0 truncate font-mono text-[12px]" title={item.command}>
         {item.command.split("\n")[0]}
       </span>
       {agent && <span className="shrink-0 text-faint">· {name}</span>}
@@ -354,14 +354,14 @@ export function UsageCard({ sessionId, phone = false, onDone }: { sessionId: str
   const full = u.pct >= FULL;
   const known = !!u.limit;
   const headline = !known
-    ? "Context"
+    ? "Size unknown"
     : u.compacting
       ? "Compacting…"
       : u.compacted
         ? "Compacted"
         : `${pctLabel(u.pct)} of context used`;
   const note = !known
-    ? "This model doesn't report its context size."
+    ? "This model doesn't report how much context it holds."
     : u.compacting
       ? "Summarizing older messages to make room."
       : u.compacted
@@ -389,7 +389,7 @@ export function UsageCard({ sessionId, phone = false, onDone }: { sessionId: str
           />
         </div>
       )}
-      <p className="mt-2 text-[12.5px] leading-snug text-muted">{note}</p>
+      <p className="mt-2 text-[12px] leading-snug text-muted">{note}</p>
 
       <div className="mt-3 grid grid-cols-2 gap-2">
         <Button
@@ -417,7 +417,7 @@ export function UsageCard({ sessionId, phone = false, onDone }: { sessionId: str
         </Button>
       </div>
 
-      <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-line pt-3 text-[12.5px]">
+      <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-line pt-3 text-[12px]">
         <Stat label="Input" value={t ? compactNumber(t.input) : "—"} />
         <Stat label="Output" value={t ? compactNumber(t.output + t.reasoning) : "—"} />
         <Stat label="Cache read" value={t ? compactNumber(t.cache.read) : "—"} />
@@ -469,7 +469,7 @@ export function Changes({ sessionId, onOpen, fill = false }: { sessionId: string
           <Spinner size={14} />
         </div>
       ) : files.length === 0 ? (
-        <div className="px-4 pb-4 text-[12.5px] text-faint">No file changes yet.</div>
+        <div className="px-4 pb-4 text-[12px] text-faint">No file changes yet.</div>
       ) : (
         <div className={`scroll-quiet overflow-y-auto px-1.5 pb-2 ${fill ? "" : "max-h-[220px]"}`}>
           {files.map((f) => (
@@ -479,7 +479,7 @@ export function Changes({ sessionId, onOpen, fill = false }: { sessionId: string
                 if (f.status !== "deleted") useUI.getState().openInEditor(f.file.startsWith("/") ? f.file : `${root.replace(/\/$/, "")}/${f.file}`);
                 onOpen?.();
               }}
-              className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[12.5px] hover:bg-hover"
+              className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[12px] hover:bg-hover"
             >
               <FileDiffIcon size={13} className={f.status === "added" ? "text-ok" : f.status === "deleted" ? "text-danger" : "text-muted"} />
               <span className={`min-w-0 flex-1 truncate font-mono ${f.status === "deleted" ? "text-muted line-through" : "text-ink-2"}`}>{f.file}</span>

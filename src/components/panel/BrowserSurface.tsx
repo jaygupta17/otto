@@ -64,7 +64,7 @@ function ViewTabs({ view }: { view: BrowserView }) {
             role="tab"
             aria-selected={on}
             onClick={() => setView(t.id)}
-            className={`relative flex h-6 items-center gap-1.5 rounded-md px-2 text-[12.5px] transition-colors ${on ? "bg-raised text-ink shadow-sm" : "text-muted hover:text-ink"}`}
+            className={`relative flex h-6 items-center gap-1.5 rounded-md px-2 text-[12px] transition-colors ${on ? "bg-raised text-ink shadow-sm" : "text-muted hover:text-ink"}`}
           >
             {t.icon}
             {t.label}
@@ -191,7 +191,7 @@ function PreviewView({ inHeader, active }: { inHeader: boolean; active: boolean 
           spellCheck={false}
           autoCapitalize="off"
           autoCorrect="off"
-          className="min-w-0 flex-1 bg-transparent text-[12.5px] outline-none placeholder:text-faint"
+          className="min-w-0 flex-1 bg-transparent text-[12px] outline-none placeholder:text-faint"
         />
       </form>
     </div>
@@ -210,12 +210,12 @@ function PreviewView({ inHeader, active }: { inHeader: boolean; active: boolean 
 
       {current && ports && ports.length > 0 && (
         <div className="scroll-quiet flex shrink-0 items-center gap-1.5 overflow-x-auto border-b border-line px-3 py-1.5">
-          <span className="shrink-0 text-[11.5px] text-faint">Listening</span>
+          <span className="shrink-0 text-[11px] text-faint">Listening</span>
           {ports.map((p) => (
             <button
               key={p}
               onClick={() => void go(String(p))}
-              className="flex h-6 shrink-0 items-center gap-1 rounded-full px-2 font-mono text-[11.5px] text-ink-2 hairline transition-colors hover:bg-hover"
+              className="flex h-6 shrink-0 items-center gap-1 rounded-full px-2 font-mono text-[11px] text-ink-2 hairline transition-colors hover:bg-hover"
             >
               <Radio size={10} className="text-ok" />
               {p}
@@ -224,7 +224,7 @@ function PreviewView({ inHeader, active }: { inHeader: boolean; active: boolean 
         </div>
       )}
 
-      {error && <div className="shrink-0 border-b border-line bg-danger-soft px-3 py-2 text-[12.5px] text-danger">{error}</div>}
+      {error && <div className="shrink-0 border-b border-line bg-danger-soft px-3 py-2 text-[12px] text-danger">{error}</div>}
 
       {current ? (
         <div className="relative min-h-0 flex-1 bg-white">
@@ -244,19 +244,19 @@ function PreviewView({ inHeader, active }: { inHeader: boolean; active: boolean 
           title="Preview what the agent builds"
           body={
             <>
-              Type a port like <span className="font-mono text-ink-2">3000</span> or a URL. Ports on the agent machine open through your workspace's forwarding. Some sites refuse to load in a frame; open those in your browser.
+              Type a port like <span className="font-mono text-ink-2">3000</span> or a URL.
             </>
           }
         >
           {ports === null ? (
             <Spinner size={14} />
           ) : ports.length === 0 ? (
-            <button onClick={() => void scan()} className="text-[12.5px] text-muted underline-offset-2 hover:text-ink hover:underline">
+            <button onClick={() => void scan()} className="text-[12px] text-muted underline-offset-2 hover:text-ink hover:underline">
               No dev servers found · Scan again
             </button>
           ) : (
             ports.slice(0, 6).map((p) => (
-              <button key={p} onClick={() => void go(String(p))} className="flex h-8 items-center gap-1.5 rounded-lg px-3 font-mono text-[12.5px] text-ink hairline hover:bg-hover">
+              <button key={p} onClick={() => void go(String(p))} className="flex h-8 items-center gap-1.5 rounded-lg px-3 font-mono text-[12px] text-ink hairline hover:bg-hover">
                 <Radio size={12} className="text-ok" /> localhost:{p}
               </button>
             ))

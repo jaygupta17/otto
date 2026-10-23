@@ -23,11 +23,11 @@ export function Toasts() {
             </span>
             <div className="min-w-0 flex-1">
               <div className="truncate text-[13px] font-medium">{t.title}</div>
-              {t.body && <div className="selectable mt-0.5 line-clamp-3 text-[12.5px] leading-snug break-words text-muted">{t.body}</div>}
+              {t.body && <div className="selectable mt-0.5 line-clamp-3 text-[12px] leading-snug break-words text-muted">{t.body}</div>}
             </div>
             {t.action && (
               <button
-                className="-my-0.5 shrink-0 self-center rounded-lg bg-hover px-2.5 py-1 text-[12.5px] font-medium text-ink transition-colors hover:bg-active"
+                className="-my-0.5 shrink-0 self-center rounded-lg bg-hover px-2.5 py-1 text-[12px] font-medium text-ink transition-colors hover:bg-active"
                 onClick={() => {
                   t.action!.run();
                   dismiss(t.id);

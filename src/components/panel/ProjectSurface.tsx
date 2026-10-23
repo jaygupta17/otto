@@ -161,7 +161,7 @@ export function ProjectSurface({ root }: { root: string | null }) {
                 setDraft(null);
                 setFile(f);
               }}
-              className={`h-6 rounded-md px-2 font-mono text-[11.5px] transition-colors ${f === file ? "bg-active text-ink" : "text-muted hover:bg-hover hover:text-ink"}`}
+              className={`h-6 rounded-md px-2 font-mono text-[11px] transition-colors ${f === file ? "bg-active text-ink" : "text-muted hover:bg-hover hover:text-ink"}`}
             >
               {f}
             </button>
@@ -185,13 +185,13 @@ export function ProjectSurface({ root }: { root: string | null }) {
           }}
           spellCheck={false}
           autoFocus
-          className="scroll-quiet min-h-0 flex-1 resize-none bg-transparent px-5 py-4 font-mono text-[12.5px] leading-relaxed text-ink outline-none"
+          className="scroll-quiet min-h-0 flex-1 resize-none bg-transparent px-5 py-4 font-mono text-[12px] leading-relaxed text-ink outline-none"
         />
       ) : found.length === 0 ? (
         <PanelEmpty
           icon={<BookOpen size={18} />}
           title="No AGENTS.md yet"
-          body="Instructions here are read by the agent at the start of every session in this project: commands, conventions, and things to avoid."
+          body="Commands, conventions and things to avoid, read at the start of every session."
         >
           <Button size="sm" variant="primary" icon={<Sparkles size={13} />} onClick={() => void generate()}>
             Have the agent write it
@@ -214,10 +214,10 @@ export function ProjectSurface({ root }: { root: string | null }) {
         </div>
       ) : (
         <div className="scroll-quiet min-h-0 flex-1 overflow-y-auto px-5 py-4">
-          <div className="mb-3 flex items-center gap-1.5 text-[11.5px] text-faint">
+          <div className="mb-3 flex items-center gap-1.5 text-[11px] text-faint">
             <Eye size={11} /> The agent reads this at the start of every session here.
           </div>
-          {text.trim() ? <Markdown text={text} className="text-[13.5px]" /> : <div className="text-[13px] text-faint">This file is empty.</div>}
+          {text.trim() ? <Markdown text={text} className="text-[13px]" /> : <div className="text-[13px] text-faint">This file is empty.</div>}
           <div className="mt-6 border-t border-line pt-4">
             <Button size="sm" variant="ghost" icon={<Sparkles size={13} />} onClick={() => void generate()}>
               Ask the agent to update it

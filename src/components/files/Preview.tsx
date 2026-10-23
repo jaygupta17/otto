@@ -410,7 +410,7 @@ export function BinaryView({ bytes, path, size, mime, tooLarge }: { bytes: Uint8
         {head && (
           <>
             <div className="mt-5 mb-1.5 text-[12px] font-medium text-muted">First {Math.min(512, bytes!.length)} bytes</div>
-            <pre className="selectable rounded-lg bg-sunken px-3 py-2.5 font-mono text-[11.5px] leading-[1.6] text-ink-2">{head}</pre>
+            <pre className="selectable rounded-lg bg-sunken px-3 py-2.5 font-mono text-[11px] leading-[1.6] text-ink-2">{head}</pre>
           </>
         )}
       </div>

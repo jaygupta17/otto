@@ -13,6 +13,7 @@ import { CONTEXT_LINE_LIMIT, lineCount, type MemoryFile, type MemoryKind } from 
 import { Toggle } from "../settings/common";
 import { Button, IconButton } from "../ui/Button";
 import { Spinner } from "../ui/AgentClock";
+import { Hint } from "../ui/Tooltip";
 import { PanelEmpty, PanelHeader, PanelTitle, useSurfaceVisible } from "./SidePanel";
 
 const KIND_LABEL: Record<Exclude<MemoryKind, "context" | "other">, string> = {
@@ -77,14 +78,13 @@ export function MemorySurface(_props: { root: string | null }) {
           <IconButton label="Refresh" size={28} disabled={loading} onClick={() => void useMemory.getState().load()}>
             <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
           </IconButton>
-          <div className="mr-1 ml-1 flex items-center gap-2">
-            <span className="text-[12px] text-muted">{installed ? "On" : "Off"}</span>
+          <div className="mr-1 ml-1 flex items-center" data-tip={installed ? "Memory is on" : "Memory is off"}>
             <Toggle on={!!installed} onChange={(v) => void toggle(v)} disabled={installed === null || busy} label="Memory" />
           </div>
         </>
       }
     >
-      <PanelTitle surface="memory" detail="every session" />
+      <PanelTitle surface="memory" />
     </PanelHeader>
   );
 
@@ -121,7 +121,7 @@ export function MemorySurface(_props: { root: string | null }) {
       {header}
       <div className="scroll-quiet min-h-0 flex-1 overflow-y-auto">
         {!installed && (
-          <div className="flex items-center gap-3 border-b border-line px-4 py-2.5 text-[12.5px] text-muted">
+          <div className="flex items-center gap-3 border-b border-line px-4 py-2.5 text-[12px] text-muted">
             <span className="min-w-0 flex-1">Memory is off. context.md isn't injected into new sessions; the files below stay.</span>
             <Button size="sm" disabled={busy} onClick={() => void toggle(true)}>
               {busy ? <Spinner size={12} /> : "Turn on"}
@@ -129,21 +129,19 @@ export function MemorySurface(_props: { root: string | null }) {
           </div>
         )}
 
-        {error && <div className="mx-3 mt-2 rounded-lg border border-line px-3 py-2 text-[12.5px] text-muted">Couldn't read the memory folder: {error}</div>}
+        {error && <div className="mx-3 mt-2 rounded-lg border border-line px-3 py-2 text-[12px] text-muted">Couldn't read the memory folder: {error}</div>}
 
         <ContextEditor initial={context} />
 
         {notes === 0 ? (
           <div className="mx-3 mb-4 rounded-xl border border-dashed border-line px-5 py-7 text-center">
-            <div className="text-[13.5px] font-medium text-ink">No notes yet</div>
-            <p className="mx-auto mt-1 max-w-[290px] text-[12.5px] leading-relaxed text-muted">
-              As teammates work they add a line to today's file and keep project notes here. Tell one “remember that…” and it shows up.
-            </p>
+            <div className="text-[13px] font-medium text-ink">No notes yet</div>
+            <p className="mx-auto mt-1 max-w-[290px] text-[12px] text-muted">Tell a teammate “remember that…”</p>
           </div>
         ) : (
           <div className="px-3 pt-1 pb-4">
             <Section title="Today" hint="one line per event">
-              {today.length ? today.map((f) => <Row key={f.path} file={f} />) : <div className="px-2 py-2 text-[12.5px] text-faint">Nothing yet today.</div>}
+              {today.length ? today.map((f) => <Row key={f.path} file={f} />) : <div className="px-2 py-2 text-[12px] text-faint">Nothing yet today.</div>}
             </Section>
             {earlier.length > 0 && (
               <Section title="Earlier days">
@@ -158,11 +156,9 @@ export function MemorySurface(_props: { root: string | null }) {
           </div>
         )}
 
-        <div className="space-y-1 px-4 pt-1 pb-5 text-[11.5px] leading-relaxed text-faint">
-          <div>
-            Saved in <span className="font-mono">~/.config/opencode/memory</span> (the OpenCode config folder on this machine).
-          </div>
-          <div>Earlier versions saved memories inside each project's <span className="font-mono">.opencode/memory</span> folder; those files are untouched and not shown here.</div>
+        <div className="flex items-center gap-1.5 px-4 pt-1 pb-5 text-[11px] text-faint">
+          <span className="truncate font-mono">~/.config/opencode/memory</span>
+          <Hint>Kept in OpenCode's config folder on this machine. Notes older versions saved in each project's .opencode/memory are untouched and not shown.</Hint>
         </div>
       </div>
     </>
@@ -175,8 +171,8 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
   return (
     <section className="mt-4 first:mt-2">
       <div className="flex items-baseline gap-2 px-2 pb-1.5">
-        <h3 className="text-[12px] font-semibold tracking-wide text-muted uppercase">{title}</h3>
-        {hint && <span className="text-[11.5px] text-faint">{hint}</span>}
+        <h3 className="text-[12px] font-medium text-muted">{title}</h3>
+        {hint && <span className="text-[11px] text-faint">{hint}</span>}
       </div>
       <ul className="space-y-1">{children}</ul>
     </section>
@@ -184,7 +180,7 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
 }
 
 function EmptyRow({ text }: { text: string }) {
-  return <li className="px-2 py-1 text-[12.5px] text-faint">{text}</li>;
+  return <li className="px-2 py-1 text-[12px] text-faint">{text}</li>;
 }
 
 function Row({ file }: { file: MemoryFile }) {
@@ -195,11 +191,11 @@ function Row({ file }: { file: MemoryFile }) {
         className="group flex w-full items-center gap-2.5 rounded-lg border border-transparent px-2 py-2 text-left transition-colors hover:border-line hover:bg-hover/60"
       >
         <FileText size={14} className="shrink-0 text-faint group-hover:text-muted" />
-        <span className="min-w-0 flex-1 truncate text-[13.5px] text-ink-2 group-hover:text-ink">
+        <span className="min-w-0 flex-1 truncate text-[13px] text-ink-2 group-hover:text-ink">
           {file.name}
           {file.kind !== "daily" && <span className="text-faint">.md</span>}
         </span>
-        <span className="shrink-0 text-[11.5px] text-faint" title={new Date(file.modified).toLocaleString()}>
+        <span className="shrink-0 text-[11px] text-faint" title={new Date(file.modified).toLocaleString()}>
           {timeAgo(file.modified)}
         </span>
       </button>
@@ -224,15 +220,13 @@ function ContextEditor({ initial }: { initial: string }) {
   return (
     <section className="border-b border-line px-3 py-3">
       <div className="flex items-baseline gap-2">
-        <h3 className="text-[13px] font-medium text-ink">Current context</h3>
-        <span className={`ml-auto inline-flex items-center gap-1 text-[11.5px] tabular-nums ${long ? "text-danger" : "text-faint"}`}>
+        <h3 className="self-center text-[13px] font-medium text-ink">Current context</h3>
+        <Hint className="self-center">{`Added to every new session. Rewrite it to say what matters now; keep it under ${CONTEXT_LINE_LIMIT} lines.`}</Hint>
+        <span className={`ml-auto inline-flex items-center gap-1 text-[11px] tabular-nums ${long ? "text-danger" : "text-faint"}`}>
           {long && <AlertTriangle size={11} />}
           {lines} / {CONTEXT_LINE_LIMIT} lines
         </span>
       </div>
-      <p className="mt-0.5 text-[12px] leading-relaxed text-muted">
-        Injected into every new session. Rewrite it to say what matters now; keep it under {CONTEXT_LINE_LIMIT} lines.
-      </p>
       <textarea
         value={text}
         onChange={(e) => setText(e.target.value)}
@@ -244,7 +238,7 @@ function ContextEditor({ initial }: { initial: string }) {
         className="field scroll-quiet mt-2 block w-full resize-y rounded-lg px-3 py-2 font-mono text-[12px] leading-relaxed outline-none placeholder:text-faint"
       />
       <div className="mt-2 flex items-center gap-2">
-        <span className="text-[11.5px] text-faint">{long ? `Trim it: only the first ${CONTEXT_LINE_LIMIT} lines are cheap to carry.` : "Every teammate sees this in a new session."}</span>
+        {long && <span className="text-[11px] text-danger">Trim it: only the first {CONTEXT_LINE_LIMIT} lines are cheap to carry.</span>}
         <Button size="sm" variant="primary" className="ml-auto" disabled={!dirty || saving} onClick={() => void save()}>
           {saving ? <Spinner size={12} /> : "Save"}
         </Button>
@@ -316,7 +310,7 @@ function FileEditor({ path, file, onBack }: { path: string; file: MemoryFile | u
             {file ? relPath(file) : prettyPath(path)}
           </div>
         </div>
-        <span className="shrink-0 pr-1 text-[11.5px] text-faint tabular-nums">{lines} lines</span>
+        <span className="shrink-0 pr-1 text-[11px] text-faint tabular-nums">{lines} lines</span>
       </div>
       <textarea
         value={text}
@@ -324,10 +318,10 @@ function FileEditor({ path, file, onBack }: { path: string; file: MemoryFile | u
         spellCheck={false}
         data-own-escape
         aria-label={file?.name ?? "Memory file"}
-        className="scroll-quiet min-h-0 flex-1 resize-none bg-transparent px-4 py-3 font-mono text-[12.5px] leading-relaxed text-ink outline-none"
+        className="scroll-quiet min-h-0 flex-1 resize-none bg-transparent px-4 py-3 font-mono text-[12px] leading-relaxed text-ink outline-none"
       />
       <div className="flex shrink-0 items-center gap-2 border-t border-line px-3 py-2">
-        <span className="text-[11.5px] text-faint">{file ? `Changed ${timeAgo(file.modified)}` : ""}</span>
+        <span className="text-[11px] text-faint">{file ? `Changed ${timeAgo(file.modified)}` : ""}</span>
         <Button size="sm" variant="primary" className="ml-auto" disabled={!dirty || saving} onClick={() => void save()}>
           {saving ? <Spinner size={12} /> : "Save"}
         </Button>

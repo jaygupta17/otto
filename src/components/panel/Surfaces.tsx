@@ -73,7 +73,7 @@ export function ContextSurface({ sessionId }: { sessionId: string | null }) {
         <PanelTitle surface="context" />
       </PanelHeader>
       {!sessionId ? (
-        <PanelEmpty icon={<Gauge size={18} />} title="No session open" body="Open a session to see how much context it uses, what it cost, and which files it changed." />
+        <PanelEmpty icon={<Gauge size={18} />} title="No session open" body="Open a session to see its usage and changes." />
       ) : (
         <div className="scroll-quiet min-h-0 flex-1 overflow-y-auto">
           <UsageCard sessionId={sessionId} />

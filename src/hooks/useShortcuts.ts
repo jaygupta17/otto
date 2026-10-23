@@ -64,7 +64,7 @@ export const SHORTCUTS: Shortcut[] = [
   { keys: "⌘⇧I", label: "Context and changes", group: "Panels" },
   { keys: "⌘⇧J", label: "Project instructions", group: "Panels" },
   { keys: "⌘⇧M", label: "Memory", group: "Panels" },
-  { keys: "⌘⇧\\", label: "Close the right panel", group: "Panels" },
+  { keys: "⌘⇧\\", label: "Show or hide the panel", group: "Panels" },
 ];
 
 const PANEL_KEYS: Record<string, PanelSurface> = { e: "files", b: "browser", i: "context", j: "project", m: "memory" };
@@ -104,7 +104,7 @@ export function useShortcuts() {
         ui.togglePanel(PANEL_KEYS[k]);
       } else if (e.shiftKey && (k === "\\" || k === "|" || e.code === "Backslash")) {
         e.preventDefault();
-        ui.closePanel();
+        ui.togglePanelOpen();
       } else if (e.shiftKey) {
         return;
       } else if (k === "k" || k === "p") {
