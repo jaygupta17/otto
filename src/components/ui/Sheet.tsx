@@ -11,8 +11,8 @@ export const usePage = () => useContext(PageCtx);
 /** The back button a phone page's header leads with. */
 export function BackButton({ onClick, label = "Back" }: { onClick: () => void; label?: string }) {
   return (
-    <button onClick={onClick} aria-label={label} className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-hover active:bg-active">
-      <ChevronLeft size={22} />
+    <button onClick={onClick} aria-label={label} className="grid h-11 w-10 shrink-0 place-items-center rounded-full text-ink transition-colors active:bg-hover">
+      <ChevronLeft size={26} strokeWidth={2} />
     </button>
   );
 }
@@ -30,6 +30,7 @@ export function Sheet({
   wide = false,
   narrow = false,
   bare = false,
+  grouped = false,
   compact,
 }: {
   open: boolean;
@@ -41,6 +42,8 @@ export function Sheet({
   narrow?: boolean;
   /** Page only: the content draws its own header (with `usePage().back`). */
   bare?: boolean;
+  /** Page only: the grouped-list background, for pages of cards (settings). */
+  grouped?: boolean;
   compact: boolean;
 }) {
   const drag = useDragControls();
@@ -73,7 +76,7 @@ export function Sheet({
           {page ? (
             <motion.div
               {...dialog}
-              className="surface-panel absolute inset-0 flex flex-col overflow-hidden shadow-pop outline-none"
+              className={`${grouped ? "bg-bg" : "surface-panel"} absolute inset-0 flex flex-col overflow-hidden shadow-pop outline-none`}
               initial={{ x: "100%" }}
               animate={{ x: 0 }}
               exit={{ x: "100%" }}
