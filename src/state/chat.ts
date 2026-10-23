@@ -29,7 +29,9 @@ export interface FormLite {
   id: string;
   sessionID: string;
   title: string;
-  fields: Array<Record<string, unknown> & { key: string; type: string; title?: string; description?: string; options?: { value: string; label?: string }[]; required?: boolean; default?: unknown; placeholder?: string }>;
+  /** `kind: "question"` for the agent's question tool. */
+  metadata?: Record<string, unknown>;
+  fields: Array<Record<string, unknown> & { key: string; type: string; title?: string; description?: string; options?: { value: string; label?: string; description?: string }[]; required?: boolean; default?: unknown; placeholder?: string; custom?: boolean }>;
 }
 
 interface State {
