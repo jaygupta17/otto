@@ -29,3 +29,30 @@ OpenChamber is distributed under the MIT License:
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
     SOFTWARE.
+
+## Themes
+
+The built-in palettes in `src/lib/themes/builtin.ts` are adapted from the
+projects below: colour values are transcribed into Otto's token model, not
+copied theme files. Each is distributed under the MIT License.
+
+### Catppuccin — Latte, Mocha
+
+Source: https://github.com/catppuccin/catppuccin
+
+MIT License — Copyright (c) Catppuccin
+
+### Flexoki — Light, Dark
+
+Source: https://github.com/kepano/flexoki
+
+MIT License — Copyright (c) Steph Ango
+
+### Tokyo Night — Day, Night
+
+Source: https://github.com/enkia/tokyo-night-vscode-theme
+
+MIT License — Copyright (c) enkia
+
+The full MIT License text appears in the OpenChamber notice above and applies
+to each of these notices.

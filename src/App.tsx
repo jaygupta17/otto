@@ -3,6 +3,7 @@ import { MotionConfig } from "motion/react";
 import { useWorkspaces } from "./state/workspaces";
 import { useConnection } from "./state/connection";
 import { useUI, initUI } from "./state/ui";
+import { useThemes } from "./state/themes";
 import { initNotificationCenter } from "./state/notifications";
 import { initUpdates } from "./state/updates";
 import { initViewport } from "./lib/viewport";
@@ -32,7 +33,7 @@ export default function App() {
     initViewport();
     void initUpdates();
     // A step that fails (say, a full disk) mustn't hold the splash; workspaces gate it on their own.
-    void Promise.allSettled([initUI(), useWorkspaces.getState().hydrate(), initNotificationCenter()]).then(() => setBooted(true));
+    void Promise.allSettled([initUI(), useThemes.getState().load(), useWorkspaces.getState().hydrate(), initNotificationCenter()]).then(() => setBooted(true));
   }, []);
 
   // (Re)connect whenever the active workspace changes.

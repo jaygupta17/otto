@@ -17,6 +17,7 @@ import { useTeammates } from "../../state/teammates";
 import { isOfferedAgent } from "../../lib/teammates";
 import { Spinner } from "../ui/AgentClock";
 import { Row, Rows, Section, Segmented, Slider, Toggle } from "./common";
+import { ThemePicker } from "./ThemePicker";
 import { ModelSelect } from "./ModelSelect";
 import { PermissionsEditor } from "./AgentsTab";
 import { UpdatesSection } from "../shell/UpdateControls";
@@ -255,7 +256,7 @@ function AppearanceSection() {
   return (
     <Section title="Appearance">
       <Rows>
-        <Row label="Theme">
+        <Row label="Mode">
           <Segmented
             id="theme"
             size="sm"
@@ -268,6 +269,7 @@ function AppearanceSection() {
             ]}
           />
         </Row>
+        <ThemePicker />
         <div className="px-4 py-3">
           <div className="mb-2.5 text-[13.5px] text-ink">Background</div>
           <BackgroundPicker />
