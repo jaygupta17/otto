@@ -5,14 +5,19 @@ import { useUI } from "../../state/ui";
 import { Thread } from "../chat/Thread";
 import { Composer } from "../chat/Composer";
 import { SessionHistory } from "../chat/SessionHistory";
+import { PanelToggle } from "../panel/SidePanel";
+import { AgentPicker } from "../chat/Pickers";
 import { IconButton } from "../ui/Button";
 import { basename, money } from "../../lib/format";
 import { useTrafficLights } from "../../hooks/useChrome";
 import { ConnectionBanner } from "./Home";
-import { ChatScrim, PanelFade } from "../ui/ChatScrim";
+import { PanelFade } from "../ui/ChatScrim";
 import { BackgroundStrip, InboxTray } from "../chat/SessionExtras";
 import { AskDock } from "../chat/Asks";
 import { kbd } from "../../hooks/useShortcuts";
+
+/** Height of the fade above the composer (`h-5`). */
+const FADE = 20;
 
 /** Desktop session pane: header, thread, floating composer. */
 export function SessionView({ sessionId }: { sessionId: string }) {
@@ -26,19 +31,19 @@ export function SessionView({ sessionId }: { sessionId: string }) {
   useLayoutEffect(() => {
     const el = composerRef.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => setInset(el.offsetHeight));
+    // The fade overlaps the thread; only the solid part takes room.
+    const ro = new ResizeObserver(() => setInset(el.offsetHeight - FADE));
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
 
   const mac = useTrafficLights();
   return (
-    <div className="on-scrim relative flex h-full min-w-0 flex-col">
-      <ChatScrim />
+    <div className="relative flex h-full min-w-0 flex-col">
       <header className={`drag relative z-10 flex h-[52px] shrink-0 items-center gap-2 pr-3 ${!sidebarOpen && mac ? "pl-[84px]" : "pl-3"}`} data-tauri-drag-region>
         {!sidebarOpen && (
           <>
-            <IconButton label={`Show sidebar (${kbd("⌘B")})`} className="no-drag" onClick={() => toggleSidebar(true)}>
+            <IconButton label="Show sidebar" keys={kbd("⌘B")} className="no-drag" onClick={() => toggleSidebar(true)}>
               <PanelLeft size={17} />
             </IconButton>
             <IconButton label="New session" className="no-drag" onClick={() => open(null)}>
@@ -46,26 +51,26 @@ export function SessionView({ sessionId }: { sessionId: string }) {
             </IconButton>
           </>
         )}
-        <div className="min-w-0 flex-1 px-1" data-tauri-drag-region>
-          <div className="flex min-w-0 items-baseline gap-2" data-tauri-drag-region>
-            <span className="truncate text-[14px] font-semibold text-ink" data-tauri-drag-region>
+        {/* Who you're talking to, like a messages app; the session's own title sits under the name. */}
+        <AgentPicker
+          sessionId={sessionId}
+          header
+          subtitle={
+            <>
               {session?.title || "New session"}
-            </span>
-            {session && (
-              <span className="hidden shrink-0 truncate text-[12.5px] text-faint sm:inline" data-tauri-drag-region>
-                {basename(session.location.directory)}
-                {session.cost > 0 && ` · ${money(session.cost)}`}
-              </span>
-            )}
-          </div>
-        </div>
+              {session && <span className="text-faint"> · {basename(session.location.directory)}{session.cost > 0 && ` · ${money(session.cost)}`}</span>}
+            </>
+          }
+        />
+        <div className="h-full min-w-0 flex-1" data-tauri-drag-region />
         <SessionHistory sessionId={sessionId} />
+        <PanelToggle />
       </header>
 
       <Thread sessionId={sessionId} bottomInset={inset} />
 
       <div ref={composerRef} className="pointer-events-none absolute inset-x-0 bottom-0 z-10">
-        <PanelFade className="h-[88px]" />
+        <PanelFade className="h-5" />
         <div className="panel-fill pointer-events-auto px-5 pb-4 sm:px-8">
           <div className="mx-auto w-full max-w-[760px]">
             <ConnectionBanner />

@@ -109,7 +109,7 @@ export function Section({ title, actions, children }: { title?: ReactNode; actio
     <div className="min-w-0">
       {(title || actions) && (
         <div className="mb-1 flex h-6 min-w-0 items-center gap-1">
-          {title && <div className="min-w-0 flex-1 truncate text-[11.5px] font-medium text-faint">{title}</div>}
+          {title && <div className="min-w-0 flex-1 truncate text-[11px] font-medium text-faint">{title}</div>}
           {!title && <div className="flex-1" />}
           {actions}
         </div>
@@ -209,7 +209,7 @@ export function OutputView({ text, lang = "text", follow, tail, maxHeight = 320,
         </div>
         {!tail && cut > 0 && <MoreNote cut={cut} all={all} onAll={() => setAll(true)} where="more" />}
       </ScrollBox>
-      {long && all && text.length > MAX && <div className="mt-1 text-[11.5px] text-faint">Output past 1 MB isn't shown.</div>}
+      {long && all && text.length > MAX && <div className="mt-1 text-[11px] text-faint">Output past 1 MB isn't shown.</div>}
     </>
   );
 }
@@ -217,7 +217,7 @@ export function OutputView({ text, lang = "text", follow, tail, maxHeight = 320,
 function MoreNote({ cut, all, onAll, where }: { cut: number; all: boolean; onAll: () => void; where: "earlier" | "more" }) {
   const size = cut > 1024 * 1024 ? `${(cut / 1024 / 1024).toFixed(1)} MB` : `${Math.ceil(cut / 1024)} KB`;
   return (
-    <div className="px-3 pt-2 text-[11.5px] text-faint">
+    <div className="px-3 pt-2 text-[11px] text-faint">
       {all ? `${size} ${where === "earlier" ? "earlier" : "more"} not shown` : (
         <button className="hover:text-ink hover:underline" onClick={onAll}>
           {where === "earlier" ? `Show ${size} of earlier output` : `Show ${size} more`}
@@ -252,7 +252,7 @@ export function JsonView({ value, raw }: { value: unknown; raw: string }) {
             role="tab"
             aria-selected={tab === t}
             onClick={() => setTab(t)}
-            className={`rounded-md px-2 py-0.5 text-[11.5px] capitalize transition-colors ${tab === t ? "bg-active text-ink" : "text-faint hover:text-ink"}`}
+            className={`rounded-md px-2 py-0.5 text-[11px] capitalize transition-colors ${tab === t ? "bg-active text-ink" : "text-faint hover:text-ink"}`}
           >
             {t}
           </button>
@@ -289,7 +289,7 @@ function JsonSummary({ value }: { value: unknown }) {
   return (
     <div className="font-sans">
       <div className="mb-1.5 text-[12px] text-faint">{Array.isArray(value) ? `Array of ${total} item${total === 1 ? "" : "s"}` : value && typeof value === "object" ? `Object with ${total} field${total === 1 ? "" : "s"}` : typeOf(value)}</div>
-      <dl className="grid grid-cols-[minmax(0,max-content)_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-[12.5px]">
+      <dl className="grid grid-cols-[minmax(0,max-content)_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-[12px]">
         {rows.map(([k, v]) => (
           <div key={k} className="contents">
             <dt className="truncate font-mono text-faint">{k}</dt>
@@ -344,12 +344,12 @@ export const DiffView = memo(function DiffView({ patch, lines: given, split, onL
   const parsed = useMemo(() => given ?? parseDiff(patch ?? ""), [patch, given]);
   const [all, setAll] = useState(false);
   const rows = all ? parsed : parsed.slice(0, DIFF_ROWS);
-  if (!parsed.length) return <div className="px-3 py-2 text-[12.5px] text-faint">No textual changes</div>;
+  if (!parsed.length) return <div className="px-3 py-2 text-[12px] text-faint">No textual changes</div>;
   return (
     <ScrollBox maxHeight={420}>
       <div className="min-w-max py-1 font-mono text-[12px] leading-[1.55]">{split ? <SplitRows rows={rows} onLine={onLine} /> : <UnifiedRows rows={rows} onLine={onLine} />}</div>
       {parsed.length > rows.length && (
-        <button className="px-3 pb-2 text-[11.5px] text-faint hover:text-ink hover:underline" onClick={() => setAll(true)}>
+        <button className="px-3 pb-2 text-[11px] text-faint hover:text-ink hover:underline" onClick={() => setAll(true)}>
           Show {parsed.length - rows.length} more lines
         </button>
       )}
@@ -373,7 +373,7 @@ function UnifiedRows({ rows, onLine }: { rows: DiffLine[]; onLine?: (line: numbe
     <>
       {rows.map((l, i) =>
         l.t === "hunk" ? (
-          <div key={i} className="px-3 py-0.5 text-[11.5px] text-faint">
+          <div key={i} className="px-3 py-0.5 text-[11px] text-faint">
             {i > 0 && "⋯ "}
             {l.text}
           </div>
@@ -419,7 +419,7 @@ function SplitRows({ rows, onLine }: { rows: DiffLine[]; onLine?: (line: number)
     <>
       {pairs.map((p, i) =>
         p.hunk !== undefined ? (
-          <div key={i} className="px-3 py-0.5 text-[11.5px] text-faint">
+          <div key={i} className="px-3 py-0.5 text-[11px] text-faint">
             {i > 0 && "⋯ "}
             {p.hunk}
           </div>
@@ -513,7 +513,7 @@ export class ToolBoundary extends Component<{ children: ReactNode; name: string 
     console.warn(`[otto] couldn't render ${this.props.name}`, e);
   }
   render() {
-    if (this.state.failed) return <div className="rounded-lg bg-sunken px-3 py-2 text-[12.5px] text-faint">Couldn't show the details of this {this.props.name} call.</div>;
+    if (this.state.failed) return <div className="rounded-lg bg-sunken px-3 py-2 text-[12px] text-faint">Couldn't show the details of this {this.props.name} call.</div>;
     return this.props.children;
   }
 }

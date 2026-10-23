@@ -66,3 +66,16 @@ export function bytes(n: number): string {
   while (v >= 1024 && i < units.length - 1) (v /= 1024), i++;
   return `${v < 10 ? v.toFixed(1) : Math.round(v)} ${units[i]}`;
 }
+
+/** A chat timestamp: "Today 9:41 AM", "Yesterday 3:12 PM", "Mon 3:12 PM", "Oct 12, 3:12 PM", "Oct 12, 2025". */
+export function stamp(ts: number, now = Date.now()): string {
+  const d = new Date(ts);
+  const time = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  const day = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const days = Math.round((day(new Date(now)) - day(d)) / 86_400_000);
+  if (days === 0) return `Today ${time}`;
+  if (days === 1) return `Yesterday ${time}`;
+  if (days > 1 && days < 7) return `${d.toLocaleDateString(undefined, { weekday: "short" })} ${time}`;
+  if (d.getFullYear() === new Date(now).getFullYear()) return `${d.toLocaleDateString(undefined, { month: "short", day: "numeric" })}, ${time}`;
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}

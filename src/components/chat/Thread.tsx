@@ -2,7 +2,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { AlertCircle, ArrowDown, Check, ChevronRight, Copy, GitFork, Pencil, Redo2, RotateCw, SquareTerminal, Layers, Info, Undo2 } from "lucide-react";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { tokensPerSecond, type Block, type UIMessage } from "../../lib/opencode/projection";
-import { duration } from "../../lib/format";
+import { duration, stamp } from "../../lib/format";
 import { useNow } from "../../hooks/useNow";
 import { revertIndex, useChat } from "../../state/chat";
 import { useUI } from "../../state/ui";
@@ -256,6 +256,20 @@ export function Thread({ sessionId, bottomInset = 0 }: { sessionId: string; bott
     return -1;
   }, [items]);
 
+  // A centred time above a message that starts a new stretch of conversation: the first, and any after an hour's quiet.
+  const stamps = useMemo(() => {
+    const out = new Map<string, number>();
+    let prev = 0;
+    for (const it of items) {
+      const t = it.type === "turn" ? it.msgs[0]?.time ?? 0 : it.msg.time;
+      if (it.type === "user" && t && (!prev || t - prev > 3_600_000)) out.set(it.key, t);
+      if (it.type === "turn") prev = it.msgs.reduce((a, m) => Math.max(a, m.time), prev);
+      else if (t) prev = Math.max(prev, t);
+    }
+    return out;
+  }, [items]);
+  const now = useNow(true, 60_000);
+
   const lastIsTurn = items.length > 0 && items[items.length - 1].type === "turn";
   const awaitingFirst = busy && !lastIsTurn;
 
@@ -276,7 +290,7 @@ export function Thread({ sessionId, bottomInset = 0 }: { sessionId: string; bott
         role="region"
         aria-label="Conversation"
         className="scroll-quiet absolute inset-0 overflow-y-auto overscroll-contain outline-none">
-        <div ref={content} className="mx-auto w-full max-w-[760px] px-5 pt-6 sm:px-8" style={{ paddingBottom: bottomInset + 32 }}>
+        <div ref={content} className="mx-auto w-full max-w-[824px] px-5 pt-6 sm:px-8" style={{ paddingBottom: bottomInset + 20 }}>
           {timeline?.loading && !timeline.loaded && <ThreadSkeleton />}
           {timeline?.error && !timeline.loaded && (
             <div className="mt-16 flex flex-col items-center gap-3 text-center">
@@ -293,7 +307,15 @@ export function Thread({ sessionId, bottomInset = 0 }: { sessionId: string; bott
             </div>
           )}
           {items.map((it, i) => {
-            if (it.type === "user") return <UserBubble key={it.key} msg={it.msg} sessionId={sessionId} />;
+            if (it.type === "user") {
+              const at = stamps.get(it.key);
+              return (
+                <div key={it.key}>
+                  {at && <div className="mt-6 mb-1 text-center text-[11px] font-medium text-faint tabular-nums first:mt-0">{stamp(at, now)}</div>}
+                  <UserBubble msg={it.msg} sessionId={sessionId} />
+                </div>
+              );
+            }
             if (it.type === "notice") return <NoticeRow key={it.key} msg={it.msg} />;
             const live = busy && i === items.length - 1;
             return <Turn key={it.key} msgs={it.msgs} live={live} screen={i === screenAt} start={it.start} retry={live ? retry : undefined} sessionId={sessionId} forkBefore={nextUsers[i]} />;
@@ -333,18 +355,19 @@ const UserBubble = memo(function UserBubble({ msg, sessionId }: { msg: Extract<U
   const [copied, setCopied] = useState(false);
   const real = !msg.pending && !msg.id.startsWith("local_");
   return (
-    <motion.div layout="position" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.15 }} className="group/user mt-8 mb-4 flex flex-col items-end first:mt-0">
-      <div className={`selectable relative max-w-[min(560px,85%)] rounded-3xl bg-active px-3.5 py-2 text-[15px] leading-[1.5] whitespace-pre-wrap text-ink ${msg.pending ? "opacity-70" : ""}`}>
+    <motion.div layout="position" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.15 }} className="group/user mt-5 mb-3 flex items-center justify-end gap-1">
+      {/* Actions sit beside the bubble, not under it, so they never push the reply down. */}
+      <div className={`selectable relative max-w-[min(560px,80%)] rounded-[20px] bg-bubble-me px-4 py-2.5 text-[15px] leading-[1.45] whitespace-pre-wrap text-on-bubble-me ${msg.pending ? "opacity-60" : ""}`}>
         <div className={long && !expanded ? "max-h-[220px] overflow-hidden [mask-image:linear-gradient(to_bottom,black_70%,transparent)]" : ""}>{msg.text}</div>
         {long && (
-          <button className="mt-1 text-[13px] font-medium text-ink underline underline-offset-2" onClick={() => setExpanded((v) => !v)}>
+          <button className="mt-1 text-[13px] font-medium underline underline-offset-2 opacity-80 hover:opacity-100" onClick={() => setExpanded((v) => !v)}>
             {expanded ? "Show less" : "Show more"}
           </button>
         )}
-        {msg.files?.length ? <div className="mt-2 flex flex-wrap gap-1.5">{msg.files.map((f) => <span key={f.uri} className="rounded-md bg-sunken px-2 py-0.5 text-[12px] text-muted">{f.name ?? f.uri.split("/").pop()}</span>)}</div> : null}
+        {msg.files?.length ? <div className="mt-2 flex flex-wrap gap-1.5">{msg.files.map((f) => <span key={f.uri} className="rounded-md bg-on-bubble-me/15 px-2 py-0.5 text-[12px] text-on-bubble-me/80">{f.name ?? f.uri.split("/").pop()}</span>)}</div> : null}
       </div>
       {real && (
-        <div className="mt-1 flex h-7 items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover/user:opacity-100 focus-within:opacity-100 max-[760px]:opacity-100">
+        <div className="order-first flex h-7 shrink-0 items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover/user:opacity-100 focus-within:opacity-100 max-[760px]:opacity-100">
           <ActionButton
             label={copied ? "Copied" : "Copy"}
             onClick={() => {
@@ -463,11 +486,11 @@ const Turn = memo(function Turn({ msgs, live, screen, start, retry, sessionId, f
   const moving = live && (segs.some((s) => s.kind === "text" && s.streaming) || blocks.some((b) => (b.kind === "tool" && (b.status === "running" || b.status === "streaming")) || (b.kind === "reasoning" && b.streaming)));
 
   return (
-    <div className="group/turn mb-6">
+    <div className="group/turn mb-4 last:mb-0">
       {segs.map((s, i) => {
         if (s.kind === "text")
           return (
-            <motion.div key={s.key} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.25 }} className="my-2.5">
+            <motion.div key={s.key} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.25 }} className="bubble my-1.5 w-fit max-w-[min(640px,92%)] rounded-[20px] bg-bubble px-4 py-2.5">
               <Markdown text={s.text} streaming={live && s.streaming} />
             </motion.div>
           );
@@ -510,7 +533,7 @@ function Working({ sessionId, retry }: { sessionId: string; retry?: { attempt: n
   // A lead's part runs in a child session the sidebar doesn't list; it knows who's on it.
   const mate = useTeammate(useChat((s) => s.sessions[sessionId]?.agent ?? s.delegated[sessionId]));
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-3 flex h-6 items-center gap-2 text-[13.5px]" role="status" aria-label="Working">
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-3 flex h-6 items-center gap-2 text-[13px]" role="status" aria-label="Working">
       {mate ? <TeammateFace seed={mate.face} color={mate.color} accessory={mate.accessory} size={20} state="working" /> : <AgentClock />}
       {retry && (
         <span className="text-ink-2">
@@ -536,27 +559,34 @@ function turnSpeed(steps: Assistant[]): number | null {
   return secs > 0 ? tokens / secs : null;
 }
 
+/** Copy and fork as quiet icons; how long it took sits beside them, with the model and speed in its tooltip. */
 function TurnFooter({ text, took, model, speed, onFork }: { text: string; took: number; model?: string; speed: number | null; onFork: () => void }) {
   const [copied, setCopied] = useState(false);
+  const detail = [model, speed ? `${Math.round(speed)} tok/s` : ""].filter(Boolean).join(" · ");
+  const btn = "grid h-7 w-7 place-items-center rounded-md transition-colors hover:bg-hover hover:text-ink";
   return (
-    <div className="mt-1 flex h-7 min-w-0 items-center gap-1 text-[12px] whitespace-nowrap text-faint opacity-0 transition-opacity duration-200 group-hover/turn:opacity-100 max-[760px]:opacity-100">
+    <div className="mt-1 flex h-7 min-w-0 items-center gap-0.5 text-[12px] whitespace-nowrap text-faint opacity-0 transition-opacity duration-200 group-hover/turn:opacity-100 max-[760px]:opacity-100">
       <button
-        className="flex items-center gap-1 rounded-md px-1.5 py-1 hover:bg-hover hover:text-ink"
+        className={btn}
+        aria-label={copied ? "Copied" : "Copy"}
+        data-tip={copied ? "Copied" : "Copy"}
         onClick={() => {
           void navigator.clipboard.writeText(text);
           setCopied(true);
           setTimeout(() => setCopied(false), 1200);
         }}
       >
-        {copied ? <Check size={13} /> : <Copy size={13} />}
-        {copied ? "Copied" : "Copy"}
+        {copied ? <Check size={14} /> : <Copy size={14} />}
       </button>
-      {model && <span className="min-w-0 truncate px-1">· {model}</span>}
-      {took > 0 && <span className="px-1">· {duration(took)}</span>}
-      {speed && <span className="px-1 tabular-nums" title="Output tokens per second">· {Math.round(speed)} tok/s</span>}
-      <button className="ml-auto flex items-center gap-1 rounded-md px-1.5 py-1 hover:bg-hover hover:text-ink" title="Continue from this point in a new session" onClick={onFork}>
-        <GitFork size={13} /> Fork
+      <button className={btn} aria-label="Fork" data-tip="Continue from here in a new session" onClick={onFork}>
+        <GitFork size={14} />
       </button>
+      {took > 0 && (
+        <span className="ml-1 cursor-default px-1 tabular-nums" tabIndex={detail ? 0 : undefined} data-tip={detail || undefined} data-tip-tap={detail ? "" : undefined}>
+          {duration(took)}
+          {detail && <span className="sr-only"> · {detail}</span>}
+        </span>
+      )}
     </div>
   );
 }
@@ -564,7 +594,7 @@ function TurnFooter({ text, took, model, speed, onFork }: { text: string; took: 
 function ErrorCard({ text }: { text: string }) {
   const freeTier = /free tier/i.test(text);
   return (
-    <div className="selectable my-3 flex items-start gap-2.5 rounded-2xl border border-danger/25 bg-danger-soft px-3.5 py-2.5 text-[14px] text-ink">
+    <div className="selectable my-3 flex items-start gap-2.5 rounded-[16px] border border-danger/25 bg-danger-soft px-3.5 py-2.5 text-[14px] text-ink">
       <AlertCircle size={16} className="mt-0.5 shrink-0 text-danger" />
       <div className="min-w-0 break-words">
         {text}
@@ -600,7 +630,7 @@ function NoticeRow({ msg }: { msg: UIMessage }) {
         <AnimatePresence initial={false}>
           {open && msg.summary && (
             <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
-              <div className="mt-3 rounded-2xl border border-line px-4 py-3 text-[13.5px] text-ink-2">
+              <div className="mt-3 rounded-2xl border border-line px-4 py-3 text-[13px] text-ink-2">
                 <Markdown text={msg.summary} />
               </div>
             </motion.div>
@@ -625,7 +655,7 @@ function NoticeRow({ msg }: { msg: UIMessage }) {
 
 function ShellCard({ msg }: { msg: Extract<UIMessage, { kind: "shell" }> }) {
   return (
-    <div className="my-3 overflow-hidden rounded-2xl border border-line" style={{ background: "var(--code-bg)" }}>
+    <div className="my-3 overflow-hidden rounded-[16px] border border-line" style={{ background: "var(--code-bg)" }}>
       <div className="flex items-center gap-2 border-b border-line px-3 py-2 font-mono text-[12px] text-ink-2">
         <SquareTerminal size={13} className="text-muted" />
         <span className="truncate">$ {msg.command}</span>
@@ -639,17 +669,10 @@ function ShellCard({ msg }: { msg: Extract<UIMessage, { kind: "shell" }> }) {
 function ThreadSkeleton() {
   return (
     <div className="animate-pulse space-y-6 pt-4">
-      <div className="ml-auto h-10 w-2/5 rounded-3xl bg-sunken" />
-      <div className="space-y-2.5">
-        <div className="h-3.5 w-3/4 rounded-full bg-sunken" />
-        <div className="h-3.5 w-2/3 rounded-full bg-sunken" />
-        <div className="h-3.5 w-1/2 rounded-full bg-sunken" />
-      </div>
-      <div className="ml-auto h-10 w-1/3 rounded-3xl bg-sunken" />
-      <div className="space-y-2.5">
-        <div className="h-3.5 w-4/5 rounded-full bg-sunken" />
-        <div className="h-3.5 w-1/2 rounded-full bg-sunken" />
-      </div>
+      <div className="ml-auto h-10 w-2/5 rounded-[20px] bg-bubble" />
+      <div className="h-24 w-3/4 rounded-[20px] bg-bubble" />
+      <div className="ml-auto h-10 w-1/3 rounded-[20px] bg-bubble" />
+      <div className="h-16 w-3/5 rounded-[20px] bg-bubble" />
     </div>
   );
 }

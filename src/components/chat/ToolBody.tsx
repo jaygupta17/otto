@@ -93,7 +93,7 @@ export function ErrorBlock({ text }: { text: string }) {
   );
 }
 
-const Empty = ({ children }: { children: React.ReactNode }) => <div className="text-[12.5px] text-faint">{children}</div>;
+const Empty = ({ children }: { children: React.ReactNode }) => <div className="text-[12px] text-faint">{children}</div>;
 const live = (b: ToolBlock) => b.status === "running" || b.status === "streaming";
 
 // ---------------------------------------------------------------------------
@@ -115,7 +115,7 @@ function ShellBody({ b, input }: { b: ToolBlock; input: Json }) {
         <Section title={desc && desc !== command ? desc : "Command"} actions={<CopyButton text={command} label="Copy command" />}>
           <ScrollBox maxHeight={160}>
             <div className="px-3 py-2">
-              {cwd && <div className="mb-1 font-mono text-[11.5px] text-faint"><PathLabel path={cwd} /></div>}
+              {cwd && <div className="mb-1 font-mono text-[11px] text-faint"><PathLabel path={cwd} /></div>}
               <Code code={`$ ${command}`} lang="bash" streaming={b.status === "streaming"} wrap />
             </div>
           </ScrollBox>
@@ -181,7 +181,7 @@ function ReadBody({ b, input }: { b: ToolBlock; input: Json }) {
   return (
     <>
       {path && (
-        <div className="flex min-w-0 items-center gap-1.5 text-[12.5px]">
+        <div className="flex min-w-0 items-center gap-1.5 text-[12px]">
           <FileIcon path={path} />
           <PathLabel path={path} className="font-mono text-[12px]" />
           {(offset || limit) && (
@@ -236,12 +236,12 @@ function EditBody({ b, input }: { b: ToolBlock; input: Json }) {
     return (
       <>
         {files.length > 0 && (
-          <ul className="space-y-0.5 text-[12.5px]">
+          <ul className="space-y-0.5 text-[12px]">
             {files.map((f) => (
               <li key={f.file} className="flex min-w-0 items-center gap-1.5">
                 <FileIcon path={f.file} />
                 <PathLabel path={f.file} className="font-mono text-[12px]" />
-                <span className={`shrink-0 text-[11.5px] ${f.op === "add" ? "text-ok" : f.op === "delete" ? "text-danger" : "text-faint"}`}>{f.op === "add" ? "new" : f.op === "delete" ? "deleted" : "update"}</span>
+                <span className={`shrink-0 text-[11px] ${f.op === "add" ? "text-ok" : f.op === "delete" ? "text-danger" : "text-faint"}`}>{f.op === "add" ? "new" : f.op === "delete" ? "deleted" : "update"}</span>
               </li>
             ))}
           </ul>
@@ -254,7 +254,7 @@ function EditBody({ b, input }: { b: ToolBlock; input: Json }) {
       </>
     );
   }
-  return nonEmpty(b.output) ? <div className="text-[12.5px] text-muted">{b.output}</div> : null;
+  return nonEmpty(b.output) ? <div className="text-[12px] text-muted">{b.output}</div> : null;
 }
 
 /** One file of an edit: its header (open at the first change), its diff, and any errors it now has. */
@@ -266,20 +266,20 @@ function FileEntry({ f, lines, b }: { f: FileDiff; lines?: DiffLine[]; b: ToolBl
   const copy = f.patch ?? lines?.map((l) => (l.t === "add" ? "+" : l.t === "del" ? "-" : " ") + l.text).join("\n") ?? "";
   return (
     <div className="min-w-0 overflow-hidden rounded-lg border border-line">
-      <div className="flex h-8 min-w-0 items-center gap-1.5 border-b border-line bg-raised pr-1 pl-2.5 text-[12.5px]">
+      <div className="flex h-8 min-w-0 items-center gap-1.5 border-b border-line bg-raised pr-1 pl-2.5 text-[12px]">
         {f.file && <FileIcon path={f.file} />}
         {f.file ? <PathLabel path={f.file} className="font-mono text-[12px]" /> : <span className="text-faint">Changes</span>}
-        {f.status === "added" && <span className="shrink-0 text-[11.5px] text-ok">new</span>}
-        {f.status === "deleted" && <span className="shrink-0 text-[11.5px] text-danger">deleted</span>}
+        {f.status === "added" && <span className="shrink-0 text-[11px] text-ok">new</span>}
+        {f.status === "deleted" && <span className="shrink-0 text-[11px] text-danger">deleted</span>}
         {(f.additions || f.deletions) ? (
-          <span className="shrink-0 font-mono text-[11.5px] tabular-nums">
+          <span className="shrink-0 font-mono text-[11px] tabular-nums">
             {f.additions ? <span className="text-ok">+{f.additions}</span> : null}
             {f.additions && f.deletions ? " " : null}
             {f.deletions ? <span className="text-danger">−{f.deletions}</span> : null}
           </span>
         ) : null}
         {diag && (
-          <span className="flex shrink-0 items-center gap-0.5 text-[11.5px] text-danger" title="Errors after this edit">
+          <span className="flex shrink-0 items-center gap-0.5 text-[11px] text-danger" title="Errors after this edit">
             <FileWarning size={11} /> {diag.items.length + diag.more}
           </span>
         )}
@@ -292,7 +292,7 @@ function FileEntry({ f, lines, b }: { f: FileDiff; lines?: DiffLine[]; b: ToolBl
         {f.patch || lines ? (
           <DiffView patch={f.patch} lines={lines} split={split} onLine={f.file && f.status !== "deleted" ? (n) => open(f.file, n) : undefined} />
         ) : (
-          <div className="px-3 py-2 text-[12.5px] text-faint">{f.status === "deleted" ? "File removed" : "No textual changes"}</div>
+          <div className="px-3 py-2 text-[12px] text-faint">{f.status === "deleted" ? "File removed" : "No textual changes"}</div>
         )}
       </div>
       {diag && <Diagnostics path={f.file} items={diag.items} more={diag.more} />}
@@ -447,7 +447,7 @@ function FetchBody({ b, input }: { b: ToolBlock; input: Json }) {
   return (
     <>
       {url && (
-        <a href={url} target="_blank" rel="noreferrer" className="flex max-w-full min-w-0 items-center gap-1.5 text-[12.5px] text-info hover:underline">
+        <a href={url} target="_blank" rel="noreferrer" className="flex max-w-full min-w-0 items-center gap-1.5 text-[12px] text-info hover:underline">
           <ExternalLink size={12} className="shrink-0" />
           <span className="truncate">{url}</span>
         </a>
@@ -481,12 +481,12 @@ function SearchBody({ b }: { b: ToolBlock }) {
             <li key={i} className="px-3 py-2">
               <a href={h.url} target="_blank" rel="noreferrer" className="group block min-w-0">
                 <div className="truncate text-[13px] text-ink group-hover:underline">{h.title || host}</div>
-                <div className="truncate text-[11.5px] text-faint">
+                <div className="truncate text-[11px] text-faint">
                   {host}
                   {h.published && ` · ${h.published}`}
                 </div>
               </a>
-              {h.snippet && <div className="selectable mt-1 line-clamp-3 text-[12.5px] text-muted">{h.snippet.replace(/\s+/g, " ")}</div>}
+              {h.snippet && <div className="selectable mt-1 line-clamp-3 text-[12px] text-muted">{h.snippet.replace(/\s+/g, " ")}</div>}
             </li>
           );
         })}
@@ -530,7 +530,7 @@ function QuestionBody({ b, input }: { b: ToolBlock; input: Json }) {
         const picked = ans ? ans.split(/,\s*/) : [];
         return (
           <div key={i} className="rounded-lg bg-sunken px-3 py-2">
-            {q.header && <div className="text-[11px] font-medium tracking-wide text-faint uppercase">{q.header}</div>}
+            {q.header && <div className="text-[12px] font-medium text-muted">{q.header}</div>}
             <div className="selectable text-[13px] text-ink">{q.question}</div>
             {q.options.length > 0 && (
               <div className="mt-1.5 flex flex-wrap gap-1">
@@ -566,7 +566,7 @@ function SkillBody({ b, input }: { b: ToolBlock; input: Json }) {
   return (
     <>
       {(name || dir) && (
-        <div className="flex min-w-0 items-center gap-1.5 text-[12.5px]">
+        <div className="flex min-w-0 items-center gap-1.5 text-[12px]">
           {name && <span className="shrink-0 font-medium text-ink-2">{name}</span>}
           {dir && <PathLabel path={dir} className="font-mono text-[12px]" />}
           <div className="flex-1" />
@@ -600,12 +600,12 @@ function ExecuteBody({ b, input }: { b: ToolBlock; input: Json }) {
       {calls.length > 0 && (
         <Section title={`Called ${calls.length} tool${calls.length === 1 ? "" : "s"}`}>
           <ScrollBox maxHeight={200}>
-            <ul className="space-y-0.5 px-3 py-2 text-[12.5px]">
+            <ul className="space-y-0.5 px-3 py-2 text-[12px]">
               {calls.map((c, i) => (
                 <li key={i} className="flex min-w-0 items-center gap-2">
                   <StatusDot status={c.status} />
                   <span className="shrink-0 text-ink-2">{normalizeToolName(c.tool)}</span>
-                  {c.input && <span className="min-w-0 truncate font-mono text-[11.5px] text-faint">{c.input}</span>}
+                  {c.input && <span className="min-w-0 truncate font-mono text-[11px] text-faint">{c.input}</span>}
                 </li>
               ))}
             </ul>
@@ -661,7 +661,7 @@ function MemoryCallCard({ c }: { c: MemoryCall }) {
       <div className={`flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-faint ${text ? "mt-1.5" : ""}`}>
         <StatusDot status={c.status} />
         <span className="text-muted">{MEMORY_ACTION[c.action] ?? normalizeToolName(c.action)}</span>
-        {type && <span className="rounded-md bg-hover px-1.5 py-px text-[11.5px] font-medium text-muted">{type.charAt(0).toUpperCase() + type.slice(1)}</span>}
+        {type && <span className="rounded-md bg-hover px-1.5 py-px text-[11px] font-medium text-muted">{type.charAt(0).toUpperCase() + type.slice(1)}</span>}
         {scope && (
           <span className="flex items-center gap-1">
             {roster?.[scope] && <AgentMark id={scope} size={14} />}
@@ -700,7 +700,7 @@ function MemoryBody({ b, input, calls }: { b: ToolBlock; input: Json; calls: Mem
       {!live(b) && (
         <button
           onClick={() => useMemory.getState().show()}
-          className="flex items-center gap-1.5 text-[12.5px] text-muted hover:text-ink hover:underline"
+          className="flex items-center gap-1.5 text-[12px] text-muted hover:text-ink hover:underline"
         >
           <Bookmark size={12} /> Show in Memory
         </button>
@@ -762,7 +762,7 @@ function Args({ input }: { input: Json }) {
   if (!entries.length) return null;
   return (
     <Section title="Arguments" actions={<CopyButton text={() => JSON.stringify(input, null, 2)} label="Copy arguments" />}>
-      <dl className="grid grid-cols-[minmax(0,max-content)_minmax(0,1fr)] gap-x-3 gap-y-1 rounded-lg bg-sunken px-3 py-2 text-[12.5px]">
+      <dl className="grid grid-cols-[minmax(0,max-content)_minmax(0,1fr)] gap-x-3 gap-y-1 rounded-lg bg-sunken px-3 py-2 text-[12px]">
         {entries.map(([k, v]) => {
           const scalar = typeof v !== "object";
           const text = typeof v === "string" ? v : scalar ? String(v) : JSON.stringify(v, null, 2);
@@ -772,7 +772,7 @@ function Args({ input }: { input: Json }) {
               <dt className="truncate pt-px text-faint" title={k}>
                 {humanKey(k)}
               </dt>
-              <dd className={`selectable min-w-0 text-ink-2 ${block ? "scroll-quiet max-h-44 overflow-auto font-mono text-[11.5px] whitespace-pre-wrap" : "break-words"} ${typeof v === "string" ? "" : "font-mono"}`}>
+              <dd className={`selectable min-w-0 text-ink-2 ${block ? "scroll-quiet max-h-44 overflow-auto font-mono text-[11px] whitespace-pre-wrap" : "break-words"} ${typeof v === "string" ? "" : "font-mono"}`}>
                 {text.length > 6000 ? `${text.slice(0, 6000)}…` : text}
               </dd>
             </div>

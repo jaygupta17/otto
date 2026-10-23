@@ -1,11 +1,10 @@
 import { memo, useId } from "react";
-import { useUI, backdropSettings } from "../../state/ui";
 
 /**
  * The panel colour rising out of the thread toward the composer. A taller
  * fade than the old strip, reaching the panel colour early so text dissolves
  * well before the composer; the top edge waves by a few pixels so it never
- * reads as a ruled line. Hidden over a photo, where ChatScrim does the work.
+ * reads as a ruled line.
  */
 export const PanelFade = memo(function PanelFade({ className = "" }: { className?: string }) {
   const id = `panel-fade-${useId().replace(/:/g, "")}`;
@@ -28,30 +27,3 @@ export const PanelFade = memo(function PanelFade({ className = "" }: { className
   );
 });
 
-/**
- * Behind a chat that sits on the bare photo: an even shade for legibility
- * (heavier when the photo fights the theme, via --mismatch in CSS) plus a
- * bottom fade into the app colour that grows exponentially toward the
- * composer. Strength comes from Settings → General → "Fade behind the composer".
- */
-export const ChatScrim = memo(function ChatScrim() {
-  const b = useUI((s) => s.backdrop);
-  const s = backdropSettings(b);
-  if (!s.on) return null;
-  const f = s.chatFade;
-  // Fade begins between 65% (weak) and 20% (full strength) of the screen; alpha ~ t^2.6.
-  const start = 100 - (35 + f * 45);
-  // Unevenly spaced, closely packed stops: no banding, no ruled lines. Alpha stays monotonic.
-  const ts = [0, 0.07, 0.16, 0.26, 0.37, 0.47, 0.56, 0.65, 0.74, 0.83, 0.92, 1];
-  const stops = ts.map((t, i) => {
-    const jitter = i > 0 && i < ts.length - 1 ? 0.7 * Math.sin(i * 1.9) : 0;
-    const pos = start + (100 - start) * t + jitter;
-    return `color-mix(in srgb, var(--bg) ${(Math.pow(t, 2.6) * f * 100).toFixed(1)}%, transparent) ${pos.toFixed(1)}%`;
-  });
-  return (
-    <div aria-hidden className="pointer-events-none absolute inset-0">
-      <div className="chat-scrim absolute inset-0" />
-      {f > 0 && <div className="absolute inset-0" style={{ backgroundImage: `linear-gradient(180deg, transparent ${start}%, ${stops.join(", ")})` }} />}
-    </div>
-  );
-});

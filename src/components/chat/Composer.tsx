@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowUp, AtSign, FileCode2, Slash, Square, SquareTerminal } from "lucide-react";
+import { ArrowUp, AtSign, FileCode2, Plus, Slash, Square, SquareTerminal } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import type { CommandInfo } from "@opencode/client";
 import { useChat } from "../../state/chat";
@@ -13,6 +13,7 @@ import { ContextMeter } from "./SessionExtras";
 import type { FsEntry } from "../../lib/opencode/client";
 import { isMod } from "../../hooks/useShortcuts";
 import { layerOpen } from "../../lib/layers";
+import { Popover, MenuItem } from "../ui/Popover";
 
 /** App-level commands, handled here rather than by the server. */
 const BUILTIN: { name: string; description: string; needsSession: boolean }[] = [
@@ -220,6 +221,125 @@ export function Composer({ sessionId, placeholder = "Do anything…", autoFocus 
 
   const canSend = !!draft.trim() && ready && !sending && !needsAgent;
   const showStop = busy && !draft.trim();
+  // In a session the header already says who you're talking to, so the box is one pill: + · text · model · send.
+  const inline = !!sessionId;
+
+  /** Start the draft with a trigger character and open its suggestions. */
+  function insert(kind: "file" | "command" | "shell") {
+    const next = kind === "file" ? draft + (draft && !draft.endsWith(" ") ? " @" : "@") : kind === "command" ? "/" + draft.replace(/^\//, "") : "!" + draft.replace(/^!/, "");
+    setDraft(draftKey, next);
+    requestAnimationFrame(() => {
+      const el = ta.current;
+      if (!el) return;
+      el.focus();
+      const caret = kind === "file" ? next.length : 1;
+      el.setSelectionRange(caret, caret);
+      void updateSuggest(next, caret);
+    });
+  }
+
+  const status = (
+    <>
+      {connected && catalog === "warming" && <div className="px-4 pb-2.5 text-[12px] text-muted">Loading models and agents…</div>}
+      {connected && catalog === "degraded" && !models.length && (
+        <div className="flex items-center gap-2 px-4 pb-2.5 text-[12px] text-muted">
+          <span className="min-w-0 flex-1" title={catalogError}>
+            Models didn't load, so sending is paused.
+          </span>
+          <button onClick={retryConnection} className="shrink-0 rounded-md px-1.5 py-0.5 text-ink-2 transition-colors hover:bg-hover hover:text-ink">
+            Try again
+          </button>
+        </div>
+      )}
+    </>
+  );
+
+  const field = (
+    <textarea
+      ref={ta}
+      rows={1}
+      value={draft}
+      placeholder={
+        !connected
+          ? "Connecting…"
+          : busy
+            ? // The phone's one-line box has no room for who; the header says it.
+              delivery === "steer"
+              ? compact ? placeholder : `Steer ${doer}…`
+              : compact ? "Queue a message" : `Queue a follow-up for ${doer}…`
+            : needsAgent
+              ? "Add a teammate to start"
+              : catalog === "degraded" && !models.length
+                ? "Models didn't load"
+                : catalog !== "ready" && !models.length
+                  ? "Loading models…"
+                  : placeholder
+      }
+      onChange={(e) => {
+        setDraft(draftKey, e.target.value);
+        void updateSuggest(e.target.value, e.target.selectionStart);
+      }}
+      onKeyDown={onKeyDown}
+      aria-label="Message"
+      data-composer
+      onFocus={() => setFocused(true)}
+      onBlur={() => {
+        setFocused(false);
+        setTimeout(() => setSuggest(null), 120);
+      }}
+      className={`scroll-quiet block resize-none bg-transparent leading-[1.5] text-ink outline-none placeholder:text-faint ${shellMode ? "font-mono text-[14px]" : compact ? "text-[16px]" : "text-[15px]"} ${inline ? "min-w-[120px] flex-1 self-center px-1 py-[7px]" : `w-full px-4 pt-3.5 ${compact ? "pb-1" : "min-h-[56px] pb-1.5"}`}`}
+      spellCheck
+    />
+  );
+
+  const tools = (
+    <>
+      {/* Steer or queue only matters once there's something to send; until then the placeholder says which. */}
+      {busy && sessionId && draft.trim() && (
+        <button
+          onClick={() => setDeliveryMode(delivery === "steer" ? "queue" : "steer")}
+          title={delivery === "steer" ? "Steer: the agent reads your message after its current step. Click to queue it for after the run instead." : "Queue: the agent reads your message when the run finishes. Click to steer instead."}
+          className="h-7 shrink-0 rounded-full px-2.5 text-[12px] text-ink-2 hairline transition-colors hover:bg-hover hover:text-ink"
+        >
+          {delivery === "steer" ? "Steer" : "Queue"}
+        </button>
+      )}
+      {sessionId && <ContextMeter sessionId={sessionId} compact={compact} />}
+      <ModelPicker sessionId={sessionId} compact={compact} />
+      <AnimatePresence mode="wait" initial={false}>
+        {showStop ? (
+          <motion.button
+            key="stop"
+            initial={{ scale: 0.85, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.85, opacity: 0 }}
+            transition={{ duration: 0.12 }}
+            onClick={() => sessionId && interrupt(sessionId)}
+            className={`grid shrink-0 place-items-center rounded-full bg-ink text-bg hover:opacity-85 ${inline ? "h-9 w-9" : "h-8 w-8"}`}
+            aria-label="Stop"
+            title="Stop (Esc)"
+          >
+            <Square size={11} fill="currentColor" />
+          </motion.button>
+        ) : (
+          <motion.button
+            key="send"
+            initial={{ scale: 0.85, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.85, opacity: 0 }}
+            transition={{ duration: 0.12 }}
+            onClick={() => void submit()}
+            disabled={!canSend}
+            className={`grid shrink-0 place-items-center rounded-full bg-ink text-bg transition-opacity hover:opacity-85 disabled:bg-active disabled:text-muted ${inline ? "h-9 w-9" : "h-8 w-8"}`}
+            aria-label={busy ? (delivery === "steer" ? "Steer" : "Queue") : "Send"}
+            title={shellMode ? "Run (Enter)" : busy ? (delivery === "steer" ? "Steer (Enter)" : "Queue (Enter)") : "Send (Enter)"}
+          >
+            {sending ? <Spinner size={15} /> : <ArrowUp size={16} strokeWidth={2.2} />}
+          </motion.button>
+        )}
+      </AnimatePresence>
+    </>
+  );
 
   return (
     <div className="relative">
@@ -232,20 +352,20 @@ export function Composer({ sessionId, placeholder = "Do anything…", autoFocus 
             className="surface-overlay absolute inset-x-2 bottom-full z-20 mb-2 overflow-hidden rounded-2xl border border-line bg-raised p-1 shadow-pop"
           >
             {suggest.items.length === 0 ? (
-              <div className="px-3 py-2 text-[12.5px] text-muted">{suggest.query ? "No matching files" : "Type to search files"}</div>
+              <div className="px-3 py-2 text-[12px] text-muted">{suggest.query ? "No matching files" : "Type to search files"}</div>
             ) : suggest.kind === "command" ? (
               suggest.items.map((c, i) => (
                 <button key={c.name} onMouseDown={(e) => (e.preventDefault(), pick(i))} className={`flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left ${i === sel ? "bg-active" : ""}`}>
                   <Slash size={14} className="text-muted" />
                   <span className="font-mono text-[13px]">{c.name}</span>
-                  <span className="truncate text-[12.5px] text-muted">{c.description}</span>
+                  <span className="truncate text-[12px] text-muted">{c.description}</span>
                 </button>
               ))
             ) : (
               suggest.items.map((f, i) => (
                 <button key={f.path} onMouseDown={(e) => (e.preventDefault(), pick(i))} className={`flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left ${i === sel ? "bg-active" : ""}`}>
                   <FileCode2 size={14} className="text-muted" />
-                  <span className="truncate font-mono text-[12.5px]">{f.path}</span>
+                  <span className="truncate font-mono text-[12px]">{f.path}</span>
                 </button>
               ))
             )}
@@ -254,125 +374,71 @@ export function Composer({ sessionId, placeholder = "Do anything…", autoFocus 
       </AnimatePresence>
 
       <div
-        className={`surface-float relative rounded-3xl border bg-raised shadow-float transition-colors duration-150 ${focused ? "border-line-strong" : "border-line"}`}
+        className={`surface-float relative border bg-raised shadow-float transition-colors duration-150 ${inline ? "rounded-[24px]" : "rounded-3xl"} ${focused ? "border-line-strong" : "border-line"}`}
         onClick={(e) => {
           if (e.target === e.currentTarget) ta.current?.focus();
         }}
       >
-        <textarea
-          ref={ta}
-          rows={1}
-          value={draft}
-          placeholder={
-            !connected
-              ? "Connecting…"
-              : busy
-                ? delivery === "steer"
-                  ? `Steer ${doer}…`
-                  : `Queue a follow-up for ${doer}…`
-                : needsAgent
-                  ? "Add a teammate to start"
-                  : catalog === "degraded" && !models.length
-                    ? "Models didn't load"
-                    : catalog !== "ready" && !models.length
-                      ? "Loading models…"
-                      : placeholder
-          }
-          onChange={(e) => {
-            setDraft(draftKey, e.target.value);
-            void updateSuggest(e.target.value, e.target.selectionStart);
-          }}
-          onKeyDown={onKeyDown}
-          aria-label="Message"
-          data-composer
-          onFocus={() => setFocused(true)}
-          onBlur={() => {
-            setFocused(false);
-            setTimeout(() => setSuggest(null), 120);
-          }}
-          className={`scroll-quiet block w-full resize-none bg-transparent px-4 pt-3.5 leading-[1.5] text-ink outline-none placeholder:text-faint ${shellMode ? "font-mono text-[14px]" : "text-[15px]"} ${compact ? "pb-1" : "min-h-[56px] pb-1.5"}`}
-          spellCheck
-        />
-        <div className="flex items-center gap-0.5 px-2 pb-2">
-          <button
-            className="grid h-8 w-8 place-items-center rounded-md text-muted transition-colors hover:bg-hover hover:text-ink"
-            aria-label="Mention a file"
-            title="Mention a file (@)"
-            onClick={() => {
-              const next = draft + (draft && !draft.endsWith(" ") ? " @" : "@");
-              setDraft(draftKey, next);
-              ta.current?.focus();
-              void updateSuggest(next, next.length);
-            }}
-          >
-            <AtSign size={17} />
-          </button>
-          {shellMode ? (
-            <span className="flex h-8 items-center gap-1.5 px-2 text-[13px] text-ink-2" title="Runs in the session's folder; the output is shared with the agent">
-              <SquareTerminal size={14} className="text-muted" /> Shell
-            </span>
-          ) : (
-            <AgentPicker sessionId={sessionId} />
-          )}
-          <div className="ml-auto flex min-w-0 items-center gap-1">
-            {/* Steer or queue only matters once there's something to send; until then the placeholder says which. */}
-            {busy && sessionId && draft.trim() && (
-              <button
-                onClick={() => setDeliveryMode(delivery === "steer" ? "queue" : "steer")}
-                title={delivery === "steer" ? "Steer: the agent reads your message after its current step. Click to queue it for after the run instead." : "Queue: the agent reads your message when the run finishes. Click to steer instead."}
-                className="h-7 rounded-full px-2.5 text-[12.5px] text-ink-2 hairline transition-colors hover:bg-hover hover:text-ink"
-              >
-                {delivery === "steer" ? "Steer" : "Queue"}
-              </button>
-            )}
-            {sessionId && <ContextMeter sessionId={sessionId} compact={compact} />}
-            <ModelPicker sessionId={sessionId} compact={compact} />
-            <AnimatePresence mode="wait" initial={false}>
-              {showStop ? (
-                <motion.button
-                  key="stop"
-                  initial={{ scale: 0.85, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  exit={{ scale: 0.85, opacity: 0 }}
-                  transition={{ duration: 0.12 }}
-                  onClick={() => sessionId && interrupt(sessionId)}
-                  className="grid h-8 w-8 place-items-center rounded-full bg-ink text-bg hover:opacity-85"
-                  aria-label="Stop"
-                  title="Stop (Esc)"
-                >
-                  <Square size={11} fill="currentColor" />
-                </motion.button>
-              ) : (
-                <motion.button
-                  key="send"
-                  initial={{ scale: 0.85, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  exit={{ scale: 0.85, opacity: 0 }}
-                  transition={{ duration: 0.12 }}
-                  onClick={() => void submit()}
-                  disabled={!canSend}
-                  className="grid h-8 w-8 place-items-center rounded-full bg-ink text-bg transition-opacity hover:opacity-85 disabled:bg-active disabled:text-muted"
-                  aria-label={busy ? (delivery === "steer" ? "Steer" : "Queue") : "Send"}
-                  title={shellMode ? "Run (Enter)" : busy ? (delivery === "steer" ? "Steer (Enter)" : "Queue (Enter)") : "Send (Enter)"}
-                >
-                  {sending ? <Spinner size={15} /> : <ArrowUp size={16} strokeWidth={2.2} />}
-                </motion.button>
-              )}
-            </AnimatePresence>
-          </div>
-          {connected && catalog === "warming" && <div className="px-4 pb-2.5 text-[12.5px] text-muted">Loading models and agents…</div>}
-          {connected && catalog === "degraded" && !models.length && (
-            <div className="flex items-center gap-2 px-4 pb-2.5 text-[12.5px] text-muted">
-              <span className="min-w-0 flex-1" title={catalogError}>
-                Models didn't load, so sending is paused.
+        {inline ? (
+          <div className="flex items-end gap-1 p-1.5" onClick={(e) => e.target === e.currentTarget && ta.current?.focus()}>
+            <AddMenu shell={!!sessionId} onPick={insert} />
+            {shellMode && (
+              <span className="flex h-9 shrink-0 items-center gap-1.5 pl-1 text-[13px] text-ink-2" title="Runs in the session's folder; the output is shared with the agent">
+                <SquareTerminal size={14} className="text-muted" /> Shell
               </span>
-              <button onClick={retryConnection} className="shrink-0 rounded-md px-1.5 py-0.5 text-ink-2 transition-colors hover:bg-hover hover:text-ink">
-                Try again
+            )}
+            {field}
+            <div className="flex h-9 min-w-0 items-center gap-1">{tools}</div>
+          </div>
+        ) : (
+          <>
+            {field}
+            <div className="flex items-center gap-0.5 px-2 pb-2">
+              <button
+                className="grid h-8 w-8 place-items-center rounded-md text-muted transition-colors hover:bg-hover hover:text-ink"
+                aria-label="Mention a file"
+                title="Mention a file (@)"
+                onClick={() => insert("file")}
+              >
+                <AtSign size={17} />
               </button>
+              {shellMode ? (
+                <span className="flex h-8 items-center gap-1.5 px-2 text-[13px] text-ink-2" title="Runs in the session's folder; the output is shared with the agent">
+                  <SquareTerminal size={14} className="text-muted" /> Shell
+                </span>
+              ) : (
+                <AgentPicker sessionId={sessionId} />
+              )}
+              <div className="ml-auto flex min-w-0 items-center gap-1">{tools}</div>
             </div>
-          )}
-        </div>
+          </>
+        )}
+        {status}
       </div>
     </div>
+  );
+}
+
+/** The + in a session's pill: the things the box can do besides plain text. */
+function AddMenu({ shell, onPick }: { shell: boolean; onPick: (kind: "file" | "command" | "shell") => void }) {
+  const anchor = useRef<HTMLButtonElement>(null);
+  const [open, setOpen] = useState(false);
+  const choose = (kind: "file" | "command" | "shell") => {
+    setOpen(false);
+    onPick(kind);
+  };
+  return (
+    <>
+      <button ref={anchor} onClick={() => setOpen((v) => !v)} aria-label="Add" aria-haspopup="menu" aria-expanded={open} title="Files, commands, shell" className={`grid h-9 w-9 shrink-0 place-items-center rounded-full text-muted transition-colors hover:bg-hover hover:text-ink ${open ? "bg-hover text-ink" : ""}`}>
+        <Plus size={18} />
+      </button>
+      <Popover open={open} onClose={() => setOpen(false)} anchor={anchor.current} placement="top-start" width={240} label="Add">
+        <div role="menu" className="p-1.5">
+          <MenuItem icon={<AtSign size={15} />} label="Mention a file" right={<kbd className="text-[12px] text-faint">@</kbd>} onClick={() => choose("file")} />
+          <MenuItem icon={<Slash size={15} />} label="Run a command" right={<kbd className="text-[12px] text-faint">/</kbd>} onClick={() => choose("command")} />
+          {shell && <MenuItem icon={<SquareTerminal size={15} />} label="Run in the shell" right={<kbd className="text-[12px] text-faint">!</kbd>} onClick={() => choose("shell")} />}
+        </div>
+      </Popover>
+    </>
   );
 }

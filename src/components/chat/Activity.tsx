@@ -119,15 +119,17 @@ const ToolRun = memo(function ToolRun({ blocks, live }: { blocks: Block[]; live:
       <button
         aria-expanded={open}
         onClick={() => setUserOpen(!open)}
-        className="group -ml-1 flex max-w-full items-center gap-1.5 rounded-md px-1 py-1 text-[14px] text-muted transition-colors hover:text-ink"
+        data-tip={detail || undefined}
+        className="group -ml-1 flex max-w-full items-center gap-1.5 rounded-md px-1 py-1 text-[13px] text-muted transition-colors hover:text-ink"
       >
         {running && <AgentClock size={12} className="mr-0.5" />}
         <span className={`shrink-0 ${running ? "shimmer" : "text-ink-2 group-hover:text-ink"}`}>{verb}</span>
         {Number.isFinite(took) && took >= 1000 && <span className="shrink-0 text-faint tabular-nums">{duration(took)}</span>}
-        {detail && <span className="min-w-0 truncate text-faint">· {detail.charAt(0).toLowerCase() + detail.slice(1)}</span>}
+        {/* What was done shows on hover; the line itself stays a quiet "Worked 55s". */}
+        {detail && <span className="sr-only">: {detail}</span>}
         {!running && going > 0 && <span className="shimmer shrink-0">· {going} still running</span>}
         {failed > 0 && (
-          <span className="ml-1 inline-flex items-center gap-1 text-[12.5px] text-danger" title={`${failed} failed`}>
+          <span className="ml-1 inline-flex items-center gap-1 text-[12px] text-danger" aria-label={`${failed} failed`}>
             <AlertTriangle size={12} /> {failed}
           </span>
         )}
@@ -332,11 +334,11 @@ const ToolRow = memo(function ToolRow({ b: call, step }: { b: ToolBlock; step?: 
           </span>
           <span className={`shrink-0 ${failed ? "text-danger" : active ? "shimmer" : "text-ink-2"}`}>{label.verb}</span>
           {label.path ? (
-            <PathLabel path={label.path} className="text-[13.5px]" />
+            <PathLabel path={label.path} className="text-[13px]" />
           ) : files.length > 1 ? (
             <span className="flex min-w-0 items-center gap-1 overflow-hidden">
               {files.slice(0, 3).map((f) => (
-                <span key={f} className="inline-flex max-w-[180px] min-w-0 items-center gap-1 rounded-md border border-line bg-raised px-1.5 py-px text-[12.5px] text-ink-2" title={f}>
+                <span key={f} className="inline-flex max-w-[180px] min-w-0 items-center gap-1 rounded-md border border-line bg-raised px-1.5 py-px text-[12px] text-ink-2" title={f}>
                   <FileIcon path={f} size={12} />
                   <span className="truncate">{f.split("/").pop()}</span>
                 </span>
@@ -344,7 +346,7 @@ const ToolRow = memo(function ToolRow({ b: call, step }: { b: ToolBlock; step?: 
               {files.length > 3 && <span className="shrink-0 text-[12px] text-faint">+{files.length - 3}</span>}
             </span>
           ) : (
-            <span className={`min-w-0 truncate ${mono ? "font-mono text-[12.5px]" : ""} text-muted`}>{label.target || (b.status === "streaming" ? "…" : "")}</span>
+            <span className={`min-w-0 truncate ${mono ? "font-mono text-[12px]" : ""} text-muted`}>{label.target || (b.status === "streaming" ? "…" : "")}</span>
           )}
           {badges.length > 0 && <span className="flex shrink-0 items-center gap-2">{badges}</span>}
           {stopped && <span className="shrink-0 text-[12px] text-faint">stopped</span>}
@@ -430,7 +432,7 @@ function BackgroundNote({ phase, error }: { phase: string; error?: string }) {
         : phase === "stopped"
           ? "You stopped it. The agent was told it was you, not a failure."
           : error;
-  return text ? <div className={`mt-2.5 text-[12.5px] ${phase === "error" ? "text-danger" : "text-faint"}`}>{text}</div> : null;
+  return text ? <div className={`mt-2.5 text-[12px] ${phase === "error" ? "text-danger" : "text-faint"}`}>{text}</div> : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -567,7 +569,7 @@ const SubagentRow = memo(function SubagentRow({ b }: { b: ToolBlock }) {
         >
           <Assignee agent={s.agent} state={face} />
           {line}
-          {took > 1500 && <span className="shrink-0 text-[12.5px] text-faint tabular-nums">{duration(took)}</span>}
+          {took > 1500 && <span className="shrink-0 text-[12px] text-faint tabular-nums">{duration(took)}</span>}
           <motion.span animate={{ rotate: open ? 90 : 0 }} transition={{ duration: 0.18, ease }} className="shrink-0 text-faint group-hover/line:text-ink">
             <ChevronRight size={14} />
           </motion.span>
@@ -611,8 +613,8 @@ const SubagentRow = memo(function SubagentRow({ b }: { b: ToolBlock }) {
                   <ProseBox text={output} />
                 </Section>
               )}
-              {phase === "stopped" && <div className="text-[12.5px] text-faint">{stopped ? `You stopped ${name}. They were told it was you, not a failure.` : "Stopped before it finished."}</div>}
-              {phase === "background" && <div className="text-[12.5px] text-faint">The report lands here when it's done.</div>}
+              {phase === "stopped" && <div className="text-[12px] text-faint">{stopped ? `You stopped ${name}. They were told it was you, not a failure.` : "Stopped before it finished."}</div>}
+              {phase === "background" && <div className="text-[12px] text-faint">The report lands here when it's done.</div>}
               {error && <ErrorBlock text={error} />}
             </div>
           </motion.div>
