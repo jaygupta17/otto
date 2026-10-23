@@ -6,6 +6,8 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-10-23
+
 ### Added
 
 - Otto has themes: separate light and dark palettes, six built-in variants (Catppuccin, Flexoki, Tokyo Night) and local import from Otto JSON, Tweakcn/shadcn CSS, VS Code or OpenChamber theme files. Imported themes stay on your machine and can be removed from the picker.
@@ -279,7 +281,8 @@ First public release.
 - Scheduled tasks that run on the agent machine.
 - Project file browser with syntax highlighting.
 
-[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.13.1...HEAD
+[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/jaygupta17/otto/compare/v0.13.1...v0.14.0
 [0.13.1]: https://github.com/jaygupta17/otto/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/jaygupta17/otto/compare/v0.12.1...v0.13.0
 [0.12.1]: https://github.com/jaygupta17/otto/compare/v0.12.0...v0.12.1
