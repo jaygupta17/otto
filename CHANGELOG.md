@@ -6,6 +6,28 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 ## [Unreleased]
 
+### Changed
+
+- Thinking level is now a submenu on each model: hover or tap a model to pick its level, and the menu closes once you choose. The model button shows the level you picked.
+- Questions from an agent come one at a time, with a tab for each, their choices as a list with explanations, and a row where you can type your own answer instead.
+- Approval buttons are cleaner: shortcuts moved into tooltips, one row on phones, and "Always allow" for an app asks whether it covers this teammate or every teammate.
+- The sidebar lists one row per teammate, with their latest session and when it happened, under a search field. Schedules, agents and settings sit at the bottom.
+- Chats read like a messages app: your messages and the agent's replies sit in rounded bubbles, with a time stamp when a conversation starts or picks up again after an hour.
+- The chat header shows who you're talking to, with the session title underneath; click the name to switch teammates. The reply box is a single rounded bar, with a + menu for mentioning files, running commands and using the shell.
+- Side panels open narrower so the chat keeps its room: Files starts as a slim tree and widens when you open a file, and the chat never shrinks below a readable column. Double-click a panel's edge to reset its width.
+- The strip of panel icons on the right edge is gone. A panel button at the end of the chat header (⌘⇧\\) opens the panel where you left it, and a menu at the top of the panel switches between Files, Terminal, Browser, Context, Project and Memory.
+- Less text on screen: icon buttons say what they do, with their shortcut, in a tooltip; each reply ends with quiet copy and fork icons and how long it took, with the model and speed on hover. Section labels are no longer in capitals.
+- Phones get a tab bar at the bottom: Sessions, Team, Schedules and Settings, each its own place instead of a menu behind the workspace name. Sessions shows how many are waiting on you, and tapping the current tab scrolls back to the top.
+- Team on phones lists your teammates with their faces; each opens as a full page to edit, and hiring opens profiles where **Talk to** starts a session straight away.
+- Settings on phones looks like iOS Settings: your workspace at the top, then grouped sections that each open as their own page, with larger rows and buttons. Apps and workspaces keep extra actions in a … menu, and tapping a workspace switches to it.
+- On phones, the session list opens with your workspace's name and your sessions grouped by day, each with its teammate's face. Search, inbox and new session are plain icons at the top; the chat header shows who you're talking to, and Files moved into the … menu. The reply box is a single bar like on desktop.
+- Less empty space between the last message and the reply box, on desktop and phones.
+- Agent and teammate pages are calmer: who they are at the top, then General, Personality and Permissions tabs with labelled, grouped fields. Tap a teammate's face to preview their moods; on phones, **New session** sits under the name.
+
+### Removed
+
+- Background photos and colours. Every screen is a plain, solid surface again.
+
 ## [0.14.0] - 2026-10-23
 
 ### Added
