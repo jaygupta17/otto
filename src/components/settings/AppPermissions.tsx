@@ -17,11 +17,13 @@ import { useUI } from "../../state/ui";
 import { IconButton } from "../ui/Button";
 import { Spinner } from "../ui/AgentClock";
 import { EffectPicker, LoadMore, PhonePage, SearchBox } from "./common";
+import { Pip, type PipTone } from "../ui/Pip";
 
 const PAGE = 40;
 /** Where Settings → Apps sends you to change what teammates may do. */
 export const APP_PERMISSIONS_ID = "app-permissions";
-const DOT: Record<Effect, string> = { allow: "bg-ok", ask: "bg-warn", deny: "bg-danger" };
+/** An effect as a pip: on when it may, a plus when it asks you first, an x when it never may. */
+export const EFFECT_PIP: Record<Effect, PipTone> = { allow: "on", ask: "needs", deny: "error" };
 const SHORT: Record<Kind, string> = { read: "Read", write: "Send", delete: "Delete" };
 const MEANS: Record<Effect, string> = { allow: "without asking", ask: "after asking you", deny: "never" };
 
@@ -53,8 +55,8 @@ export function AppPermissions({ model, onChange, globalRules }: Props) {
 
   return (
     <div id={APP_PERMISSIONS_ID} className="scroll-mt-4">
-      <div className={phone ? "mb-1.5 px-4 text-[13px] font-medium text-muted" : "mb-2 text-[14px] font-semibold"}>Apps</div>
-      <div className={phone ? "-mt-1 mb-1.5 px-4 text-[13px] text-muted" : "-mt-1 mb-2 text-[12px] text-muted"}>{key ? "What they may do in the apps you've connected. Blocked actions disappear from their tools." : "Connect Gmail, Calendar, Slack and more, then choose here what teammates may do in them."}</div>
+      <div className={phone ? "mb-2 text-[11px] font-medium tracking-[0.06em] text-accent-ink uppercase" : "mb-2 text-[14px] font-semibold"}>Apps</div>
+      <div className={phone ? "-mt-1 mb-2 text-[13px] text-muted" : "-mt-1 mb-2 text-[12px] text-muted"}>{key ? "What they may do in the apps you've connected. Blocked actions disappear from their tools." : "Connect Gmail, Calendar, Slack and more, then choose here what teammates may do in them."}</div>
       {key ? (
         <div className="group-card divide-y divide-[var(--border)] overflow-hidden">
           <AppCard app="*" {...ctx} />
@@ -114,7 +116,7 @@ function AppCard({ app, model, effect, set, catalog }: { app: string } & Ctx) {
         <span className="flex shrink-0 items-center gap-2.5 max-sm:hidden" aria-hidden>
           {kinds.map((k) => (
             <span key={k.kind} className="inline-flex items-center gap-1 text-[11px] text-muted" title={`${k.label}: ${MEANS[k.now]}`}>
-              <span className={`h-1.5 w-1.5 rounded-full ${DOT[k.now]}`} />
+              <Pip tone={EFFECT_PIP[k.now]} />
               {SHORT[k.kind]}
             </span>
           ))}

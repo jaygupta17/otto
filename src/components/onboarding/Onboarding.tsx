@@ -778,7 +778,7 @@ function SetupProgress({
                 <div className={`text-[14px] ${st.state === "idle" ? "text-faint" : st.state === "error" ? "font-medium text-danger" : st.state === "active" ? "font-medium text-ink" : "text-ink-2"}`}>{s.title}</div>
                 {st.state !== "idle" && st.state !== "error" && <div className="selectable truncate text-[13px] text-muted">{st.detail ?? s.hint}</div>}
               </div>
-              <span className="pt-px text-[12px] text-faint tabular-nums">{st.state === "active" && startedAt ? clock(now - startedAt) : ""}</span>
+              <span className="pt-px text-[12px] text-faint font-mono tabular-nums">{st.state === "active" && startedAt ? clock(now - startedAt) : ""}</span>
             </li>
           );
         })}
@@ -848,7 +848,7 @@ function Done({ elapsed, onEnter }: { elapsed: number; onEnter: () => void }) {
 
 function Segmented({ options, value, onChange }: { options: { id: string; label: string; sub?: string }[]; value: string; onChange: (v: string) => void }) {
   return (
-    <div className="flex gap-1 rounded-2xl bg-sunken p-1 hairline">
+    <div className="flex gap-1 rounded-2xl well p-1">
       {options.map((o) => (
         <button
           key={o.id}

@@ -1,13 +1,12 @@
+import { DitherOrb } from "./Dither";
+
 /**
- * The agent clock: a ring with an amber hand that turns while an agent works.
- * It is the only ambient motion in the app (see DESIGN.md).
+ * The agent mark: a small dithered orb in ice whose light circles it while an
+ * agent works. It is the only ambient motion in the app besides the birds
+ * (see DESIGN.md).
  */
 export function AgentClock({ size = 14, className = "" }: { size?: number; className?: string }) {
-  return (
-    <span className={`agent-clock ${className}`} style={{ width: size, height: size }} role="img" aria-label="Working">
-      <i />
-    </span>
-  );
+  return <DitherOrb size={size} spin label="Working" className={`text-accent ${className}`} />;
 }
 
 /** Network/loading spinner (not agent activity). */

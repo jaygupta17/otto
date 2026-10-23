@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "motion/react";
-import { ChevronRight, Dices } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 import { useChat } from "../../state/chat";
 import { useExtensions } from "../../state/extensions";
@@ -7,20 +7,35 @@ import { useTeammates } from "../../state/teammates";
 import type { AgentConfig } from "../../lib/opencode/config";
 import { modelRefToString, modelStringToRef } from "../../lib/opencode/config";
 import { parseRules, serializeRules, type PermissionModel } from "../../lib/permissions";
-import { ACCESSORIES, MAX_STARTERS, randomFace, TEAMMATE_COLORS, teammatePrompt, uniqueId, type Accessory, type Teammate } from "../../lib/teammates";
+import { EVERYDAY_BIRDS, MAX_STARTERS, randomFace, TEAMMATE_COLORS, teammatePrompt, uniqueId, type Teammate } from "../../lib/teammates";
+import { BIRDS, type BirdId } from "../../lib/flock/birds";
 import { Button } from "../ui/Button";
 import { Spinner } from "../ui/AgentClock";
-import { TeammateFace, type FaceState } from "../ui/TeammateFace";
+import { Bird } from "../ui/Bird";
+import type { Mood } from "../../lib/flock/build";
 import { FormRow, formInput, Row, Section, Segmented, TextArea, Toggle } from "./common";
 import { ModelSelect, type ModelValue } from "./ModelSelect";
 import { PermissionsEditor } from "./AgentsTab";
 
 const NO_RULES: readonly never[] = [];
-const FACE_STATES: { id: FaceState; label: string }[] = [
+/** Every face a teammate makes, in the order a run goes through them, then the ones you cause. */
+const FACES: { id: Mood; label: string }[] = [
   { id: "idle", label: "Idle" },
-  { id: "working", label: "Working" },
-  { id: "needs", label: "Needs you" },
-  { id: "done", label: "Done" },
+  { id: "sleep", label: "Napping" },
+  { id: "think", label: "Working" },
+  { id: "idea", label: "Got an idea" },
+  { id: "type", label: "Writing" },
+  { id: "huh", label: "Needs you" },
+  { id: "love", label: "Thanks for answering" },
+  { id: "brr", label: "Retrying" },
+  { id: "cool", label: "Back on track" },
+  { id: "happy", label: "Done" },
+  { id: "party", label: "Finished" },
+  { id: "wow", label: "Hit a snag" },
+  { id: "error", label: "Didn't finish" },
+  { id: "sad", label: "Stopped" },
+  { id: "wink", label: "Wink" },
+  { id: "angry", label: "Poked too much" },
 ];
 
 interface Draft {
@@ -29,7 +44,7 @@ interface Draft {
   instructions: string;
   color: string;
   face: number;
-  accessory: Accessory;
+  bird: BirdId;
   tagline: string;
   greeting: string;
   voice: string;
@@ -49,7 +64,7 @@ function draftOf(t?: Teammate, cfg?: AgentConfig): Draft {
     instructions: t?.instructions ?? "",
     color: t?.color ?? TEAMMATE_COLORS[Math.floor(Math.random() * TEAMMATE_COLORS.length)],
     face: t?.face ?? randomFace(),
-    accessory: t?.accessory ?? "none",
+    bird: t?.bird ?? EVERYDAY_BIRDS[Math.floor(Math.random() * EVERYDAY_BIRDS.length)],
     tagline: t?.tagline ?? "",
     greeting: t?.greeting ?? "",
     voice: t?.voice ?? "",
@@ -73,7 +88,7 @@ export function TeammateEditor({ teammate, cfg, onDone, actions }: { teammate?: 
   const initial = useMemo(() => draftOf(teammate, cfg), [teammate, cfg]);
   const [d, setD] = useState<Draft>(initial);
   const [section, setSection] = useState<"general" | "personality" | "permissions">("general");
-  const [preview, setPreview] = useState<FaceState>("idle");
+  const [preview, setPreview] = useState<Mood>("idle");
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showPrompt, setShowPrompt] = useState(false);
@@ -94,7 +109,7 @@ export function TeammateEditor({ teammate, cfg, onDone, actions }: { teammate?: 
     if (!name) return;
     setSaving(true);
     const ok = await save(
-      { id, name, job: d.job.trim(), instructions: d.instructions.trim(), color: d.color, face: d.face, accessory: d.accessory, tagline: d.tagline.trim(), greeting: d.greeting.trim(), voice: d.voice.trim(), starters: d.starters.map((x) => x.trim()).filter(Boolean), leads: d.leads },
+      { id, name, job: d.job.trim(), instructions: d.instructions.trim(), color: d.color, face: d.face, bird: d.bird, tagline: d.tagline.trim(), greeting: d.greeting.trim(), voice: d.voice.trim(), starters: d.starters.map((x) => x.trim()).filter(Boolean), leads: d.leads },
       {
         model: modelRefToString(d.model) ?? null,
         steps: d.steps ? Math.max(1, parseInt(d.steps, 10) || 0) || null : null,
@@ -107,15 +122,15 @@ export function TeammateEditor({ teammate, cfg, onDone, actions }: { teammate?: 
     if (ok) onDone(id);
   }
 
-  const nextPreview = () => setPreview((p) => FACE_STATES[(FACE_STATES.findIndex((x) => x.id === p) + 1) % FACE_STATES.length].id);
-  const previewLabel = FACE_STATES.find((x) => x.id === preview)!.label;
+  const nextPreview = () => setPreview((p) => FACES[(FACES.findIndex((x) => x.id === p) + 1) % FACES.length].id);
+  const previewLabel = FACES.find((x) => x.id === preview)!.label;
 
   return (
     <div className="relative pb-20">
       {/* A profile, not a form: the face, who they are, then what you can do with them. */}
       <div className="mb-7 flex items-center gap-5 max-sm:flex-col max-sm:gap-3 max-sm:text-center">
-        <button type="button" onClick={nextPreview} aria-label={`Preview their face: ${previewLabel}. Tap for the next state`} data-tip={`Preview: ${previewLabel}`} className="shrink-0 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-strong)]">
-          <TeammateFace seed={d.face} color={d.color} accessory={d.accessory} size={88} state={preview} follow label={name || "New teammate"} />
+        <button type="button" onClick={nextPreview} aria-label={`Preview their face: ${previewLabel}. Tap for the next one`} data-tip={`Preview: ${previewLabel}`} className="shrink-0 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-strong)]">
+          <Bird bird={d.bird} seed={d.face} size={88} mood={preview} follow label={name || "New teammate"} />
         </button>
         <div className="min-w-0 flex-1 max-sm:w-full">
           <h3 className="truncate text-[22px] font-semibold tracking-[-0.01em]">{name || "New teammate"}</h3>
@@ -151,47 +166,23 @@ export function TeammateEditor({ teammate, cfg, onDone, actions }: { teammate?: 
             </div>
           </Section>
 
-          <Section
-            title="Look"
-            action={
-              <Button size="sm" variant="ghost" icon={<Dices size={14} />} onClick={() => set({ face: randomFace() })}>
-                New face
-              </Button>
-            }
-          >
-            <div className="group-card p-4">
-              {/* One row each, sized to the width, so neither wraps on a phone. */}
-              <div className="grid grid-cols-8 place-items-center gap-1 sm:flex sm:flex-wrap sm:gap-3" role="radiogroup" aria-label="Colour">
-                {TEAMMATE_COLORS.map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    role="radio"
-                    onClick={() => set({ color: c })}
-                    aria-label={`Colour ${c}`}
-                    aria-checked={d.color === c}
-                    className={`h-7 w-7 rounded-full transition-transform hover:scale-110 ${d.color === c ? "ring-2 ring-[var(--text)] ring-offset-2 ring-offset-[var(--card-bg)]" : ""}`}
-                    style={{ background: c }}
-                  />
-                ))}
-              </div>
-              <div className="my-3.5 h-px bg-[var(--border)]" />
-              <div className="grid grid-cols-7 gap-1 sm:flex sm:flex-wrap" role="radiogroup" aria-label="Accessory">
-                {ACCESSORIES.map((a) => (
-                  <button
-                    key={a}
-                    type="button"
-                    role="radio"
-                    aria-checked={d.accessory === a}
-                    aria-label={a === "none" ? "No accessory" : a[0].toUpperCase() + a.slice(1)}
-                    data-tip={a === "none" ? "Nothing" : a[0].toUpperCase() + a.slice(1)}
-                    onClick={() => set({ accessory: a })}
-                    className={`grid aspect-square place-items-center rounded-xl transition-colors sm:h-11 sm:w-11 ${d.accessory === a ? "bg-active" : "hover:bg-hover"}`}
-                  >
-                    <TeammateFace seed={d.face} color={d.color} accessory={a} size={30} />
-                  </button>
-                ))}
-              </div>
+          <Section title="Bird">
+            <div className="group-card grid grid-cols-4 gap-1 p-2" role="radiogroup" aria-label="Bird">
+              {BIRDS.map((b) => (
+                <button
+                  key={b.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={d.bird === b.id}
+                  aria-label={`${b.name}, ${b.species.toLowerCase()}`}
+                  data-tip={b.species}
+                  onClick={() => set({ bird: b.id })}
+                  className={`flex flex-col items-center gap-1 rounded-xl pt-2.5 pb-2 transition-colors ${d.bird === b.id ? "chip" : "hover:bg-hover"}`}
+                >
+                  <Bird bird={b.id} seed={d.face} size={40} greet={false} />
+                  <span className={`text-[12px] ${d.bird === b.id ? "text-ink" : "text-muted"}`}>{b.name}</span>
+                </button>
+              ))}
             </div>
           </Section>
 

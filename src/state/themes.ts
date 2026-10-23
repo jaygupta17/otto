@@ -5,6 +5,7 @@
 import { create } from "zustand";
 import { kv } from "../lib/kv";
 import { useUI } from "./ui";
+import { refreshDither } from "../lib/dither";
 import { BUILTIN_THEMES, isOttoTheme, isTheme, selectedTheme, themeVars, type Theme, type ThemeVariant } from "../lib/themes";
 import { MAX_THEME_BYTES, parseThemeText, uniqueThemeId } from "../lib/themeImport";
 
@@ -139,10 +140,13 @@ export const useThemes = create<ThemesState>((set, get) => ({
     const { lightId, darkId, custom } = get();
     const theme = selectedTheme(resolvedTheme, lightId, darkId, custom);
     // Otto's own palettes are already in the stylesheet: leave every token alone.
-    if (isOttoTheme(theme)) return;
-    const vars = themeVars(theme);
-    for (const [name, value] of Object.entries(vars)) root.style.setProperty(name, value);
-    applied = Object.keys(vars);
+    if (!isOttoTheme(theme)) {
+      const vars = themeVars(theme);
+      for (const [name, value] of Object.entries(vars)) root.style.setProperty(name, value);
+      applied = Object.keys(vars);
+    }
+    // Live text's dithered light is drawn in the theme's own colours.
+    refreshDither();
   },
 }));
 

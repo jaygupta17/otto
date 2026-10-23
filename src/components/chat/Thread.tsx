@@ -6,7 +6,7 @@ import { duration, stamp } from "../../lib/format";
 import { useNow } from "../../hooks/useNow";
 import { revertIndex, useChat } from "../../state/chat";
 import { useUI } from "../../state/ui";
-import { TeammateFace } from "../ui/TeammateFace";
+import { Bird } from "../ui/Bird";
 import { useTeammate } from "../../state/teammates";
 import { Markdown } from "./Markdown";
 import { ActivityGroup, SubagentReport } from "./Activity";
@@ -289,8 +289,9 @@ export function Thread({ sessionId, bottomInset = 0 }: { sessionId: string; bott
         tabIndex={0}
         role="region"
         aria-label="Conversation"
-        className="scroll-quiet absolute inset-0 overflow-y-auto overscroll-contain outline-none">
-        <div ref={content} className="mx-auto w-full max-w-[824px] px-5 pt-6 sm:px-8" style={{ paddingBottom: bottomInset + 20 }}>
+        // Older messages dissolve into dots under the header instead of being sliced off by it.
+        className="dither-fade-top scroll-quiet absolute inset-0 overflow-y-auto overscroll-contain outline-none">
+        <div ref={content} className="mx-auto w-full max-w-[824px] px-5 pt-8 sm:px-8" style={{ paddingBottom: bottomInset + 20 }}>
           {timeline?.loading && !timeline.loaded && <ThreadSkeleton />}
           {timeline?.error && !timeline.loaded && (
             <div className="mt-16 flex flex-col items-center gap-3 text-center">
@@ -311,7 +312,7 @@ export function Thread({ sessionId, bottomInset = 0 }: { sessionId: string; bott
               const at = stamps.get(it.key);
               return (
                 <div key={it.key}>
-                  {at && <div className="mt-6 mb-1 text-center text-[11px] font-medium text-faint tabular-nums first:mt-0">{stamp(at, now)}</div>}
+                  {at && <div className="mt-6 mb-1 text-center font-mono text-[11px] text-faint tabular-nums first:mt-0">{stamp(at, now)}</div>}
                   <UserBubble msg={it.msg} sessionId={sessionId} />
                 </div>
               );
@@ -526,7 +527,7 @@ function sameTurn(a: TurnProps, b: TurnProps) {
 /**
  * The turn is live but nothing above is moving (waiting on the model, between
  * steps): just the teammate's working face (or the clock), so it never looks
- * frozen. Only a retry earns words.
+ * frozen. Only a retry earns words, and a shiver.
  */
 function Working({ sessionId, retry }: { sessionId: string; retry?: { attempt: number; message: string; next: number } }) {
   const now = useNow(!!retry);
@@ -534,7 +535,7 @@ function Working({ sessionId, retry }: { sessionId: string; retry?: { attempt: n
   const mate = useTeammate(useChat((s) => s.sessions[sessionId]?.agent ?? s.delegated[sessionId]));
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-3 flex h-6 items-center gap-2 text-[13px]" role="status" aria-label="Working">
-      {mate ? <TeammateFace seed={mate.face} color={mate.color} accessory={mate.accessory} size={20} state="working" /> : <AgentClock />}
+      {mate ? <Bird bird={mate.bird} seed={mate.face} size={22} state={retry ? "retrying" : "working"} /> : <AgentClock />}
       {retry && (
         <span className="text-ink-2">
           Retrying{retry.attempt > 1 ? ` (attempt ${retry.attempt})` : ""}

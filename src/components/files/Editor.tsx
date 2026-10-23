@@ -51,7 +51,7 @@ export function EditorTabs() {
               if (e.key === "Enter") open(f);
               if (e.key === "Delete" || e.key === "Backspace") close(f);
             }}
-            className={`group relative flex h-7 max-w-[200px] shrink-0 items-center gap-1.5 rounded-lg pr-1 pl-2.5 text-[13px] transition-colors ${on ? "bg-active text-ink" : "text-muted hover:bg-hover hover:text-ink"}`}
+            className={`group relative flex h-7 max-w-[200px] shrink-0 items-center gap-1.5 rounded-lg pr-1 pl-2.5 text-[13px] transition-colors ${on ? "chip text-ink" : "text-muted hover:bg-hover hover:text-ink"}`}
           >
             {langFromPath(name) !== "text" ? <FileCode2 size={13} className="shrink-0 text-muted" /> : <FileIcon size={13} className="shrink-0 text-faint" />}
             <span className="truncate">{name}</span>

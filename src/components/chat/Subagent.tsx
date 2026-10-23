@@ -2,11 +2,11 @@ import { Square } from "lucide-react";
 import { useEffect } from "react";
 import { useChat } from "../../state/chat";
 import { closeSubagent, useSubagentView } from "../../state/subagent";
-import { agentColor } from "../../lib/agentColor";
 import { Sheet } from "../ui/Sheet";
 import { Button } from "../ui/Button";
 import { AgentClock } from "../ui/AgentClock";
-import { TeammateFace } from "../ui/TeammateFace";
+import { AgentMark } from "../ui/Bird";
+import { useFace } from "../../state/face";
 import { useAgentName, useTeammate } from "../../state/teammates";
 import { Thread } from "./Thread";
 import { AskDock } from "./Asks";
@@ -28,6 +28,7 @@ export function SubagentHost({ compact }: { compact: boolean }) {
   }, [id]);
 
   const teammate = useTeammate(open?.agent);
+  const face = useFace(id);
   const name = useAgentName(open?.agent) || "Subagent";
   return (
     <Sheet
@@ -37,7 +38,7 @@ export function SubagentHost({ compact }: { compact: boolean }) {
       wide
       title={
         <div className="flex min-w-0 items-center gap-2 text-left">
-          {teammate ? <TeammateFace seed={teammate.face} color={teammate.color} accessory={teammate.accessory} size={26} state={busy ? "working" : "idle"} /> : <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: agentColor(open?.agent) }} />}
+          <AgentMark id={open?.agent} size={26} state={face} />
           <span className="shrink-0">{name}</span>
           {open?.title && <span className="min-w-0 truncate font-normal text-muted">{open.title}</span>}
           {busy && (

@@ -88,7 +88,7 @@ export function SkillsTab({ compact }: { compact: boolean }) {
         groups.map(([label, list]) =>
           list.length ? (
             <div key={label} className="mb-5">
-              <div className={`mb-1.5 text-[13px] font-medium text-muted ${compact ? "px-4" : ""}`}>
+              <div className={`mb-2 text-[11px] font-medium tracking-[0.06em] text-accent-ink uppercase`}>
                 {label} <span className="text-faint tabular-nums">{list.length}</span>
               </div>
               <div className="group-card divide-y divide-[var(--border)] overflow-hidden">

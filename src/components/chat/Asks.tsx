@@ -1,6 +1,6 @@
 /**
  * Approvals and questions, docked above the composer instead of lost in the
- * scrollback. Several at once become steps (one dot each); the header shows
+ * scrollback. Several at once become steps (one tick each); the header shows
  * who's asking. The answer keys work from anywhere but the text you're
  * typing: ⌥↵ allow once, ⌥⇧↵ always allow, ⌥⌫ deny. They're in each
  * button's tooltip rather than printed on it.
@@ -19,7 +19,7 @@ import { appLogo } from "../../lib/composio";
 import type { PermissionRule } from "../../lib/permissions";
 import { useExtensions } from "../../state/extensions";
 import { useTeammate, useTeammates } from "../../state/teammates";
-import { AgentMark } from "../ui/TeammateFace";
+import { AgentMark } from "../ui/Bird";
 import { MenuItem, Popover } from "../ui/Popover";
 import { rovingKeys } from "../../lib/layers";
 import { toast } from "../../state/ui";
@@ -75,7 +75,7 @@ export function AskDock({ sessionId, inLayer }: { sessionId: string; inLayer?: b
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 8 }}
             transition={{ type: "spring", stiffness: 420, damping: 34 }}
-            className="surface-overlay mb-2 overflow-hidden rounded-[20px] border !border-info/40 bg-raised shadow-float"
+            className="surface-overlay mb-2 overflow-hidden rounded-2xl border !border-info/40 bg-raised shadow-float"
             role="region"
             aria-label="Waiting for you"
           >
@@ -116,13 +116,13 @@ function DockHeader({ ask, asks, index, onPick, collapsed, onCollapse }: { ask: 
       </div>
       {asks.length > 1 && (
         <div className="flex shrink-0 items-center gap-1.5">
-          <span className="text-[12px] text-faint tabular-nums">
+          <span className="text-[12px] text-faint font-mono tabular-nums">
             {index + 1} of {asks.length}
           </span>
           <div role="tablist" aria-label="Waiting requests" className="flex items-center">
             {asks.map((a, i) => (
               <button key={a.id} role="tab" aria-selected={i === index} aria-label={`Request ${i + 1}`} onClick={() => onPick(a.id)} className="grid h-6 w-3.5 place-items-center">
-                <span className={`h-1.5 w-1.5 rounded-full transition-colors ${i === index ? "bg-info" : "bg-line-strong hover:bg-muted"}`} />
+                <span className={`h-1.5 transition-[width,background-color] ${i === index ? "w-2.5 bg-info" : "w-1.5 bg-line-strong hover:bg-muted"}`} />
               </button>
             ))}
           </div>
@@ -352,7 +352,7 @@ function AppPermissionStep({ req, app, inLayer }: { req: PermissionRequestLite; 
   return (
     <div ref={box}>
       <div className="scroll-quiet max-h-[50vh] space-y-2 overflow-y-auto px-3 pb-1">
-        <div className="flex items-start gap-3 rounded-xl bg-sunken px-3 py-2.5">
+        <div className="flex items-start gap-3 py-1">
           <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-white hairline">
             <img src={appLogo(app.app)} alt="" width={18} height={18} draggable={false} />
           </span>
@@ -552,7 +552,7 @@ function FormStep({ form, inLayer }: { form: FormLite; inLayer?: boolean }) {
               role="tab"
               aria-selected={i === step}
               onClick={() => setStep(i)}
-              className={`flex h-7 shrink-0 items-center gap-1 rounded-full px-2.5 text-[12px] transition-colors ${i === step ? "bg-ink text-bg" : "text-muted hover:bg-hover hover:text-ink"}`}
+              className={`flex h-7 shrink-0 items-center gap-1 rounded-full px-2.5 text-[12px] transition-colors ${i === step ? "bg-accent text-on-accent" : "text-muted hover:bg-hover hover:text-ink"}`}
             >
               {answered(f) && i !== step && <Check size={12} className="text-ok" />}
               {f.title || `Question ${i + 1}`}
@@ -639,7 +639,7 @@ function FieldInput({ f, question, labelled, value, other, onChange, onOther, on
                   onChange(o.value);
                   onChosen();
                 }}
-                className={`flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-info/40 sm:py-2 ${on ? "bg-active" : "hover:bg-hover"}`}
+                className={`flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-info/40 sm:py-2 ${on ? "chip" : "hover:bg-hover"}`}
               >
                 <Mark on={on} multi={multi} />
                 <span className="min-w-0 flex-1">
@@ -650,7 +650,7 @@ function FieldInput({ f, question, labelled, value, other, onChange, onOther, on
             );
           })}
           {custom && (
-            <label className={`flex w-full cursor-text items-center gap-3 rounded-xl px-3 py-1 transition-colors ${(multi ? !!other.trim() : value === OTHER) ? "bg-active" : "hover:bg-hover"}`}>
+            <label className={`flex w-full cursor-text items-center gap-3 rounded-xl px-3 py-1 transition-colors ${(multi ? !!other.trim() : value === OTHER) ? "chip" : "hover:bg-hover"}`}>
               {multi || value === OTHER ? <Mark on={multi ? !!other.trim() : true} multi={multi} /> : <PenLine size={16} className="mt-px shrink-0 text-faint" />}
               <input
                 ref={otherRef}
@@ -671,7 +671,7 @@ function FieldInput({ f, question, labelled, value, other, onChange, onOther, on
       ) : f.type === "boolean" ? (
         <div className="flex gap-1.5" role="radiogroup" aria-label={heading}>
           {[true, false].map((v) => (
-            <button key={String(v)} role="radio" aria-checked={value === v} onClick={() => onChange(v)} className={`h-10 flex-1 rounded-xl text-[14px] transition-colors sm:h-8 sm:flex-none sm:px-4 sm:text-[13px] ${value === v ? "bg-ink text-bg" : "bg-hover text-ink hover:bg-active"}`}>
+            <button key={String(v)} role="radio" aria-checked={value === v} onClick={() => onChange(v)} className={`h-10 flex-1 rounded-xl text-[14px] transition-colors sm:h-8 sm:flex-none sm:px-4 sm:text-[13px] ${value === v ? "bg-accent text-on-accent" : "bg-hover text-ink hover:bg-active"}`}>
               {v ? "Yes" : "No"}
             </button>
           ))}
@@ -691,10 +691,10 @@ function FieldInput({ f, question, labelled, value, other, onChange, onOther, on
   );
 }
 
-/** A radio dot or a checkbox tick, ink when on. */
+/** A radio dot or a checkbox tick, ice when on. */
 const Mark = ({ on, multi }: { on: boolean; multi: boolean }) => (
-  <span className={`mt-[3px] grid h-4 w-4 shrink-0 place-items-center border transition-colors ${multi ? "rounded-[5px]" : "rounded-full"} ${on ? "border-ink bg-ink text-bg" : "border-faint"}`}>
-    {on && (multi ? <Check size={11} strokeWidth={3} /> : <span className="h-1.5 w-1.5 rounded-full bg-bg" />)}
+  <span className={`mt-[3px] grid h-4 w-4 shrink-0 place-items-center border transition-colors ${multi ? "rounded-[5px]" : "rounded-full"} ${on ? "border-accent bg-accent text-on-accent" : "border-faint"}`}>
+    {on && (multi ? <Check size={11} strokeWidth={3} /> : <span className="h-1.5 w-1.5 rounded-full bg-on-accent" />)}
   </span>
 );
 

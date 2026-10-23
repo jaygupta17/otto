@@ -2,10 +2,12 @@ import { SquarePen } from "lucide-react";
 import { memo } from "react";
 import type { SessionInfo } from "@opencode/client";
 import { asksFor, useChat } from "../../state/chat";
+import { mateFace } from "../../state/face";
 import { timeAgo } from "../../lib/format";
-import { AgentMark } from "../ui/TeammateFace";
+import { AgentMark } from "../ui/Bird";
 import { useAgentName, useTeammate } from "../../state/teammates";
 import { AgentClock } from "../ui/AgentClock";
+import { Pip } from "../ui/Pip";
 
 export interface AgentGroup {
   id: string;
@@ -19,7 +21,7 @@ export interface AgentGroup {
 /** One row per teammate, like a conversation list: who, what they last did, when. Older sessions live in the chat's history. */
 export function AgentRows({ groups, now, onNavigate }: { groups: AgentGroup[]; now: number; onNavigate?: () => void }) {
   return (
-    <div className="space-y-px">
+    <div className="space-y-1">
       {groups.map((g) => (
         <AgentRow key={g.id} group={g} now={now} onNavigate={onNavigate} />
       ))}
@@ -43,7 +45,7 @@ const AgentRow = memo(function AgentRow({ group: g, now, onNavigate }: { group: 
   const face = !!useTeammate(g.id);
   const working = busyCount + helping;
   const needs = asking || helpAsks;
-  const state = needs ? "needs" : working ? "working" : unread ? "done" : "idle";
+  const state = useChat((s) => mateFace(s, g.id, g.sessions.map((x) => x.id)));
   const onActive = useChat((s) => g.sessions.some((x) => x.id === s.activeId));
   // A fresh draft with this teammate picked counts as being on its row too.
   const drafting = useChat((s) => s.activeId === null && s.pickedAgent === g.id);
@@ -68,18 +70,18 @@ const AgentRow = memo(function AgentRow({ group: g, now, onNavigate }: { group: 
   }
 
   return (
-    <div className={`group relative flex items-center rounded-lg transition-colors ${active ? "bg-active" : "hover:bg-hover"}`}>
-      <button type="button" onClick={openAgent} aria-current={active ? "true" : undefined} className="flex min-w-0 flex-1 items-center gap-2.5 py-2 pr-2 pl-2 text-left">
-        <AgentMark id={g.id} size={30} state={state} />
+    <div className={`group relative flex items-center rounded-[10px] transition-colors ${active ? "chip" : "hover:bg-hover"}`}>
+      <button type="button" onClick={openAgent} aria-current={active ? "true" : undefined} className="flex min-w-0 flex-1 items-center gap-3 py-2 pr-2.5 pl-2 text-left">
+        <AgentMark id={g.id} size={44} state={state} />
         <span className="min-w-0 flex-1">
           <span className="flex items-baseline gap-2">
-            <span className={`min-w-0 flex-1 truncate text-[13px] ${active || unread || needs ? "font-semibold text-ink" : "font-medium text-ink"}`}>{g.name}</span>
-            <span className="shrink-0 text-[11px] text-muted tabular-nums group-hover:invisible">{working > 0 && !face ? <AgentClock size={11} /> : latest ? timeAgo(latest.time.updated, now) : ""}</span>
+            <span className={`min-w-0 flex-1 truncate text-[14px] ${active || unread || needs ? "font-semibold text-ink" : "font-medium text-ink"}`}>{g.name}</span>
+            <span className="shrink-0 font-mono text-[11px] text-muted tabular-nums group-hover:invisible">{working > 0 && !face ? <AgentClock size={11} /> : latest ? timeAgo(latest.time.updated, now) : ""}</span>
           </span>
           <span className="flex items-center gap-2">
-            <span className={`min-w-0 flex-1 truncate text-[12px] ${needs ? "text-info" : "text-muted"}`}>{preview}</span>
-            {!needs && unread && !working && <span className="h-2 w-2 shrink-0 rounded-full bg-ink" aria-label="New result" />}
-            {working > 1 && <span className="shrink-0 text-[11px] text-muted tabular-nums">{working}</span>}
+            <span className={`min-w-0 flex-1 truncate text-[12.5px] ${needs ? "text-info" : "text-muted"}`}>{preview}</span>
+            {!needs && unread && !working && !face && <Pip tone="new" label="New result" />}
+            {working > 1 && <span className="shrink-0 text-[11px] text-muted font-mono tabular-nums">{working}</span>}
           </span>
         </span>
       </button>
@@ -88,7 +90,7 @@ const AgentRow = memo(function AgentRow({ group: g, now, onNavigate }: { group: 
         onClick={startNew}
         aria-label={`New session with ${g.name}`}
         title={`New session with ${g.name}`}
-        className="absolute top-1.5 right-1.5 hidden h-6 w-6 place-items-center rounded-md text-muted hover:bg-active hover:text-ink group-hover:grid"
+        className="absolute top-2 right-2 hidden h-6 w-6 place-items-center rounded-md text-muted hover:bg-active hover:text-ink group-hover:grid"
       >
         <SquarePen size={13} />
       </button>

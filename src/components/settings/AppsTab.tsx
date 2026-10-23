@@ -14,11 +14,12 @@ import { Button, IconButton } from "../ui/Button";
 import { MenuItem, Popover } from "../ui/Popover";
 import { TextField } from "../ui/Field";
 import { Spinner } from "../ui/AgentClock";
-import { PhonePage, Rows, Section, StatusDot } from "./common";
-import { APP_PERMISSIONS_ID } from "./AppPermissions";
+import { PhonePage, Rows, Section } from "./common";
+import { APP_PERMISSIONS_ID, EFFECT_PIP } from "./AppPermissions";
 import { appEffect, KINDS, sample } from "../../lib/appPermissions";
 import { useExtensions } from "../../state/extensions";
 import { useUI } from "../../state/ui";
+import { Pip } from "../ui/Pip";
 
 export function AppsTab() {
   const key = useConnectors((s) => s.key);
@@ -250,7 +251,7 @@ function AppsAllowed() {
               const e = appEffect(sample("*", k.kind), { global: rules ?? [], agent: [] });
               return (
                 <span key={k.kind} className="inline-flex items-center gap-1">
-                  <span className={`h-1.5 w-1.5 rounded-full ${e === "allow" ? "bg-ok" : e === "ask" ? "bg-warn" : "bg-danger"}`} />
+                  <Pip tone={EFFECT_PIP[e]} />
                   {k.label}: {e === "allow" ? "Allow" : e === "ask" ? "Ask" : "Block"}
                 </span>
               );
@@ -273,18 +274,18 @@ function Machine() {
   const connected = useChat((s) => !!s.client);
   const [confirm, setConfirm] = useState(false);
   const state = !connected
-    ? { tone: "muted" as const, text: "Connect to a workspace and its teammates get these apps." }
+    ? { tone: "off" as const, text: "Connect to a workspace and its teammates get these apps." }
     : machine === "ready"
-      ? { tone: "ok" as const, text: "Teammates on this workspace can use your apps." }
+      ? { tone: "on" as const, text: "Teammates on this workspace can use your apps." }
       : machine === "error"
-        ? { tone: "danger" as const, text: "Couldn't add your apps to this workspace." }
-        : { tone: "warn" as const, text: "Adding your apps to this workspace…" };
+        ? { tone: "error" as const, text: "Couldn't add your apps to this workspace." }
+        : { tone: "live" as const, text: "Adding your apps to this workspace…" };
   return (
     <div className="mt-6">
       <Rows>
         <AppsAllowed />
         <div className="flex items-center gap-3 px-4 py-3 text-[13px]">
-          <StatusDot tone={state.tone} />
+          <Pip tone={state.tone} />
           <span className="min-w-0 flex-1 text-ink-2">{state.text}</span>
           {machine === "error" && (
             <Button size="sm" onClick={() => void install(true)}>

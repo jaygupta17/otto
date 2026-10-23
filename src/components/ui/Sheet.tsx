@@ -76,6 +76,7 @@ export function Sheet({
           {page ? (
             <motion.div
               {...dialog}
+              data-focus-self
               className={`${grouped ? "bg-bg" : "surface-panel"} absolute inset-0 flex flex-col overflow-hidden shadow-pop outline-none`}
               initial={{ x: "100%" }}
               animate={{ x: 0 }}

@@ -161,7 +161,7 @@ export function ProjectSurface({ root }: { root: string | null }) {
                 setDraft(null);
                 setFile(f);
               }}
-              className={`h-6 rounded-md px-2 font-mono text-[11px] transition-colors ${f === file ? "bg-active text-ink" : "text-muted hover:bg-hover hover:text-ink"}`}
+              className={`h-6 rounded-md px-2 font-mono text-[11px] transition-colors ${f === file ? "chip text-ink" : "text-muted hover:bg-hover hover:text-ink"}`}
             >
               {f}
             </button>

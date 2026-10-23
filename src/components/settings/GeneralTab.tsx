@@ -8,7 +8,7 @@ import { notifyPermission, requestNotifyPermission, type Permission } from "../.
 import { dispatchAlerts, useNotifications, type AlertKind } from "../../state/notifications";
 import { Button } from "../ui/Button";
 import { Select } from "../ui/Select";
-import { AgentMark } from "../ui/TeammateFace";
+import { AgentMark } from "../ui/Bird";
 import { useSchedules } from "../../state/schedules";
 import { useTeammates } from "../../state/teammates";
 import { isOfferedAgent } from "../../lib/teammates";

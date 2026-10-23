@@ -9,14 +9,15 @@ import type { McpServer } from "../../lib/opencode/client";
 import { Button, IconButton } from "../ui/Button";
 import { TextField } from "../ui/Field";
 import { Spinner } from "../ui/AgentClock";
-import { Card, Empty, Label, Section, Segmented, StatusDot, Toggle } from "./common";
+import { Card, Empty, Label, Section, Segmented, Toggle } from "./common";
+import { Pip, type PipTone } from "../ui/Pip";
 
-const STATUS: Record<string, { label: string; tone: "ok" | "warn" | "danger" | "muted" }> = {
-  connected: { label: "Connected", tone: "ok" },
-  pending: { label: "Connecting…", tone: "warn" },
-  disabled: { label: "Off", tone: "muted" },
-  failed: { label: "Failed", tone: "danger" },
-  needs_auth: { label: "Needs sign-in", tone: "warn" },
+const STATUS: Record<string, { label: string; tone: PipTone }> = {
+  connected: { label: "Connected", tone: "on" },
+  pending: { label: "Connecting…", tone: "live" },
+  disabled: { label: "Off", tone: "off" },
+  failed: { label: "Failed", tone: "error" },
+  needs_auth: { label: "Needs sign-in", tone: "needs" },
 };
 
 /** Quick-add catalog of popular MCP servers. */
@@ -175,7 +176,7 @@ function ServerRow({ name, cfg, live, busy, onToggle, onRemove }: { name: string
           <div className="flex items-center gap-2">
             <span className="truncate text-[13px] font-semibold">{name}</span>
             <span className="flex items-center gap-1.5 text-[12px] text-muted">
-              <StatusDot tone={st.tone} /> {st.label}
+              <Pip tone={st.tone} /> {st.label}
             </span>
             {!cfg && <span className="rounded-md bg-sunken px-1.5 text-[12px] text-faint">runtime only</span>}
           </div>

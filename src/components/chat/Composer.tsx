@@ -221,7 +221,7 @@ export function Composer({ sessionId, placeholder = "Do anything…", autoFocus 
 
   const canSend = !!draft.trim() && ready && !sending && !needsAgent;
   const showStop = busy && !draft.trim();
-  // In a session the header already says who you're talking to, so the box is one pill: + · text · model · send.
+  // In a session the header already says who you're talking to, so the box is one row: + · text · model · send.
   const inline = !!sessionId;
 
   /** Start the draft with a trigger character and open its suggestions. */
@@ -287,7 +287,7 @@ export function Composer({ sessionId, placeholder = "Do anything…", autoFocus 
         setFocused(false);
         setTimeout(() => setSuggest(null), 120);
       }}
-      className={`scroll-quiet block resize-none bg-transparent leading-[1.5] text-ink outline-none placeholder:text-faint ${shellMode ? "font-mono text-[14px]" : compact ? "text-[16px]" : "text-[15px]"} ${inline ? "min-w-[120px] flex-1 self-center px-1 py-[7px]" : `w-full px-4 pt-3.5 ${compact ? "pb-1" : "min-h-[56px] pb-1.5"}`}`}
+      className={`scroll-quiet block resize-none bg-transparent leading-[1.5] text-ink outline-none placeholder:text-faint ${shellMode ? "font-mono text-[14px]" : compact ? "text-[16px]" : "text-[15px]"} ${inline ? `${compact ? "min-w-[84px]" : "min-w-[120px]"} flex-1 self-center px-1 py-[7px]` : `w-full px-4 pt-3.5 ${compact ? "pb-1" : "min-h-[56px] pb-1.5"}`}`}
       spellCheck
     />
   );
@@ -299,7 +299,7 @@ export function Composer({ sessionId, placeholder = "Do anything…", autoFocus 
         <button
           onClick={() => setDeliveryMode(delivery === "steer" ? "queue" : "steer")}
           title={delivery === "steer" ? "Steer: the agent reads your message after its current step. Click to queue it for after the run instead." : "Queue: the agent reads your message when the run finishes. Click to steer instead."}
-          className="h-7 shrink-0 rounded-full px-2.5 text-[12px] text-ink-2 hairline transition-colors hover:bg-hover hover:text-ink"
+          className="h-7 shrink-0 rounded-md px-2.5 text-[12px] text-ink-2 hairline transition-colors hover:bg-hover hover:text-ink"
         >
           {delivery === "steer" ? "Steer" : "Queue"}
         </button>
@@ -315,7 +315,7 @@ export function Composer({ sessionId, placeholder = "Do anything…", autoFocus 
             exit={{ scale: 0.85, opacity: 0 }}
             transition={{ duration: 0.12 }}
             onClick={() => sessionId && interrupt(sessionId)}
-            className={`grid shrink-0 place-items-center rounded-full bg-ink text-bg hover:opacity-85 ${inline ? "h-9 w-9" : "h-8 w-8"}`}
+            className={`grid shrink-0 place-items-center bg-accent text-on-accent hover:brightness-110 ${inline ? "h-9 w-9 rounded-[10px]" : "h-8 w-8 rounded-lg"}`}
             aria-label="Stop"
             title="Stop (Esc)"
           >
@@ -325,12 +325,13 @@ export function Composer({ sessionId, placeholder = "Do anything…", autoFocus 
           <motion.button
             key="send"
             initial={{ scale: 0.85, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
+            // Dimmed ice until there's something to send (motion owns opacity here, so not a CSS variant).
+            animate={{ scale: 1, opacity: canSend ? 1 : 0.35 }}
             exit={{ scale: 0.85, opacity: 0 }}
             transition={{ duration: 0.12 }}
             onClick={() => void submit()}
             disabled={!canSend}
-            className={`grid shrink-0 place-items-center rounded-full bg-ink text-bg transition-opacity hover:opacity-85 disabled:bg-active disabled:text-muted ${inline ? "h-9 w-9" : "h-8 w-8"}`}
+            className={`grid shrink-0 place-items-center bg-accent text-on-accent enabled:hover:brightness-110 ${inline ? "h-9 w-9 rounded-[10px]" : "h-8 w-8 rounded-lg"}`}
             aria-label={busy ? (delivery === "steer" ? "Steer" : "Queue") : "Send"}
             title={shellMode ? "Run (Enter)" : busy ? (delivery === "steer" ? "Steer (Enter)" : "Queue (Enter)") : "Send (Enter)"}
           >
@@ -349,7 +350,7 @@ export function Composer({ sessionId, placeholder = "Do anything…", autoFocus 
             initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 4, transition: { duration: 0.1 } }}
-            className="surface-overlay absolute inset-x-2 bottom-full z-20 mb-2 overflow-hidden rounded-2xl border border-line bg-raised p-1 shadow-pop"
+            className="surface-overlay absolute inset-x-2 bottom-full z-20 mb-2 overflow-hidden rounded-xl border border-line bg-raised p-1 shadow-pop"
           >
             {suggest.items.length === 0 ? (
               <div className="px-3 py-2 text-[12px] text-muted">{suggest.query ? "No matching files" : "Type to search files"}</div>
@@ -374,7 +375,7 @@ export function Composer({ sessionId, placeholder = "Do anything…", autoFocus 
       </AnimatePresence>
 
       <div
-        className={`surface-float relative border bg-raised shadow-float transition-colors duration-150 ${inline ? "rounded-[24px]" : "rounded-3xl"} ${focused ? "border-line-strong" : "border-line"}`}
+        className={`surface-float relative border bg-raised shadow-float transition-colors duration-150 rounded-2xl ${focused ? "border-line-strong" : "border-line"}`}
         onClick={(e) => {
           if (e.target === e.currentTarget) ta.current?.focus();
         }}
@@ -429,7 +430,7 @@ function AddMenu({ shell, onPick }: { shell: boolean; onPick: (kind: "file" | "c
   };
   return (
     <>
-      <button ref={anchor} onClick={() => setOpen((v) => !v)} aria-label="Add" aria-haspopup="menu" aria-expanded={open} title="Files, commands, shell" className={`grid h-9 w-9 shrink-0 place-items-center rounded-full text-muted transition-colors hover:bg-hover hover:text-ink ${open ? "bg-hover text-ink" : ""}`}>
+      <button ref={anchor} onClick={() => setOpen((v) => !v)} aria-label="Add" aria-haspopup="menu" aria-expanded={open} title="Files, commands, shell" className={`grid h-9 w-9 shrink-0 place-items-center rounded-[10px] text-muted transition-colors hover:bg-hover hover:text-ink ${open ? "bg-hover text-ink" : ""}`}>
         <Plus size={18} />
       </button>
       <Popover open={open} onClose={() => setOpen(false)} anchor={anchor.current} placement="top-start" width={240} label="Add">

@@ -1,5 +1,5 @@
 /**
- * Otto mark: a ring (the machine) with an amber point (the agent at work).
+ * Otto mark: a ring (the machine) with an ice point (the agent at work).
  * Flat, one stroke weight, no gradients.
  */
 export function Mark({ size = 16, className = "" }: { size?: number; className?: string }) {

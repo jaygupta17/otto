@@ -16,11 +16,12 @@ describe("themeVars", () => {
     const l = themeVars(latte);
     const d = themeVars(mocha);
     expect(l["--bg-deep"]).toContain("black 5%");
-    expect(d["--bg-deep"]).toContain("black 25%");
+    // Dark never sinks below the ground: nothing reads as a hole.
+    expect(d["--bg-deep"]).toBe(mocha.tokens.bg);
     expect(l["--surface"]).toContain("4%");
     expect(d["--surface"]).toContain("6%");
     expect(l["--surface-sunken"]).toContain(latte.tokens.text);
-    expect(d["--surface-sunken"]).toContain("black 10%");
+    expect(d["--surface-sunken"]).toContain(mocha.tokens.text);
     expect(l["--border"]).toBe(latte.tokens.border!);
     expect(d["--border"]).toBe(mocha.tokens.border!);
     expect(d["--border-strong"]).not.toBe(d["--border"]);
@@ -56,7 +57,7 @@ describe("themeVars", () => {
 describe("helpers", () => {
   test("themePreview shows ground, panel, accent and ink", () => {
     expect(themePreview(latte)).toEqual({ bg: "#eff1f5", panel: "#ffffff", accent: "#8839ef", text: "#4c4f69" });
-    expect(themePreview(ottoLight).bg).toBe("#f2f2f1");
+    expect(themePreview(ottoLight).bg).toBe("#eef1f5");
   });
 
   test("slug is url-safe and never keeps path characters", () => {

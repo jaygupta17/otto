@@ -12,7 +12,7 @@ import { useUI } from "../../state/ui";
 import { CATALOG, hash } from "../../lib/teammates";
 import { Button } from "../ui/Button";
 import { Spinner } from "../ui/AgentClock";
-import { TeammateFace } from "../ui/TeammateFace";
+import { Bird } from "../ui/Bird";
 
 type Member = (typeof CATALOG)[number];
 
@@ -51,7 +51,7 @@ export function HireGallery({ profile, onProfile, onCustom, onEdit, onTalk, comp
           return (
             <motion.li key={t.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22, delay: 0.025 * i }}>
               <button onClick={() => onProfile(t.id)} className="flex h-full w-full flex-col items-center rounded-2xl px-3 pb-4 pt-5 text-center transition-colors hover:bg-hover">
-                <TeammateFace seed={hash(t.id)} color={t.color} accessory={t.accessory} size={56} greet={false} label={t.name} />
+                <Bird bird={t.bird} seed={hash(t.id)} size={56} greet={false} label={t.name} />
                 <span className="mt-3 flex items-center gap-1 text-[13px] font-medium text-ink">
                   {t.name}
                   {s === "hired" && <Check size={13} className="text-ok" aria-label="On the team" />}
@@ -95,7 +95,7 @@ function Profile({ t, standing, onBack, onEdit, onTalk, compact }: { t: Member; 
       )}
 
       <div className="flex items-center gap-4">
-        <TeammateFace seed={hash(t.id)} color={t.color} accessory={t.accessory} size={compact ? 64 : 80} state={joined ? "done" : "idle"} follow interactive label={t.name} />
+        <Bird bird={t.bird} seed={hash(t.id)} size={compact ? 64 : 80} mood={joined ? "party" : undefined} follow interactive label={t.name} />
         <div className="min-w-0">
           <div className="truncate text-[13px] text-muted">
             <span className="font-medium text-ink-2">{t.name}</span> · {t.job}
@@ -107,7 +107,7 @@ function Profile({ t, standing, onBack, onEdit, onTalk, compact }: { t: Member; 
       <p className="mt-4 text-[14px] leading-relaxed text-ink-2">{t.tagline}</p>
       {lead && !t.leads && (
         <p className="mt-2 flex items-center gap-1.5 text-[12px] text-muted">
-          <TeammateFace seed={lead.face} color={lead.color} accessory={lead.accessory} size={18} greet={false} />
+          <Bird bird={lead.bird} seed={lead.face} size={18} greet={false} />
           {lead.name} can hand them work.
         </p>
       )}

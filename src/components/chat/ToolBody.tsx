@@ -33,7 +33,7 @@ import { Markdown } from "./Markdown";
 import { useMemory } from "../../state/memory";
 import { useTeammates } from "../../state/teammates";
 import type { Teammate } from "../../lib/teammates";
-import { AgentMark } from "../ui/TeammateFace";
+import { AgentMark } from "../ui/Bird";
 import { Code, CopyButton, DiffView, FileIcon, OpenButton, OutputView, PathLabel, ScrollBox, Section, SplitToggle, langOf, useOpenFile, useSplitDiff } from "./ToolParts";
 
 type Json = Record<string, unknown>;
@@ -664,7 +664,7 @@ function MemoryCallCard({ c }: { c: MemoryCall }) {
         {type && <span className="rounded-md bg-hover px-1.5 py-px text-[11px] font-medium text-muted">{type.charAt(0).toUpperCase() + type.slice(1)}</span>}
         {scope && (
           <span className="flex items-center gap-1">
-            {roster?.[scope] && <AgentMark id={scope} size={14} />}
+            {roster?.[scope] && <AgentMark id={scope} size={18} />}
             {memoryScopeLabel(scope, roster)}
           </span>
         )}

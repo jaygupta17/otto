@@ -88,12 +88,12 @@ export function themeVars(theme: Theme): Record<string, string> {
   const borderStrong = theme.tokens.border ? mix(theme.tokens.border, text, 12) : mix(bg, text, dark ? 30 : 24);
   return {
     "--bg": bg,
-    "--bg-deep": dark ? mix(bg, "black", 25) : mix(bg, "black", 5),
+    "--bg-deep": dark ? bg : mix(bg, "black", 5),
     "--bg-panel": panel,
     "--surface": mix(panel, text, dark ? 6 : 4),
     "--surface-solid": panel,
     "--surface-raised": mix(panel, text, dark ? 9 : 3),
-    "--surface-sunken": dark ? mix(bg, "black", 10) : mix(bg, text, 4),
+    "--surface-sunken": mix(panel, text, 4),
     "--hover": alpha(text, 5),
     "--active": alpha(text, 8),
     "--border": border,

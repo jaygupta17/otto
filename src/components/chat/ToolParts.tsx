@@ -252,7 +252,7 @@ export function JsonView({ value, raw }: { value: unknown; raw: string }) {
             role="tab"
             aria-selected={tab === t}
             onClick={() => setTab(t)}
-            className={`rounded-md px-2 py-0.5 text-[11px] capitalize transition-colors ${tab === t ? "bg-active text-ink" : "text-faint hover:text-ink"}`}
+            className={`rounded-md px-2 py-0.5 text-[11px] capitalize transition-colors ${tab === t ? "chip text-ink" : "text-faint hover:text-ink"}`}
           >
             {t}
           </button>

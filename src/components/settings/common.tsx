@@ -3,11 +3,12 @@ import { Search } from "lucide-react";
 import { createContext, useContext, useEffect, useRef, type ReactNode } from "react";
 import type { Effect } from "../../lib/permissions";
 import { Hint } from "../ui/Tooltip";
+import { EmptyState } from "../ui/EmptyState";
 
 /**
  * Inside a settings page pushed on a phone. The page bar already names it, so
  * a tab's heading gives way to its description, and groups read like the
- * grouped list one level up: muted headers, borderless cards.
+ * grouped list one level up: small uppercase labels flush with the cards under them.
  */
 export const PhonePage = createContext(false);
 
@@ -19,16 +20,16 @@ export function Section({ title, desc, children, action, page }: { title: ReactN
       <section className="mb-8 last:mb-0">
         {page ? (
           (desc || action) && (
-            <div className="mb-6 flex items-start justify-between gap-3 px-1">
+            <div className="mb-6 flex items-start justify-between gap-3">
               <div className="min-w-0 text-[14px] leading-snug text-muted">{desc}</div>
               {action}
             </div>
           )
         ) : (
-          <div className="mb-1.5 flex min-h-7 items-end justify-between gap-3 px-4">
+          <div className="mb-2 flex min-h-7 items-end justify-between gap-3">
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
-                <h3 className="text-[13px] font-medium text-muted">{title}</h3>
+                <h3 className="text-[11px] font-medium tracking-[0.06em] text-accent-ink uppercase">{title}</h3>
                 {typeof desc === "string" && <Hint>{desc}</Hint>}
               </div>
               {desc && typeof desc !== "string" && <div className="mt-0.5 text-[13px] text-muted">{desc}</div>}
@@ -121,7 +122,7 @@ export function Slider({ value, min, max, step = 0.01, format, onChange, label }
         className="slider min-w-0 flex-1"
         style={{ "--fill": `${fill}%` } as React.CSSProperties}
       />
-      <span className="w-10 text-right text-[12px] text-muted tabular-nums">{format(value)}</span>
+      <span className="w-10 text-right text-[12px] text-muted font-mono tabular-nums">{format(value)}</span>
     </span>
   );
 }
@@ -143,9 +144,9 @@ export function Toggle({ on, onChange, disabled, label }: { on: boolean; onChang
       aria-label={label}
       disabled={disabled}
       onClick={() => onChange(!on)}
-      className={`relative h-[22px] w-[38px] shrink-0 rounded-full transition-colors duration-200 disabled:opacity-40 ${on ? "bg-ink" : "bg-line-strong"}`}
+      className={`relative h-[22px] w-[38px] shrink-0 rounded-full transition-colors duration-200 disabled:opacity-40 ${on ? "bg-accent" : "bg-line-strong"}`}
     >
-      <motion.span layout transition={{ type: "spring", stiffness: 600, damping: 34 }} className={`absolute top-[3px] h-4 w-4 rounded-full shadow-soft ${on ? "bg-bg" : "bg-white"}`} style={{ left: on ? 19 : 3 }} />
+      <motion.span layout transition={{ type: "spring", stiffness: 600, damping: 34 }} className={`absolute top-[3px] h-4 w-4 rounded-full shadow-soft bg-white`} style={{ left: on ? 19 : 3 }} />
     </button>
   );
 }
@@ -153,7 +154,7 @@ export function Toggle({ on, onChange, disabled, label }: { on: boolean; onChang
 /** `stretch` spans the width on phones, where a page's sections read as one control. */
 export function Segmented<T extends string>({ options, value, onChange, size = "md", id, stretch }: { options: { id: T; label: ReactNode }[]; value: T; onChange: (v: T) => void; size?: "sm" | "md"; id: string; stretch?: boolean }) {
   return (
-    <div className={`inline-flex gap-0.5 rounded-xl bg-sunken p-0.5 hairline ${stretch ? "max-sm:flex max-sm:w-full" : ""}`}>
+    <div className={`inline-flex gap-0.5 rounded-[11px] well p-[3px] ${stretch ? "max-sm:flex max-sm:w-full" : ""}`}>
       {options.map((o) => (
         <button
           key={o.id}
@@ -218,7 +219,7 @@ export function EffectPicker({
   const shown = value ?? fallback;
   return (
     <div className="inline-flex shrink-0 items-center gap-2">
-      <div className="inline-flex gap-0.5 rounded-lg bg-sunken p-0.5 hairline">
+      <div className="inline-flex gap-0.5 rounded-[10px] well p-[3px]">
         {effects.map((o) => {
           const on = shown === o;
           return (
@@ -261,17 +262,9 @@ export function DefaultMark({ own, fallback, onReset, verbose }: { own: boolean;
   );
 }
 
+/** Nothing here yet, flat on the page (see `EmptyState`). */
 export function Empty({ icon, title, body, action }: { icon?: ReactNode; title: string; body?: ReactNode; action?: ReactNode }) {
-  return (
-    <div className="empty-card rounded-2xl border border-line px-5 py-6">
-      <div className="flex items-center gap-2 text-[14px] font-medium text-ink">
-        <span className="text-muted">{icon}</span>
-        {title}
-      </div>
-      {body && <div className="mt-1 max-w-[440px] text-[13px] text-muted">{body}</div>}
-      {action && <div className="mt-4">{action}</div>}
-    </div>
-  );
+  return <EmptyState small mark={icon} title={title} body={body} action={action} />;
 }
 
 export function TextArea({ value, onChange, placeholder, rows = 6, mono = false }: { value: string; onChange: (v: string) => void; placeholder?: string; rows?: number; mono?: boolean }) {
@@ -312,7 +305,3 @@ export function LoadMore({ onVisible, active }: { onVisible: () => void; active:
   return <div ref={ref} className="h-1" />;
 }
 
-export function StatusDot({ tone }: { tone: "ok" | "warn" | "danger" | "muted" }) {
-  const c = tone === "ok" ? "bg-ok" : tone === "warn" ? "bg-warn" : tone === "danger" ? "bg-danger" : "bg-line-strong";
-  return <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${c}`} />;
-}

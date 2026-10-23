@@ -87,16 +87,16 @@ export function Settings({ compact }: { compact: boolean }) {
           </div>
           {SETTINGS_GROUPS.map((g, gi) => (
             <div key={gi} className="mb-3">
-              {g.label && <div className="px-2.5 pt-1 pb-1 text-[12px] font-semibold text-faint ">{g.label}</div>}
+              {g.label && <div className="px-2.5 pt-1 pb-1.5 text-[11px] font-medium tracking-[0.06em] text-accent-ink uppercase">{g.label}</div>}
               {g.items.map((t) => (
                 <button
                   key={t.id}
                   onClick={() => openSettings(t.id)}
-                  className={`relative flex w-full shrink-0 items-center gap-2.5 rounded-xl px-2.5 py-[7px] text-[13px] transition-colors ${tab === t.id ? "text-ink" : "text-muted hover:bg-hover hover:text-ink"}`}
+                  className={`relative flex w-full shrink-0 items-center gap-2.5 rounded-xl px-2.5 py-[7px] text-[13px] transition-colors ${tab === t.id ? "font-medium text-ink" : "text-muted hover:bg-hover hover:text-ink"}`}
                 >
-                  {tab === t.id && <motion.span layoutId="settings-tab" className="absolute inset-0 rounded-xl bg-active" transition={{ type: "spring", stiffness: 500, damping: 40 }} />}
-                  <t.icon size={15} className="relative" />
-                  <span className="relative whitespace-nowrap">{t.label}</span>
+                  {tab === t.id && <motion.span layoutId="settings-tab" className="chip absolute inset-0 z-0 rounded-xl" transition={{ type: "spring", stiffness: 500, damping: 40 }} />}
+                  <t.icon size={15} className="relative z-[1] text-accent-ink" />
+                  <span className="relative z-[1] whitespace-nowrap">{t.label}</span>
                 </button>
               ))}
             </div>

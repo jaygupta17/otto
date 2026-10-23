@@ -70,7 +70,7 @@ export function ModelSelect({ value, onChange, inheritLabel = "Use default model
                 key={v.id}
                 type="button"
                 onClick={() => onChange({ ...value, variant: v.id })}
-                className={`rounded-lg px-2 py-1 text-[12px] capitalize ${(value.variant ?? "default") === v.id ? "bg-active font-medium text-ink" : "text-muted hover:bg-hover"}`}
+                className={`rounded-lg px-2 py-1 text-[12px] capitalize ${(value.variant ?? "default") === v.id ? "chip font-medium text-ink" : "text-muted hover:bg-hover"}`}
               >
                 {v.id}
               </button>

@@ -21,6 +21,8 @@ import { Hint } from "../ui/Tooltip";
 import { Sheet } from "../ui/Sheet";
 import { PanelToggle } from "../panel/SidePanel";
 import { kbd } from "../../hooks/useShortcuts";
+import { PageTitle, TopBar, useBigTitle } from "../ui/Hero";
+import { Pip } from "../ui/Pip";
 
 const DAYS = ["S", "M", "T", "W", "T", "F", "S"];
 /** When a workspace's schedules actually run, by provider. */
@@ -76,25 +78,20 @@ export function SchedulesView({ compact = false }: { compact?: boolean }) {
   }, [load]);
 
   const mac = useTrafficLights();
+  const { onScroll, past } = useBigTitle();
   const hint = `Agents that start on their own, even with Otto closed.${RUNS_WHILE[ws?.provider ?? ""] ?? ""}`;
   const closeEditor = () => {
     setEditing(null);
     setTemplate(null);
   };
   return (
-    <div className="flex h-full flex-col">
+    <div className="relative flex h-full flex-col">
       {compact ? (
-        <header className="safe-top shrink-0 px-2">
-          <div className="flex h-[52px] items-center">
-            <h1 className="flex min-w-0 flex-1 items-center gap-1.5 pl-2 text-[17px] font-semibold">
-              Schedules
-              <Hint>{hint}</Hint>
-            </h1>
-            <button onClick={() => setEditing("new")} aria-label="New schedule" className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-ink transition-colors active:bg-hover">
-              <Plus size={22} />
-            </button>
-          </div>
-        </header>
+        <TopBar title="Schedules" show={past}>
+          <button onClick={() => setEditing("new")} aria-label="New schedule" className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-ink transition-colors active:bg-hover">
+            <Plus size={22} />
+          </button>
+        </TopBar>
       ) : (
         <header className={`drag flex h-[52px] shrink-0 items-center gap-2 pr-3 ${!sidebarOpen && mac ? "pl-[84px]" : "pl-3"}`} data-tauri-drag-region>
           {!sidebarOpen && (
@@ -106,8 +103,11 @@ export function SchedulesView({ compact = false }: { compact?: boolean }) {
           <PanelToggle />
         </header>
       )}
-      <div data-scroll-root className="scroll-quiet min-h-0 flex-1 overflow-y-auto">
-        <div className={`mx-auto w-full max-w-[720px] ${compact ? "px-4 pt-2 pb-8" : "px-5 pb-16 sm:px-8"}`}>
+      <div data-scroll-root onScroll={compact ? onScroll : undefined} className={`scroll-quiet relative min-h-0 flex-1 overflow-y-auto ${compact ? "safe-top" : ""}`}>
+        {compact && (
+          <PageTitle title="Schedules" after={<Hint>{hint}</Hint>} />
+        )}
+        <div className={`mx-auto w-full max-w-[720px] ${compact ? "px-4 pb-8" : "px-5 pb-16 sm:px-8"}`}>
           <AnimatePresence mode="wait" initial={false}>
             {editing && !compact ? (
               <motion.div key="edit" initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 16 }} transition={{ duration: 0.18 }}>
@@ -134,9 +134,9 @@ export function SchedulesView({ compact = false }: { compact?: boolean }) {
                   </div>
                 ) : list.length === 0 ? (
                   <>
-                    <h2 className={`text-[13px] font-medium text-muted ${compact ? "mb-1.5 px-4" : "mb-3"}`}>Start from an example</h2>
+                    <h2 className={compact ? "mb-2 text-[11px] font-medium tracking-[0.06em] text-accent-ink uppercase" : "mb-3 text-[13px] font-medium text-muted"}>Start from an example</h2>
                     {/* Cards side by side where there's room; on a phone, one grouped list. */}
-                    <div className={compact ? "divide-y divide-[var(--border)] overflow-hidden rounded-[14px] bg-panel" : "grid gap-2.5 sm:grid-cols-3"}>
+                    <div className={compact ? "bezel divide-y divide-[var(--border)] overflow-hidden rounded-[14px]" : "grid gap-2.5 sm:grid-cols-3"}>
                       {TEMPLATES.map((t) => (
                         <button
                           key={t.name}
@@ -144,9 +144,9 @@ export function SchedulesView({ compact = false }: { compact?: boolean }) {
                             setTemplate(t);
                             setEditing("new");
                           }}
-                          className={compact ? "flex w-full items-center gap-3.5 px-4 py-3 text-left transition-colors active:bg-hover" : "group flex flex-col items-start gap-6 rounded-2xl bg-raised p-4 text-left hairline transition-colors hover:bg-hover"}
+                          className={compact ? "flex w-full items-center gap-3.5 px-4 py-3 text-left transition-colors active:bg-hover" : "bezel group flex flex-col items-start gap-6 rounded-2xl p-4 text-left transition-colors hover:bg-hover"}
                         >
-                          <t.icon size={compact ? 20 : 17} className={compact ? "shrink-0 text-ink-2" : "text-muted transition-colors group-hover:text-ink"} />
+                          <t.icon size={compact ? 20 : 17} className="shrink-0 text-accent-ink" />
                           <span className="min-w-0 flex-1">
                             <span className={`block font-medium ${compact ? "text-[16px]" : "text-[14px]"}`}>{t.name}</span>
                             <span className={`mt-0.5 block text-muted ${compact ? "text-[14px]" : "text-[12px]"}`}>{describe(t.frequency)}</span>
@@ -157,7 +157,7 @@ export function SchedulesView({ compact = false }: { compact?: boolean }) {
                     </div>
                   </>
                 ) : (
-                  <div className={`divide-y divide-[var(--border)] overflow-hidden ${compact ? "rounded-[14px] bg-panel" : "rounded-2xl bg-raised hairline"}`}>
+                  <div className={`divide-y divide-[var(--border)] overflow-hidden ${compact ? "bezel rounded-[14px]" : "bezel rounded-2xl"}`}>
                     {list.map((s) => (
                       <ScheduleRow key={s.id} s={s} serverOffset={env?.serverOffset ?? 0} onEdit={() => setEditing(s)} />
                     ))}
@@ -190,10 +190,9 @@ function ScheduleRow({ s, serverOffset, onEdit }: { s: Schedule; serverOffset: n
 
   return (
     <div className={`group flex items-center gap-3 px-4 py-3 transition-colors hover:bg-hover ${s.enabled ? "" : "opacity-60"}`}>
-      <span
-        title={!last ? "Hasn't run yet" : last.ok ? `Last run ${ago(last.at)}` : `Last run failed ${ago(last.at)}`}
-        className={`h-2 w-2 shrink-0 rounded-full ${!last ? "bg-line-strong" : last.ok ? "bg-ok" : "bg-danger"}`}
-      />
+      <span title={!last ? "Hasn't run yet" : last.ok ? `Last run ${ago(last.at)}` : `Last run failed ${ago(last.at)}`} className="grid shrink-0 place-items-center">
+        <Pip tone={!last ? "off" : last.ok ? "on" : "error"} />
+      </span>
       <button onClick={onEdit} className="min-w-0 flex-1 text-left">
         <span className="block truncate text-[14px] text-ink">{s.name}</span>
         <span className="block truncate text-[12px] text-muted">
@@ -402,7 +401,7 @@ function ScheduleEditor({ initial, template, onClose, page = false }: { initial:
                     aria-pressed={on}
                     title={DAY_NAMES[i]}
                     onClick={() => setFreq({ ...freq, days: on ? freq.days.filter((x) => x !== i) : [...freq.days, i].sort() })}
-                    className={`grid h-8 w-8 place-items-center rounded-full text-[12px] font-medium transition-colors ${on ? "bg-ink text-bg" : "text-muted hairline hover:bg-hover hover:text-ink"}`}
+                    className={`grid h-8 w-8 place-items-center rounded-full text-[12px] font-medium transition-colors ${on ? "bg-accent text-on-accent" : "text-muted hairline hover:bg-hover hover:text-ink"}`}
                   >
                     {d}
                   </button>
@@ -445,7 +444,7 @@ function ScheduleEditor({ initial, template, onClose, page = false }: { initial:
             <div className="divide-y divide-[var(--border)] overflow-hidden rounded-xl hairline">
               {runs.slice(0, 6).map((r, i) => (
                 <div key={i} className="flex items-center gap-2.5 px-3 py-2 text-[13px]">
-                  <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${r.ok ? "bg-ok" : "bg-danger"}`} />
+                  <Pip tone={r.ok ? "on" : "error"} label={r.ok ? "Ran" : "Failed"} />
                   <span className="text-ink-2">{new Date(r.at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}</span>
                   <span className="min-w-0 flex-1 truncate text-faint">{r.ok ? "" : r.error}</span>
                   {r.sessionID && (

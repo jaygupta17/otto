@@ -15,13 +15,14 @@ import { ModelSelect, type ModelValue } from "./ModelSelect";
 import { TeammateEditor } from "./TeammateEditor";
 import { useTeammates, useTeammateState } from "../../state/teammates";
 import { Sheet } from "../ui/Sheet";
-import { TeammateFace } from "../ui/TeammateFace";
+import { Bird, PlainMark } from "../ui/Bird";
 import { CATALOG, hash, isOfferedAgent, listNames, STARTER_TEAM, type Teammate } from "../../lib/teammates";
 import { HireGallery } from "./HireGallery";
 import { COMPOSIO_SERVER } from "../../lib/composio";
 import { appEffect, KINDS, sample } from "../../lib/appPermissions";
 import { useConnectors } from "../../state/connectors";
 import { AppPermissions } from "./AppPermissions";
+import { Pip, type PipTone } from "../ui/Pip";
 
 const NO_RULES: readonly { action: string; resource: string; effect: Effect }[] = [];
 const BUILTIN = new Set(["build", "plan", "general", "explore", "compaction", "title", "summary"]);
@@ -190,7 +191,7 @@ export function AgentsTab({ compact, onMessage }: { compact: boolean; onMessage?
     const grouped = hiring === false;
     return (
       <div>
-        <label className="mx-4 flex h-9 items-center gap-2 rounded-[10px] bg-active px-2.5">
+        <label className="field mx-4 flex h-9 items-center gap-2 rounded-[10px] px-2.5">
           <Search size={16} className="shrink-0 text-faint" />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search" aria-label="Search teammates and agents" className="min-w-0 flex-1 bg-transparent text-[16px] outline-none placeholder:text-faint" />
         </label>
@@ -200,8 +201,8 @@ export function AgentsTab({ compact, onMessage }: { compact: boolean; onMessage?
           </div>
         )}
         {team.length > 0 && (
-          <section className="mt-5">
-            <h2 className="px-4 pb-1 text-[13px] font-medium text-muted">Teammates</h2>
+          <section className="mt-6">
+            <h2 className="px-4 pb-1 text-[11px] font-medium tracking-[0.06em] text-accent-ink uppercase">Teammates</h2>
             {team.map((m) => (
               <MateRow key={m.id} t={m} disabled={!!cfgAgents[m.id]?.disabled} onClick={() => show({ selected: m.id })} />
             ))}
@@ -209,29 +210,20 @@ export function AgentsTab({ compact, onMessage }: { compact: boolean; onMessage?
         )}
         {!q.trim() && !noTeammates && (
           <button onClick={() => show({ hiring: null })} className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors active:bg-hover">
-            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-active text-ink">
+            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-dashed border-[var(--border-strong)] text-ink-2">
               <Plus size={20} />
             </span>
             <span className="min-w-0 flex-1 text-[16px] font-medium text-ink">Hire a teammate</span>
-            {missing.length > 0 && (
-              <span className="flex shrink-0 -space-x-2">
-                {missing.slice(0, 3).map((t) => (
-                  <TeammateFace key={t.id} seed={hash(t.id)} color={t.color} accessory={t.accessory} size={26} />
-                ))}
-              </span>
-            )}
           </button>
         )}
         {list.length > 0 && (
-          <section className="mt-5">
-            <h2 className="px-4 pb-1 text-[13px] font-medium text-muted">Agents</h2>
+          <section className="mt-6">
+            <h2 className="px-4 pb-1 text-[11px] font-medium tracking-[0.06em] text-accent-ink uppercase">Agents</h2>
             {list.map((a) => {
               const off = a.cfg?.disabled;
               return (
                 <button key={a.id} onClick={() => show({ selected: a.id })} className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors active:bg-hover">
-                  <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-active">
-                    <span className="h-2.5 w-2.5 rounded-full" style={{ background: agentColor(a.id, a.cfg?.color ?? a.info?.color) }} />
-                  </span>
+                  <PlainMark size={44} />
                   <span className="min-w-0 flex-1">
                     <span className={`block truncate text-[16px] font-medium ${off ? "text-faint line-through" : "text-ink"}`}>{a.info?.name ?? a.id}</span>
                     <span className="mt-0.5 block truncate text-[14px] text-muted">{modeLabel(a.info?.mode ?? a.cfg?.mode)}</span>
@@ -285,14 +277,11 @@ export function AgentsTab({ compact, onMessage }: { compact: boolean; onMessage?
               ))}
             </div>
             {missing.length > 0 && !q.trim() && (
-              <button onClick={() => show({ hiring: null })} className={`mt-1 flex w-full items-center gap-2.5 rounded-xl px-2 py-1.5 text-left transition-colors ${hiring !== false ? "bg-active text-ink" : "text-muted hover:bg-hover hover:text-ink"}`}>
-                <span className="flex shrink-0 -space-x-2">
-                  {missing.slice(0, 3).map((t) => (
-                    <TeammateFace key={t.id} seed={hash(t.id)} color={t.color} accessory={t.accessory} size={26} />
-                  ))}
+              <button onClick={() => show({ hiring: null })} className={`mt-1 flex w-full items-center gap-2.5 rounded-xl px-2 py-1.5 text-left transition-colors ${hiring !== false ? "chip text-ink" : "text-muted hover:bg-hover hover:text-ink"}`}>
+                <span className="grid h-[26px] w-[26px] shrink-0 place-items-center rounded-full border border-dashed border-[var(--border-strong)]">
+                  <Plus size={14} />
                 </span>
-                <span className="min-w-0 flex-1 truncate text-[13px]">Hire</span>
-                <Plus size={14} className="shrink-0" />
+                <span className="min-w-0 flex-1 truncate text-[13px]">Hire a teammate</span>
               </button>
             )}
             <div className="mb-1 mt-4 px-2.5 text-[12px] font-medium text-faint">Agents</div>
@@ -345,7 +334,7 @@ function MeetTheTeam({ onAdd, onBrowse, compact }: { onAdd: () => Promise<unknow
       <ul className={`mt-4 grid gap-2 ${compact ? "" : "sm:grid-cols-2"}`}>
         {STARTER_TEAM.map((t) => (
           <li key={t.id} className="flex items-start gap-3 rounded-xl border border-line px-3 py-3">
-            <TeammateFace seed={hash(t.id)} color={t.color} accessory={t.accessory} size={44} label={t.name} />
+            <Bird bird={t.bird} seed={hash(t.id)} size={44} label={t.name} />
             <div className="min-w-0">
               <div className="text-[13px] font-medium text-ink">
                 {t.name} <span className="font-normal text-muted">· {t.job}</span>
@@ -377,13 +366,13 @@ function MeetTheTeam({ onAdd, onBrowse, compact }: { onAdd: () => Promise<unknow
 /** A teammate on the phone's Team tab: face and what they're doing now, else their job. */
 function MateRow({ t, disabled, onClick }: { t: Teammate; disabled: boolean; onClick: () => void }) {
   const state = useTeammateState(t.id);
-  const line = state === "needs" ? "Needs you" : state === "working" ? "Working" : t.job || t.tagline;
+  const line = state === "needs" ? "Needs you" : state === "working" || state === "writing" ? "Working" : state === "retrying" ? "Retrying" : state === "failed" ? "Didn't finish" : t.job || t.tagline;
   return (
     <button onClick={onClick} className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors active:bg-hover">
-      <TeammateFace seed={t.face} color={t.color} accessory={t.accessory} size={44} state={state} />
+      <Bird bird={t.bird} seed={t.face} size={44} state={state} />
       <span className="min-w-0 flex-1">
         <span className={`block truncate text-[16px] font-medium ${disabled ? "text-faint line-through" : "text-ink"}`}>{t.name}</span>
-        {line && <span className={`mt-0.5 block truncate text-[14px] ${state === "needs" ? "text-info" : "text-muted"}`}>{line}</span>}
+        {line && <span className={`mt-0.5 block truncate text-[14px] ${state === "needs" ? "text-info" : state === "failed" ? "text-danger" : "text-muted"}`}>{line}</span>}
       </span>
       <ChevronRight size={18} className="shrink-0 text-faint" />
     </button>
@@ -392,8 +381,8 @@ function MateRow({ t, disabled, onClick }: { t: Teammate; disabled: boolean; onC
 
 function TeammateRow({ t, active, disabled, onClick }: { t: Teammate; active: boolean; disabled: boolean; onClick: () => void }) {
   return (
-    <button onClick={onClick} className={`flex w-full items-center gap-2.5 rounded-xl px-2 py-1.5 text-left transition-colors ${active ? "bg-active" : "hover:bg-hover"}`}>
-      <TeammateFace seed={t.face} color={t.color} accessory={t.accessory} size={26} />
+    <button onClick={onClick} className={`flex w-full items-center gap-2.5 rounded-xl px-1.5 py-1 text-left transition-colors ${active ? "chip" : "hover:bg-hover"}`}>
+      <Bird bird={t.bird} seed={t.face} size={34} />
       <span className="min-w-0 flex-1">
         <span className={`block truncate text-[13px] ${disabled ? "text-faint line-through" : "text-ink"}`}>{t.name}</span>
         {t.job && <span className="block truncate text-[12px] text-muted">{t.job}</span>}
@@ -404,10 +393,9 @@ function TeammateRow({ t, active, disabled, onClick }: { t: Teammate; active: bo
 
 function AgentRow({ id, info, cfg, active, onClick }: { id: string; info?: AgentInfo; cfg?: AgentConfig; active: boolean; onClick: () => void }) {
   const disabled = cfg?.disabled;
-  const color = cfg?.color ?? info?.color;
   return (
-    <button onClick={onClick} className={`flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left transition-colors ${active ? "bg-active" : "hover:bg-hover"}`}>
-      <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: agentColor(id, color) }} />
+    <button onClick={onClick} className={`flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left transition-colors ${active ? "chip" : "hover:bg-hover"}`}>
+      <PlainMark size={20} />
       <span className={`min-w-0 flex-1 truncate text-[13px] ${disabled ? "text-faint line-through" : "text-ink"}`}>{info?.name ?? id}</span>
       {(info?.mode ?? cfg?.mode) !== "primary" && <span className="shrink-0 text-[12px] text-faint">{modeLabel(info?.mode ?? cfg?.mode)}</span>}
     </button>
@@ -496,9 +484,7 @@ function AgentEditor({ id, info, cfg, origin, onDone, actions }: { id: string; i
     <div className="relative pb-20">
       {/* The same profile shape as a teammate's: who it is first, settings below. */}
       <div className="mb-7 flex items-center gap-5 max-sm:flex-col max-sm:gap-3 max-sm:text-center">
-        <span className="grid h-[72px] w-[72px] shrink-0 place-items-center rounded-full text-white" style={{ background: color }}>
-          <Bot size={32} strokeWidth={1.75} />
-        </span>
+        <PlainMark size={72} />
         <div className="min-w-0 flex-1 max-sm:w-full">
           <div className="flex items-center gap-2 max-sm:justify-center">
             <h3 className="truncate text-[22px] font-semibold tracking-[-0.01em]">{info?.name ?? id}</h3>
@@ -790,20 +776,20 @@ const joinList = (xs: string[]) => (xs.length < 2 ? xs.join("") : `${xs.slice(0,
 function Summary({ effect, apps }: { effect: (action: string) => Effect; apps: boolean }) {
   const caps = [...CAPABILITIES, ...(apps ? KINDS.map((k) => ({ action: sample("*", k.kind), verb: `${k.verb} in your apps` })) : [])];
   const by = (e: Effect) => caps.filter((c) => effect(c.action) === e).map((c) => c.verb);
-  const lines: { tone: string; text: string }[] = [];
+  const lines: { tone: PipTone; text: string }[] = [];
   const free = by("allow");
   const asks = by("ask");
   const never = by("deny");
-  if (free.length) lines.push({ tone: "bg-ok", text: asks.length || never.length ? `Free to ${joinList(free)}` : `Free to do anything: ${joinList(free)}` });
-  if (asks.length) lines.push({ tone: "bg-warn", text: `Asks you first to ${joinList(asks)}` });
-  if (never.length) lines.push({ tone: "bg-danger", text: `Never allowed to ${joinList(never)}` });
+  if (free.length) lines.push({ tone: "on", text: asks.length || never.length ? `Free to ${joinList(free)}` : `Free to do anything: ${joinList(free)}` });
+  if (asks.length) lines.push({ tone: "needs", text: `Asks you first to ${joinList(asks)}` });
+  if (never.length) lines.push({ tone: "error", text: `Never allowed to ${joinList(never)}` });
   return (
     <div>
       <div className="text-[13px] font-medium text-ink">What this agent can do</div>
       <ul className="mt-2 space-y-1.5">
         {lines.map((l) => (
           <li key={l.tone} className="flex items-start gap-2.5 text-[13px] leading-snug text-ink-2">
-            <span className={`mt-[6px] h-1.5 w-1.5 shrink-0 rounded-full ${l.tone}`} />
+            <Pip tone={l.tone} className="mt-[5px]" />
             {l.text}
           </li>
         ))}
@@ -816,8 +802,8 @@ function PermGroup({ title, note, children }: { title: string; note?: string; ch
   const phone = useContext(PhonePage);
   return (
     <div>
-      <div className={phone ? "mb-1.5 px-4 text-[13px] font-medium text-muted" : "mb-2 text-[14px] font-semibold"}>{title}</div>
-      {note && <div className={phone ? "-mt-1 mb-1.5 px-4 text-[13px] text-muted" : "-mt-1 mb-2 text-[12px] text-muted"}>{note}</div>}
+      <div className={phone ? "mb-2 text-[11px] font-medium tracking-[0.06em] text-accent-ink uppercase" : "mb-2 text-[14px] font-semibold"}>{title}</div>
+      {note && <div className={phone ? "-mt-1 mb-2 text-[13px] text-muted" : "-mt-1 mb-2 text-[12px] text-muted"}>{note}</div>}
       <div className="group-card divide-y divide-[var(--border)] overflow-hidden">{children}</div>
     </div>
   );

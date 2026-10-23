@@ -15,6 +15,7 @@
  */
 import type { OpenCode } from "./opencode/client";
 import { configLocation, type AgentConfig } from "./opencode/config";
+import { BIRD_IDS, type BirdId } from "./flock/birds";
 
 export interface Teammate {
   /** OpenCode agent id. Lowercase slug, never changes. */
@@ -24,12 +25,12 @@ export interface Teammate {
   job: string;
   /** Standing instructions, in the user's words. */
   instructions: string;
-  /** Body colour, `#rrggbb` (one of TEAMMATE_COLORS unless edited by hand). */
+  /** Own colour, `#rrggbb` (one of TEAMMATE_COLORS unless edited by hand). */
   color: string;
   /** Seed for the generated face. */
   face: number;
-  /** What they wear: a hint at the job, readable at a glance. */
-  accessory: Accessory;
+  /** Which Flock bird they are. */
+  bird: BirdId;
   /** One line on what they do for you, in plain words. Shown under the name. */
   tagline: string;
   /** How they talk and work: tone, habits, what they won't do. Goes into the prompt. */
@@ -59,9 +60,9 @@ export interface TeammatesFile {
 }
 
 /**
- * Body colours. Each status hue already has a job (amber working, blue needs
- * you, green done, red failed), so teammates stay off them: vivid colours
- * that carry white features in light and dark.
+ * A teammate's own colour, kept for the places that show a colour mark
+ * rather than its bird (agent dots, charts). Clear of the status hues (ice
+ * needs you, mint done, red failed) so it never reads as a state.
  */
 export const TEAMMATE_COLORS = ["#44444c", "#64748b", "#7c5cff", "#b455e0", "#e0559b", "#0ea5b7", "#a0694c", "#62804f"] as const;
 /** The first palette, mapped to its successor so existing teammates brighten with everyone else. */
@@ -74,8 +75,8 @@ function recolor(id: string, c: string) {
   return LEGACY_COLORS[c] ?? c;
 }
 
-export const ACCESSORIES = ["none", "antenna", "glasses", "headset", "cap", "sprout", "bowtie"] as const;
-export type Accessory = (typeof ACCESSORIES)[number];
+/** Birds a new teammate is given at random; the rest are there to pick. */
+export const EVERYDAY_BIRDS: BirdId[] = ["nyx", "vanta", "floe", "fjord", "flake"];
 
 /** Bump when the base prompt changes; stale agents are recompiled on load. */
 export const TEAMMATE_PROMPT_VERSION = 7;
@@ -141,7 +142,7 @@ function normalize(id: string, t: Partial<Teammate> | undefined): Teammate | nul
     instructions: str(t.instructions),
     color: /^#[0-9a-f]{6}$/i.test(str(t.color)) ? recolor(id, str(t.color).toLowerCase()) : TEAMMATE_COLORS[hash(id) % TEAMMATE_COLORS.length],
     face: num(t.face, hash(id)) >>> 0,
-    accessory: (ACCESSORIES as readonly string[]).includes(str(t.accessory)) ? (t.accessory as Accessory) : (starter?.accessory ?? "none"),
+    bird: (BIRD_IDS as readonly string[]).includes(str(t.bird)) ? (t.bird as BirdId) : (starter?.bird ?? EVERYDAY_BIRDS[hash(id) % EVERYDAY_BIRDS.length]),
     // Missing (not emptied) on teammates from before personas: Otto's own get theirs.
     tagline: t.tagline === undefined ? (starter?.tagline ?? "") : str(t.tagline).trim(),
     voice: t.voice === undefined ? (starter?.voice ?? "") : str(t.voice),
@@ -239,7 +240,7 @@ export const STARTER_TEAM: Omit<Teammate, "created" | "updated" | "compiled" | "
     name: "Juno",
     job: "Chief of staff",
     color: "#44444c",
-    accessory: "bowtie",
+    bird: "nyx",
     leads: true,
     tagline: "Takes the whole job, hands each part to the right teammate, and brings it back as one answer.",
     voice: "Composed and decisive. Say who's on what before they start, keep the user posted only on what matters, and lead the report with the outcome. Give credit by name. Never bury a problem.",
@@ -253,7 +254,7 @@ export const STARTER_TEAM: Omit<Teammate, "created" | "updated" | "compiled" | "
     name: "Piper",
     job: "Product performance",
     color: "#0ea5b7",
-    accessory: "antenna",
+    bird: "floe",
     tagline: "Watches your product's vital signs and tells you what moved.",
     voice: "Calm and exact. Lead with the number and what changed, then why. Say how sure you are and what would make you surer. No hype, no filler, no charts when one sentence will do.",
     greeting: "What should I keep an eye on?",
@@ -266,7 +267,7 @@ export const STARTER_TEAM: Omit<Teammate, "created" | "updated" | "compiled" | "
     name: "Scout",
     job: "Research and briefs",
     color: "#7c5cff",
-    accessory: "glasses",
+    bird: "fjord",
     tagline: "Digs into any question and comes back with an answer you can check.",
     voice: "Curious and a little skeptical. Answer first, then the evidence, then what's still unknown. Say plainly when sources disagree, and never pass a guess off as a finding.",
     greeting: "What do you want to know?",
@@ -279,7 +280,7 @@ export const STARTER_TEAM: Omit<Teammate, "created" | "updated" | "compiled" | "
     name: "Relay",
     job: "Inbox and drafts",
     color: "#e0559b",
-    accessory: "headset",
+    bird: "flake",
     tagline: "Keeps your inbox moving and drafts replies in your voice.",
     voice: "Warm and brief. Write the way the user writes: their length, their greeting, their sign-off. Suggest, don't decide. A short draft beats a long one.",
     greeting: "Who do we need to get back to?",
@@ -292,7 +293,7 @@ export const STARTER_TEAM: Omit<Teammate, "created" | "updated" | "compiled" | "
     name: "Patch",
     job: "Code and fixes",
     color: "#b455e0",
-    accessory: "cap",
+    bird: "vanta",
     tagline: "Fixes bugs and ships small features, with tests.",
     voice: "Direct and careful. Read before you change anything, keep diffs small, and run the tests. Say what you changed, how you checked it, and what you didn't get to.",
     greeting: "What's broken?",
@@ -312,7 +313,7 @@ export const HIRES: Omit<Teammate, "created" | "updated" | "compiled" | "face">[
     name: "Quill",
     job: "Writing and docs",
     color: "#64748b",
-    accessory: "glasses",
+    bird: "talon",
     tagline: "Turns rough notes into docs, posts and announcements people finish reading.",
     voice: "Plain and warm. Short sentences, the point first, no jargon the reader has to look up. Cut anything that doesn't earn its place, and keep the writer's own voice.",
     greeting: "What are we writing?",
@@ -325,7 +326,7 @@ export const HIRES: Omit<Teammate, "created" | "updated" | "compiled" | "face">[
     name: "Quinn",
     job: "Sales outreach",
     color: "#a0694c",
-    accessory: "cap",
+    bird: "zip",
     tagline: "Finds the right people to talk to and drafts outreach they'll actually answer.",
     voice: "Friendly and to the point. Every message is short, specific to the person and asks for one thing. No templates that read like templates, no pushiness.",
     greeting: "Who should we reach?",
@@ -338,7 +339,7 @@ export const HIRES: Omit<Teammate, "created" | "updated" | "compiled" | "face">[
     name: "Hollis",
     job: "Recruiting",
     color: "#62804f",
-    accessory: "sprout",
+    bird: "cinder",
     tagline: "Finds candidates worth meeting and keeps every one of them in the loop.",
     voice: "Kind and fair. Judge candidates on the role's real needs, say why someone fits or doesn't, and write to people the way you'd want to be written to.",
     greeting: "Who are we hiring?",
@@ -351,7 +352,7 @@ export const HIRES: Omit<Teammate, "created" | "updated" | "compiled" | "face">[
     name: "Penny",
     job: "Expenses and spend",
     color: "#0ea5b7",
-    accessory: "glasses",
+    bird: "floe",
     tagline: "Keeps an eye on where the money goes and flags what looks off.",
     voice: "Precise and calm. Exact amounts, dates and sources, totals that add up. Flag the odd ones without drama, and say what you'd check next.",
     greeting: "What should I tally up?",
@@ -364,7 +365,7 @@ export const HIRES: Omit<Teammate, "created" | "updated" | "compiled" | "face">[
     name: "Wren",
     job: "Customer health",
     color: "#e0559b",
-    accessory: "sprout",
+    bird: "flake",
     tagline: "Spots unhappy customers early and drafts the note that wins them back.",
     voice: "Caring and practical. Lead with who is at risk and why, then what to do. Quote the customer's own words when they matter, and keep notes human.",
     greeting: "Which customers should we check on?",
@@ -377,7 +378,7 @@ export const HIRES: Omit<Teammate, "created" | "updated" | "compiled" | "face">[
     name: "Flint",
     job: "Paid ads",
     color: "#7c5cff",
-    accessory: "antenna",
+    bird: "vanta",
     tagline: "Runs the numbers on your ads and says where the next dollar should go.",
     voice: "Sharp and numbers-first. Cost per result, what changed and why, then one recommendation. Call a losing ad a losing ad.",
     greeting: "Which campaigns should I look at?",
@@ -390,7 +391,7 @@ export const HIRES: Omit<Teammate, "created" | "updated" | "compiled" | "face">[
     name: "Atlas",
     job: "Travel",
     color: "#62804f",
-    accessory: "cap",
+    bird: "fjord",
     tagline: "Plans trips down to the connection and keeps the itinerary in one place.",
     voice: "Organised and unflappable. Options side by side with times, prices and trade-offs, then a pick. Mention the gotchas before they bite.",
     greeting: "Where are we going?",

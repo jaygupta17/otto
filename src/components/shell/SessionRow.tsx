@@ -1,5 +1,5 @@
 import { motion } from "motion/react";
-import { Pin, PinOff, MoreHorizontal, Pencil, GitFork, Trash2, MessageCircle } from "lucide-react";
+import { Pin, PinOff, MoreHorizontal, Pencil, GitFork, Trash2 } from "lucide-react";
 import { memo, useRef, useState } from "react";
 import type { SessionInfo } from "@opencode/client";
 import { asksFor, useChat } from "../../state/chat";
@@ -7,15 +7,17 @@ import { timeAgo, basename } from "../../lib/format";
 import { deleteSession } from "../../lib/actions";
 import { Popover, MenuItem } from "../ui/Popover";
 import { AgentClock } from "../ui/AgentClock";
-import { AgentMark } from "../ui/TeammateFace";
+import { Pip } from "../ui/Pip";
+import { useFace } from "../../state/face";
+import { AgentMark, PlainMark } from "../ui/Bird";
 import { useAgentName, useTeammate } from "../../state/teammates";
 
-/** The one mark a session shows: working, needs you, new result, or failed. */
-export function StatusDot({ busy, asking, unread, failed }: { busy: boolean; asking: boolean; unread: boolean; failed: boolean }) {
+/** The one mark a session shows where there's no bird: working, needs you, failed, or a new result. */
+export function SessionPip({ busy, asking, unread, failed }: { busy: boolean; asking: boolean; unread: boolean; failed: boolean }) {
   if (busy) return <AgentClock size={12} />;
-  if (asking) return <span className="h-2 w-2 rounded-full bg-info" />;
-  if (unread) return <span className="h-1.5 w-1.5 rounded-full bg-ink" />;
-  if (failed) return <span className="h-1.5 w-1.5 rounded-full bg-danger" />;
+  if (asking) return <Pip tone="needs" label="Needs you" />;
+  if (failed) return <Pip tone="error" label="Didn't finish" />;
+  if (unread) return <Pip tone="new" label="New result" />;
   return null;
 }
 
@@ -34,8 +36,9 @@ export const SessionRow = memo(function SessionRow({ s, now, onNavigate }: { s: 
   const title = s.title || "New session";
   const failed = s.outcome === "failed";
   const agentName = useAgentName(s.agent);
-  // Teammates show their face; plain agents get a neutral chat tile so the column of avatars stays even.
+  // Teammates show their face; plain agents the agent orb, so the column of marks stays even.
   const face = !!useTeammate(s.agent);
+  const mood = useFace(s.id);
 
   return (
     <motion.div layout="position" aria-current={active ? "true" : undefined} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.15 }}>
@@ -50,15 +53,9 @@ export const SessionRow = memo(function SessionRow({ s, now, onNavigate }: { s: 
           e.preventDefault();
           setMenu(true);
         }}
-        className={`group relative flex items-center gap-2.5 rounded-lg py-2 pr-2 pl-2 transition-colors ${active ? "bg-active" : "hover:bg-hover"}`}
+        className={`group relative flex items-center gap-3 rounded-[10px] py-2 pr-2.5 pl-2 transition-colors ${active ? "chip" : "hover:bg-hover"}`}
       >
-        {face ? (
-          <AgentMark id={s.agent} size={30} state={busy ? "working" : asking ? "needs" : unread ? "done" : "idle"} />
-        ) : (
-          <span className="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-full bg-hover text-muted">
-            <MessageCircle size={14} />
-          </span>
-        )}
+        {face ? <AgentMark id={s.agent} size={44} state={mood} /> : <PlainMark size={44} state={mood} />}
         <span className="min-w-0 flex-1">
           {editing ? (
             <input
@@ -78,13 +75,13 @@ export const SessionRow = memo(function SessionRow({ s, now, onNavigate }: { s: 
             />
           ) : (
             <span className="flex items-baseline gap-2">
-              <span className={`min-w-0 flex-1 truncate text-[13px] text-ink ${active || unread || asking ? "font-semibold" : "font-medium"}`}>{title}</span>
-              <span className="shrink-0 text-[11px] text-muted tabular-nums group-hover:invisible">{busy ? <AgentClock size={11} /> : timeAgo(s.time.updated, now)}</span>
+              <span className={`min-w-0 flex-1 truncate text-[14px] text-ink ${active || unread || asking ? "font-semibold" : "font-medium"}`}>{title}</span>
+              <span className="shrink-0 text-[11px] text-muted font-mono tabular-nums group-hover:invisible">{busy && !face ? <AgentClock size={11} /> : timeAgo(s.time.updated, now)}</span>
             </span>
           )}
           <span className="flex items-center gap-2">
-            <span className={`min-w-0 flex-1 truncate text-[12px] ${asking ? "text-info" : failed ? "text-danger" : "text-muted"}`}>{asking ? "Needs you" : failed ? "Didn't finish" : agentName || basename(s.location.directory)}</span>
-            {!asking && unread && !busy && <span className="h-2 w-2 shrink-0 rounded-full bg-ink" aria-label="New result" />}
+            <span className={`min-w-0 flex-1 truncate text-[12.5px] ${asking ? "text-info" : failed ? "text-danger" : "text-muted"}`}>{asking ? "Needs you" : failed ? "Didn't finish" : agentName || basename(s.location.directory)}</span>
+            {!asking && unread && !busy && !face && <Pip tone="new" label="New result" />}
           </span>
         </span>
         <button
@@ -93,7 +90,7 @@ export const SessionRow = memo(function SessionRow({ s, now, onNavigate }: { s: 
             e.stopPropagation();
             setMenu(true);
           }}
-          className="absolute top-1.5 right-1.5 hidden h-6 w-6 place-items-center rounded-md text-muted hover:bg-active hover:text-ink group-hover:grid"
+          className="absolute top-2 right-2 hidden h-6 w-6 place-items-center rounded-md text-muted hover:bg-active hover:text-ink group-hover:grid"
           aria-label="Session actions"
         >
           <MoreHorizontal size={15} />

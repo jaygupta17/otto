@@ -7,7 +7,7 @@ import { useUI, type SettingsTab } from "../../state/ui";
 import { useWorkspaces } from "../../state/workspaces";
 import { currentDir, cycleEffort, freshThread, primaryAgents } from "../../lib/actions";
 import { useTerminals } from "../../state/terminals";
-import { AgentMark } from "../ui/TeammateFace";
+import { AgentMark } from "../ui/Bird";
 import { useTeammates } from "../../state/teammates";
 import { basename, timeAgo } from "../../lib/format";
 import { SHORTCUTS, kbd } from "../../hooks/useShortcuts";
@@ -185,7 +185,7 @@ export function CommandPalette() {
                   }
                 }}
               />
-              <kbd className="rounded border border-line px-1.5 py-px font-sans text-[12px] text-muted">esc</kbd>
+              <kbd className="kbd">esc</kbd>
             </div>
             <div ref={listRef} id="cmd-list" role="listbox" className="scroll-quiet min-h-0 flex-1 overflow-y-auto p-1.5">
               {results.length === 0 && <div className="px-3 py-6 text-[14px] text-muted">Nothing matches “{q}”.</div>}
@@ -222,11 +222,6 @@ export function CommandPalette() {
   );
 }
 
-export function AgentDot({ color, size = 8 }: { color?: unknown; size?: number }) {
-  const c = typeof color === "string" && color.startsWith("#") ? color : "var(--border-strong)";
-  return <span className="inline-block shrink-0 rounded-full" style={{ width: size, height: size, background: c }} />;
-}
-
 export function ShortcutsSheet({ compact }: { compact: boolean }) {
   const open = useUI((s) => s.shortcutsOpen);
   const setOpen = useUI((s) => s.setShortcuts);
@@ -242,7 +237,7 @@ export function ShortcutsSheet({ compact }: { compact: boolean }) {
                 <div key={s.label} className="flex items-center justify-between gap-4 py-1.5">
                   <dt className="text-[14px] text-ink">{s.label}</dt>
                   <dd>
-                    <kbd className="rounded border border-line bg-sunken px-1.5 py-px font-sans text-[12px] text-ink-2">{kbd(s.keys)}</kbd>
+                    <kbd className="kbd text-ink-2">{kbd(s.keys)}</kbd>
                   </dd>
                 </div>
               ))}

@@ -1,7 +1,7 @@
 import { useChat } from "../../state/chat";
 import { useTeammates } from "../../state/teammates";
 import { Select } from "../ui/Select";
-import { AgentMark } from "../ui/TeammateFace";
+import { AgentMark } from "../ui/Bird";
 
 /** Agent chooser for forms. "" means `emptyLabel` (inherit / default). */
 export function AgentSelect({ value, onChange, emptyLabel, primaryOnly = true }: { value: string; onChange: (v: string) => void; emptyLabel: string; primaryOnly?: boolean }) {

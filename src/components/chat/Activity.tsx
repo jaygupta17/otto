@@ -24,7 +24,7 @@ import {
   Users,
   Wrench,
 } from "lucide-react";
-import { memo, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { memo, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Block, UIMessage } from "../../lib/opencode/projection";
 import {
   backgroundShellID,
@@ -53,9 +53,10 @@ import { useChat } from "../../state/chat";
 import { useShells } from "../../state/shells";
 import { openSubagent } from "../../state/subagent";
 import { useMemory } from "../../state/memory";
-import { agentColor } from "../../lib/agentColor";
 import { AgentClock } from "../ui/AgentClock";
-import { TeammateFace, type FaceState } from "../ui/TeammateFace";
+import { DitherBar } from "../ui/Dither";
+import { Bird, PlainMark, type FaceState } from "../ui/Bird";
+import { useFace } from "../../state/face";
 import { useAgentName, useTeammate } from "../../state/teammates";
 import { ErrorBlock, ProseBox, ToolBody } from "./ToolBody";
 import { ImageStrip } from "./ImageStrip";
@@ -141,6 +142,8 @@ const ToolRun = memo(function ToolRun({ blocks, live }: { blocks: Block[]; live:
         {open && (
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.24, ease }} className="overflow-hidden">
             <div className="relative ml-[7px] border-l border-line py-1 pl-4">
+              {/* While the run is live, dots flow down the trail. */}
+              {running && <DitherBar vertical className="absolute top-0 bottom-0 -left-[1.5px] text-accent" />}
               {blocks.map((b) => (b.kind === "tool" ? <ToolRow key={b.key} b={b} step={stepOf.get(b.key)} /> : b.kind === "reasoning" ? <ThoughtRow key={b.key} b={b} /> : null))}
             </div>
           </motion.div>
@@ -230,7 +233,7 @@ function rowBadges(b: ToolBlock): ReactNode[] {
   }
   if ((kind === "grep" || kind === "glob") && b.status === "completed") {
     const n = typeof md.matches === "number" ? md.matches : typeof md.count === "number" ? md.count : undefined;
-    if (n !== undefined) out.push(<span key="n" className="text-[12px] text-faint tabular-nums">{n === 0 ? "none" : `${n} ${kind === "glob" ? "path" : "hit"}${n === 1 ? "" : "s"}`}</span>);
+    if (n !== undefined) out.push(<span key="n" className="text-[12px] text-faint font-mono tabular-nums">{n === 0 ? "none" : `${n} ${kind === "glob" ? "path" : "hit"}${n === 1 ? "" : "s"}`}</span>);
   }
   if (kind === "read") {
     const off = typeof input.offset === "number" ? input.offset : undefined;
@@ -311,7 +314,7 @@ const ToolRow = memo(function ToolRow({ b: call, step }: { b: ToolBlock; step?: 
 
   return (
     <div className="relative">
-      <span className="absolute top-[14px] -left-4 h-px w-3 bg-line" />
+      <TrailNode tone={failed ? "failed" : active ? "live" : "done"} />
       <div className="group/row flex min-w-0 items-center gap-1 rounded-md pr-1 transition-colors hover:bg-hover">
         <button
           aria-expanded={open}
@@ -392,7 +395,7 @@ const ToolRow = memo(function ToolRow({ b: call, step }: { b: ToolBlock; step?: 
             <SquareArrowOutUpRight size={12} />
           </button>
         )}
-        {(active ? TIMED.has(kind) && elapsed > 1500 : elapsed > 1500) && <span className="shrink-0 pl-1 text-[12px] text-faint tabular-nums">{duration(elapsed)}</span>}
+        {(active ? TIMED.has(kind) && elapsed > 1500 : elapsed > 1500) && <span className="shrink-0 pl-1 text-[12px] text-faint font-mono tabular-nums">{duration(elapsed)}</span>}
       </div>
       <AnimatePresence initial={false}>
         {open && (
@@ -419,6 +422,12 @@ const ToolRow = memo(function ToolRow({ b: call, step }: { b: ToolBlock; step?: 
   );
 });
 
+/** A step's mark on the trail: a square pixel on the rail, lit while it runs and red when it failed. */
+function TrailNode({ tone }: { tone: "done" | "live" | "failed" }) {
+  const color = tone === "live" ? "bg-accent" : tone === "failed" ? "bg-danger" : "bg-line-strong";
+  return <span aria-hidden className={`absolute top-[12px] -left-[18px] z-[1] h-[5px] w-[5px] ${color}`} />;
+}
+
 /** Row actions that wait at the end of a line until you reach for it (always shown on touch). */
 const rowIcon =
   "grid h-6 w-6 shrink-0 place-items-center rounded-md text-faint opacity-0 group-focus-within/row:opacity-100 group-hover/row:opacity-100 hover:bg-active hover:text-ink focus-visible:opacity-100 [@media(hover:none)]:opacity-100";
@@ -440,28 +449,35 @@ function BackgroundNote({ phase, error }: { phase: string; error?: string }) {
 // ---------------------------------------------------------------------------
 
 /**
- * Who a task went to. A teammate's face wears the task's state, so it is the
- * spinner, the check and the alert at once; a plain agent gets the clock while
- * it works and its colour dot otherwise.
+ * Who a task went to: their bird (a plain agent's orb) wearing the task's
+ * state, so it is the spinner, the check and the alert at once. The name
+ * waits in its tooltip; the line beside it is for what they're doing. On a
+ * phone a tap on the bird says who it is instead of opening the row.
  */
-function Assignee({ agent, state = "idle" }: { agent?: string; state?: FaceState }) {
+function Avatar({ agent, name, state = "idle" }: { agent?: string; name: string; state?: FaceState }) {
   const t = useTeammate(agent);
-  const name = useAgentName(agent);
+  const touch = useRef(false);
   return (
-    <>
-      {t ? (
-        <TeammateFace seed={t.face} color={t.color} accessory={t.accessory} size={20} state={state} />
-      ) : state === "working" ? (
-        <AgentClock size={12} />
-      ) : (
-        <span className="grid h-5 w-5 shrink-0 place-items-center">
-          <span className="h-2 w-2 rounded-full" style={{ background: agentColor(agent) }} />
-        </span>
-      )}
-      <span className="shrink-0 font-medium text-ink">{name || "Subagent"}</span>
-    </>
+    <span
+      data-tip={name}
+      data-tip-tap
+      onPointerDown={(e) => (touch.current = e.pointerType !== "mouse")}
+      onClick={(e) => touch.current && e.stopPropagation()}
+      className="grid shrink-0 place-items-center"
+    >
+      {t ? <Bird bird={t.bird} seed={t.face} size={28} state={state} label={name} /> : <PlainMark size={28} state={state} />}
+    </span>
   );
 }
+
+const chevron = (open: boolean) => (
+  <motion.span animate={{ rotate: open ? 90 : 0 }} transition={{ duration: 0.18, ease }} className="shrink-0 text-faint group-hover/line:text-ink">
+    <ChevronRight size={14} />
+  </motion.span>
+);
+
+/** A handoff is a line on the chat itself: no box, no fill. */
+const runCard = "group/agent relative my-1";
 
 /** Small icon actions that wait at the end of a row until you reach for it (always shown on touch). */
 const rowAction =
@@ -486,11 +502,12 @@ function useLatestStep(child: string | undefined): { b: ToolBlock; steps: number
 }
 
 /**
- * A delegated task as one line: the teammate's face, their name, and what
- * they're doing right now, shimmering while it's live. It opens into the
- * brief and the result; their conversation and Stop wait at the end of the
- * line. Stopping tells the parent agent first that it was the user, so the
- * cancellation doesn't read as a failure to retry.
+ * A delegated task as a line: the teammate's bird and what they're doing
+ * right now, shimmering while it's live. Done, it says how long it took and
+ * nothing more; it opens into the brief and the whole result. Their
+ * conversation and Stop wait at the end of the line. Stopping tells the parent
+ * agent first that it was the user, so the cancellation doesn't read as a
+ * failure to retry.
  */
 const SubagentRow = memo(function SubagentRow({ b }: { b: ToolBlock }) {
   const [open, setOpen] = useState(false);
@@ -498,6 +515,7 @@ const SubagentRow = memo(function SubagentRow({ b }: { b: ToolBlock }) {
   const s = subagentOf(b);
   const child = s.childID;
   const childBusy = useChat((st) => (child ? !!st.busy[child] : false));
+  const childFace = useFace(child);
   const report = useChat((st): SubagentReportLite | undefined => {
     if (!child || !sid) return undefined;
     const msgs = st.timelines[sid]?.messages ?? [];
@@ -530,22 +548,32 @@ const SubagentRow = memo(function SubagentRow({ b }: { b: ToolBlock }) {
   const step = latest?.b ? toolLabel(latest.b) : null;
   const doing = step ? [step.verb, step.path ? step.path.split("/").pop() : step.target].filter(Boolean).join(" ") : "";
 
-  const face: FaceState = asking ? "needs" : running ? "working" : phase === "done" ? "done" : "idle";
-  // One phrase carries the state: live work shimmers, a stop is struck through, trouble takes the status hue.
+  const face: FaceState = asking
+    ? "needs"
+    : running
+      ? childFace === "writing" || childFace === "retrying"
+        ? childFace
+        : "working"
+      : phase === "done"
+        ? "done"
+        : phase === "error"
+          ? "failed"
+          : phase === "stopped"
+            ? "stopped"
+            : "idle";
+  // One phrase carries the state: live work shimmers, trouble takes the status hue, a finish is just its time.
   const line = asking ? (
-    <span className="min-w-0 truncate text-info">needs you</span>
+    <span className="min-w-0 truncate text-info">Needs you</span>
   ) : running ? (
     <span className="shimmer min-w-0 truncate">{doing || s.description || "Working"}</span>
   ) : phase === "background" ? (
-    <span className="min-w-0 truncate text-muted">
-      {s.description} <span className="text-faint">· in the background</span>
-    </span>
+    <span className="min-w-0 truncate text-muted">In the background</span>
   ) : phase === "error" ? (
-    <span className="min-w-0 truncate text-danger">couldn't finish{s.description ? ` · ${s.description}` : ""}</span>
+    <span className="min-w-0 truncate text-danger">Couldn't finish</span>
   ) : phase === "stopped" ? (
-    <span className="min-w-0 truncate text-faint line-through decoration-line-strong">{s.description || "Stopped"}</span>
+    <span className="min-w-0 truncate text-faint">{took >= 1000 ? `Stopped after ${duration(took)}` : "Stopped"}</span>
   ) : (
-    <span className="min-w-0 truncate text-muted">{s.description}</span>
+    <span className="min-w-0 truncate text-muted">Finished in {duration(took)}</span>
   );
 
   const stop = async () => {
@@ -559,42 +587,31 @@ const SubagentRow = memo(function SubagentRow({ b }: { b: ToolBlock }) {
   };
 
   return (
-    <div className="group/agent my-1">
-      <div className="-ml-1 flex min-w-0 items-center gap-0.5 rounded-md">
-        <button
-          aria-expanded={open}
-          onClick={() => setOpen((v) => !v)}
-          title={s.description}
-          className="group/line flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1 text-left text-[14px]"
-        >
-          <Assignee agent={s.agent} state={face} />
-          {line}
-          {took > 1500 && <span className="shrink-0 text-[12px] text-faint tabular-nums">{duration(took)}</span>}
-          <motion.span animate={{ rotate: open ? 90 : 0 }} transition={{ duration: 0.18, ease }} className="shrink-0 text-faint group-hover/line:text-ink">
-            <ChevronRight size={14} />
-          </motion.span>
+    <div className={runCard}>
+      <div className="flex min-w-0 items-center gap-0.5 py-1">
+        <button aria-expanded={open} onClick={() => setOpen((v) => !v)} className="group/line flex min-w-0 flex-1 items-center gap-3 py-0.5 text-left outline-none">
+          <Avatar agent={s.agent} name={name} state={face} />
+          <span className="flex min-w-0 flex-1 items-baseline gap-2 text-[14px]">
+            {line}
+            {running && took > 1500 && <span className="shrink-0 font-mono text-[12px] text-faint tabular-nums">{duration(took)}</span>}
+          </span>
+          {chevron(open)}
         </button>
         {child && (
           <>
-            <span className="h-6 w-6 shrink-0">
-              {sid && phase === "running" && !s.background && took > 4000 && (
-                <button aria-label="Keep working in the background" title="Keep working in the background" onClick={() => void useChat.getState().background(sid)} className={rowAction}>
-                  <SendToBack size={13} />
-                </button>
-              )}
-            </span>
-            <span className="h-6 w-6 shrink-0">
-              {running && (
-                <button aria-label={`Stop ${name}`} title={stopping ? "Stopping" : `Stop ${name}`} disabled={stopping} onClick={() => void stop()} className={`${rowAction} hover:!text-danger disabled:opacity-50`}>
-                  <Square size={10} className="fill-current" />
-                </button>
-              )}
-            </span>
-            <span className="h-6 w-6 shrink-0">
-              <button aria-label={`Open ${name}'s conversation`} title={`Open ${name}'s conversation`} onClick={() => openSubagent(child, s.agent, s.description)} className={rowAction}>
-                <ArrowUpRight size={14} />
+            {sid && phase === "running" && !s.background && took > 4000 && (
+              <button aria-label="Keep working in the background" title="Keep working in the background" onClick={() => void useChat.getState().background(sid)} className={rowAction}>
+                <SendToBack size={13} />
               </button>
-            </span>
+            )}
+            {running && (
+              <button aria-label={`Stop ${name}`} title={stopping ? "Stopping" : `Stop ${name}`} disabled={stopping} onClick={() => void stop()} className={`${rowAction} hover:!text-danger disabled:opacity-50`}>
+                <Square size={10} className="fill-current" />
+              </button>
+            )}
+            <button aria-label={`Open ${name}'s conversation`} title={`Open ${name}'s conversation`} onClick={() => openSubagent(child, s.agent, s.description)} className={rowAction}>
+              <ArrowUpRight size={14} />
+            </button>
           </>
         )}
       </div>
@@ -602,7 +619,7 @@ const SubagentRow = memo(function SubagentRow({ b }: { b: ToolBlock }) {
       <AnimatePresence initial={false}>
         {open && (
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2, ease }} className="overflow-hidden">
-            <div className="ml-[9px] space-y-2.5 border-l border-line py-1.5 pl-4">
+            <div className="ml-[13px] space-y-2.5 border-l border-line py-2 pl-[26px]">
               {s.prompt && (
                 <Section title="Brief" actions={<CopyButton text={s.prompt} label="Copy brief" />}>
                   <ProseBox text={s.prompt} />
@@ -624,36 +641,38 @@ const SubagentRow = memo(function SubagentRow({ b }: { b: ToolBlock }) {
   );
 });
 
-/** A subagent's report with no call in view to fold into (older history paged out, or another chat). */
+/** A subagent's report with no call in view to fold into (older history paged out, or another chat). The same line, folded the same way. */
 export const SubagentReport = memo(function SubagentReport({ msg }: { msg: Extract<UIMessage, { kind: "subagent" }> }) {
+  const [open, setOpen] = useState(false);
   const failed = msg.state === "error" || msg.state === "failed";
   const stopped = msg.state === "interrupted" || msg.state === "cancelled";
   const name = useAgentName(msg.agent) || "Subagent";
+  const text = msg.text;
   return (
-    <div className="group/agent my-3">
-      <div className="-ml-1 flex min-w-0 items-center gap-0.5">
-        <div className="flex min-w-0 items-center gap-2 px-1 py-1 text-[14px]">
-          <Assignee agent={msg.agent} state={failed || stopped ? "idle" : "done"} />
-          <span className={`min-w-0 truncate ${failed ? "text-danger" : stopped ? "text-faint line-through decoration-line-strong" : "text-muted"}`}>
-            {failed ? `couldn't finish${msg.description ? ` · ${msg.description}` : ""}` : msg.description}
-          </span>
-        </div>
-        {msg.text && (
-          <span className="opacity-0 transition-opacity group-hover/agent:opacity-100 group-focus-within/agent:opacity-100 [@media(hover:none)]:opacity-100">
-            <CopyButton text={msg.text} label="Copy report" />
-          </span>
-        )}
+    <div className={runCard}>
+      <div className="flex min-w-0 items-center gap-0.5 py-1">
+        <button aria-expanded={text ? open : undefined} onClick={() => text && setOpen((v) => !v)} className={`group/line flex min-w-0 flex-1 items-center gap-3 py-0.5 text-left outline-none ${text ? "" : "cursor-default"}`}>
+          <Avatar agent={msg.agent} name={name} state={failed ? "failed" : stopped ? "stopped" : "done"} />
+          <span className={`min-w-0 flex-1 truncate text-[14px] ${failed ? "text-danger" : stopped ? "text-faint" : "text-muted"}`}>{failed ? "Couldn't finish" : stopped ? "Stopped" : "Finished"}</span>
+          {text && chevron(open)}
+        </button>
         {msg.childID && (
           <button aria-label={`Open ${name}'s conversation`} title={`Open ${name}'s conversation`} onClick={() => openSubagent(msg.childID!, msg.agent, msg.description)} className={rowAction}>
             <ArrowUpRight size={14} />
           </button>
         )}
       </div>
-      {msg.text && (
-        <div className="ml-[9px] border-l border-line py-1 pl-4">
-          <ProseBox text={msg.text} />
-        </div>
-      )}
+      <AnimatePresence initial={false}>
+        {open && text && (
+          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2, ease }} className="overflow-hidden">
+            <div className="ml-[13px] border-l border-line py-2 pl-[26px]">
+              <Section title={failed ? "What went wrong" : stopped ? "Partial result" : "Result"} actions={<CopyButton text={text} label="Copy report" />}>
+                <ProseBox text={text} />
+              </Section>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 });
@@ -663,7 +682,7 @@ const ThoughtRow = memo(function ThoughtRow({ b }: { b: ReasonBlock }) {
   const secs = b.ended ? Math.max(1, Math.round((b.ended - b.started) / 1000)) : 0;
   return (
     <div className="relative">
-      <span className="absolute top-[14px] -left-4 h-px w-3 bg-line" />
+      <TrailNode tone={b.streaming ? "live" : "done"} />
       <button aria-expanded={open || b.streaming} onClick={() => setOpen((v) => !v)} className="flex w-full items-center gap-2 rounded-md py-1 text-left text-[14px] hover:bg-hover">
         <span className="grid h-5 w-5 place-items-center text-muted">{b.streaming ? <AgentClock size={12} /> : <Brain size={15} />}</span>
         <span className={b.streaming ? "shimmer" : "text-ink-2"}>{b.streaming ? "Thinking" : "Thought"}</span>
@@ -672,7 +691,7 @@ const ThoughtRow = memo(function ThoughtRow({ b }: { b: ReasonBlock }) {
       <AnimatePresence initial={false}>
         {(open || b.streaming) && b.text && (
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2, ease }} className="overflow-hidden">
-            <div className={`selectable mb-2 ml-7 border-l border-line pl-3 text-[13px] leading-relaxed whitespace-pre-wrap text-muted ${b.streaming ? "flex max-h-[120px] flex-col justify-end overflow-hidden [mask-image:linear-gradient(to_bottom,transparent,black_30%)]" : ""}`}>
+            <div className={`selectable mb-2 ml-7 border-l border-line pl-3 text-[13px] leading-relaxed whitespace-pre-wrap text-muted ${b.streaming ? "dither-fade-top flex max-h-[120px] flex-col justify-end overflow-hidden" : ""}`}>
               {b.streaming ? b.text.slice(-600) : b.text}
             </div>
           </motion.div>

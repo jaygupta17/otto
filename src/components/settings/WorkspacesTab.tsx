@@ -193,7 +193,7 @@ function WorkspaceCard({ w, active, machine, onSelect, onMachine }: { w: Workspa
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="truncate text-[14px] font-medium">{w.name}</span>
-          {active && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-ok" title="Current workspace" />}
+          {active && <Check size={14} className="shrink-0 text-ink-2" aria-label="Current workspace" />}
         </div>
         <div className="truncate text-[12px] text-muted">
           {host}

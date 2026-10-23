@@ -8,17 +8,17 @@ import type { Theme } from "../themes";
 export const BUILTIN_THEMES: Theme[] = [
   {
     id: "otto-light",
-    name: "Otto Light",
+    name: "Otto Frost",
     variant: "light",
     builtin: true,
-    tokens: { bg: "#f2f2f1", panel: "#ffffff", text: "#161616", accent: "#f0a020", info: "#1d5fd6", ok: "#1f8a4c", danger: "#c93a32" },
+    tokens: { bg: "#eef1f5", panel: "#fbfcfe", text: "#0a1424", accent: "#1a73c9", info: "#1a73c9", ok: "#13865f", danger: "#c8372f" },
   },
   {
     id: "otto-dark",
     name: "Otto Dark",
     variant: "dark",
     builtin: true,
-    tokens: { bg: "#0d0d0e", panel: "#161618", text: "#f1f1f0", accent: "#f3b13f", info: "#6d9cff", ok: "#4cc488", danger: "#ff6b62" },
+    tokens: { bg: "#1a1b1e", panel: "#1d1e21", text: "#eef3f8", accent: "#8fd0ff", info: "#8fd0ff", ok: "#5fe0b0", danger: "#ff6f6a" },
   },
   {
     id: "catppuccin-latte",

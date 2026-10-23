@@ -11,8 +11,8 @@ import { startDraft } from "../../lib/actions";
 import { IconButton } from "../ui/Button";
 import { MenuItem, Popover } from "../ui/Popover";
 import { Sheet } from "../ui/Sheet";
-import { AgentMark } from "../ui/TeammateFace";
-import { StatusDot } from "../shell/SessionRow";
+import { AgentMark } from "../ui/Bird";
+import { SessionPip } from "../shell/SessionRow";
 
 /**
  * The sessions this chat's agent has had, to switch to without leaving the
@@ -82,7 +82,7 @@ function HistoryMenu({ sessionId, agent, phone, touch, onDone }: { sessionId: st
     <div className="flex max-h-[min(70vh,520px)] flex-col">
       {agent && (
         <div className="flex items-center gap-2 px-3 pt-2.5 text-[12px] text-muted">
-          <AgentMark id={agent} size={16} />
+          <AgentMark id={agent} size={20} />
           <span className="truncate">{name}</span>
           <span className="ml-auto tabular-nums text-faint">{list.length}</span>
         </div>
@@ -121,13 +121,13 @@ const HistoryRow = memo(function HistoryRow({ s, active, now, onPick }: { s: Ses
     <button
       type="button"
       onClick={onPick}
-      className={`flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-[13px] transition-colors hover:bg-hover ${active ? "bg-active text-ink" : "text-ink-2"}`}
+      className={`flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-[13px] transition-colors ${active ? "chip text-ink" : "text-ink-2 hover:bg-hover"}`}
     >
       <span className="grid w-3.5 shrink-0 place-items-center">
-        {active ? <Check size={13} className="text-ink-2" /> : <StatusDot busy={busy} asking={asking} unread={unread} failed={s.outcome === "failed"} />}
+        {active ? <Check size={13} className="text-ink-2" /> : <SessionPip busy={busy} asking={asking} unread={unread} failed={s.outcome === "failed"} />}
       </span>
       <span className={`min-w-0 flex-1 truncate ${unread || asking ? "font-medium text-ink" : ""}`}>{s.title || "New session"}</span>
-      <span className="shrink-0 text-[12px] tabular-nums text-faint">{timeAgo(s.time.updated, now)}</span>
+      <span className="shrink-0 text-[12px] font-mono tabular-nums text-faint">{timeAgo(s.time.updated, now)}</span>
     </button>
   );
 });

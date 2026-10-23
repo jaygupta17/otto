@@ -19,6 +19,7 @@ import { IconButton } from "../ui/Button";
 import { Spinner } from "../ui/AgentClock";
 import { PanelEmpty, PanelHeader, useSurfaceVisible } from "./SidePanel";
 import { LiveScreen, useLiveTarget } from "./LiveScreen";
+import { Pip } from "../ui/Pip";
 
 export function BrowserSurface() {
   const live = !!useLiveTarget();
@@ -55,7 +56,7 @@ function ViewTabs({ view }: { view: BrowserView }) {
   const setView = useComputer((s) => s.setView);
   const waiting = !!useHandoff(null);
   return (
-    <div role="tablist" aria-label="View" className="no-drag flex items-center gap-0.5 rounded-lg bg-sunken p-0.5">
+    <div role="tablist" aria-label="View" className="no-drag flex items-center gap-0.5 rounded-[10px] well p-[3px]">
       {VIEWS.map((t) => {
         const on = t.id === view;
         return (
@@ -64,11 +65,11 @@ function ViewTabs({ view }: { view: BrowserView }) {
             role="tab"
             aria-selected={on}
             onClick={() => setView(t.id)}
-            className={`relative flex h-6 items-center gap-1.5 rounded-md px-2 text-[12px] transition-colors ${on ? "bg-raised text-ink shadow-sm" : "text-muted hover:text-ink"}`}
+            className={`relative flex h-6 items-center gap-1.5 rounded-md px-2 text-[12px] transition-colors ${on ? "chip text-ink" : "text-muted hover:text-ink"}`}
           >
             {t.icon}
             {t.label}
-            {t.id !== "preview" && waiting && !on && <span className="h-1.5 w-1.5 rounded-full bg-info" aria-label="Waiting for you" />}
+            {t.id !== "preview" && waiting && !on && <Pip tone="needs" label="Waiting for you" />}
           </button>
         );
       })}

@@ -8,6 +8,8 @@ import { readGlobalConfig, updateGlobalConfig, type AgentConfig } from "../lib/o
 import { installMemory, removeMemory } from "../lib/memory";
 import { CATALOG, compileAgent, hash, listNames, readTeammates, startingAgent, STARTER_TEAM, TEAMMATE_PROMPT_VERSION, updateTeammates, type Teammate } from "../lib/teammates";
 import { useChat } from "./chat";
+import { mateFace } from "./face";
+import type { FaceState } from "../components/ui/Bird";
 import { useExtensions } from "./extensions";
 import { toast } from "./ui";
 
@@ -247,14 +249,7 @@ export function useTeammate(id: string | undefined | null) {
 }
 
 /** What a teammate is up to across its sessions, plus parts of a lead's job it's doing. */
-export function useTeammateState(id: string): "idle" | "working" | "needs" | "done" {
-  return useChat((st) => {
-    const mine = [...Object.values(st.sessions).filter((x) => x.agent === id).map((x) => x.id), ...Object.keys(st.delegated).filter((c) => st.delegated[c] === id)];
-    if (mine.some((x) => Object.values(st.permissions).some((p) => p.sessionID === x) || Object.values(st.forms).some((f) => f.sessionID === x))) return "needs";
-    if (mine.some((x) => st.busy[x])) return "working";
-    return mine.some((x) => st.unread[x]) ? "done" : "idle";
-  });
-}
+export const useTeammateState = (id: string): FaceState => useChat((st) => mateFace(st, id));
 
 /** Display name: a teammate's own name, else the agent's. */
 export function useAgentName(id: string | undefined | null) {

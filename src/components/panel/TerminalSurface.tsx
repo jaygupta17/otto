@@ -54,7 +54,7 @@ export function TerminalSurface({ root }: { root: string | null }) {
                 tabIndex={0}
                 onClick={() => setActive(t.id)}
                 onAuxClick={(e) => e.button === 1 && void close(t.id)}
-                className={`group flex h-7 max-w-[180px] shrink-0 cursor-default items-center gap-1.5 rounded-lg pr-1 pl-2.5 text-[13px] transition-colors ${on ? "bg-active text-ink" : "text-muted hover:bg-hover hover:text-ink"}`}
+                className={`group flex h-7 max-w-[180px] shrink-0 cursor-default items-center gap-1.5 rounded-lg pr-1 pl-2.5 text-[13px] transition-colors ${on ? "chip text-ink" : "text-muted hover:bg-hover hover:text-ink"}`}
               >
                 <span className="truncate">{t.title}</span>
                 <button

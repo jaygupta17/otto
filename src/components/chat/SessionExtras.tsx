@@ -12,7 +12,8 @@ import { compactNumber, money } from "../../lib/format";
 import { Popover } from "../ui/Popover";
 import { Button, IconButton } from "../ui/Button";
 import { AgentClock, Spinner } from "../ui/AgentClock";
-import { TeammateFace } from "../ui/TeammateFace";
+import { DitherGauge, DitherMeter } from "../ui/Dither";
+import { Bird } from "../ui/Bird";
 import { useShells, inTree } from "../../state/shells";
 import { useAgentName, useTeammate } from "../../state/teammates";
 import { openSubagent } from "../../state/subagent";
@@ -155,7 +156,7 @@ function CommandLine({ item, root, now }: { item: Extract<Running, { kind: "comm
         {item.command.split("\n")[0]}
       </span>
       {agent && <span className="shrink-0 text-faint">· {name}</span>}
-      <span className="ml-auto shrink-0 pl-1 text-[12px] text-faint tabular-nums">{duration(now - item.started)}</span>
+      <span className="ml-auto shrink-0 pl-1 text-[12px] text-faint font-mono tabular-nums">{duration(now - item.started)}</span>
       <button aria-label="Stop command" title="Stop" onClick={() => void useShells.getState().stop(item.id)} className={`${stripAction} hover:!text-danger`}>
         <Square size={10} className="fill-current" />
       </button>
@@ -169,10 +170,10 @@ function TeammateLine({ item, root, now }: { item: Extract<Running, { kind: "tea
   const [stopping, setStopping] = useState(false);
   return (
     <div className="group/bg flex h-7 min-w-0 items-center gap-2 rounded-md px-1.5 text-[13px]">
-      {t ? <TeammateFace seed={t.face} color={t.color} accessory={t.accessory} size={16} state="working" /> : <AgentClock size={11} />}
+      {t ? <Bird bird={t.bird} seed={t.face} size={18} state="working" /> : <AgentClock size={11} />}
       <span className="shrink-0 font-medium text-ink-2">{name}</span>
       {item.description && <span className="shimmer min-w-0 truncate">{item.description}</span>}
-      <span className="ml-auto shrink-0 pl-1 text-[12px] text-faint tabular-nums">{duration(now - item.started)}</span>
+      <span className="ml-auto shrink-0 pl-1 text-[12px] text-faint font-mono tabular-nums">{duration(now - item.started)}</span>
       <button
         aria-label={`Stop ${name}`}
         title={`Stop ${name}`}
@@ -264,34 +265,8 @@ const FULL = 0.8;
 
 const pctLabel = (pct: number) => (pct > 0 && pct < 0.01 ? "<1%" : `${Math.round(pct * 100)}%`);
 
-/** Neutral while there's room; blue ("needs you") once it's nearly full. */
-function Ring({ pct, size = 18 }: { pct: number; size?: number }) {
-  const w = 2.5;
-  const r = (size - w) / 2;
-  const c = 2 * Math.PI * r;
-  const tone = pct >= FULL ? "var(--info)" : "var(--text-2)";
-  return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="shrink-0 -rotate-90" aria-hidden>
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--border-strong)" strokeWidth={w} />
-      {pct > 0 && (
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={r}
-          fill="none"
-          stroke={tone}
-          strokeWidth={w}
-          strokeLinecap="round"
-          strokeDasharray={`${c * Math.max(pct, 0.04)} ${c}`}
-          className="transition-[stroke-dasharray] duration-200 ease-out"
-        />
-      )}
-    </svg>
-  );
-}
-
 /**
- * Context-window meter for the composer: a ring, blue once it's nearly full.
+ * Context-window meter for the composer: a pie of dots, blue once it's nearly full.
  * Opens the usage card (a popover, on phones too), which carries the numbers
  * and offers to compact or start a fresh thread.
  */
@@ -317,7 +292,7 @@ export function ContextMeter({ sessionId, compact = false }: { sessionId: string
         aria-expanded={open}
         className={`grid h-8 w-8 shrink-0 place-items-center rounded-md transition-colors hover:bg-hover ${full ? "text-info" : "text-muted hover:text-ink"} ${open ? "bg-hover" : ""}`}
       >
-        {u.compacting ? <Spinner size={16} /> : <Ring pct={u.compacted ? 0 : u.pct} />}
+        {u.compacting ? <AgentClock size={16} /> : <DitherGauge pct={u.compacted ? 0 : u.pct} />}
       </button>
       {/* A small card, so a popover by the meter on phones too, not a page. */}
       <Popover open={open} onClose={() => setOpen(false)} anchor={anchor.current} placement="top-end" width={Math.min(320, window.innerWidth - 16)} label="Context usage">
@@ -379,14 +354,11 @@ export function UsageCard({ sessionId, phone = false, onDone }: { sessionId: str
     <div className="p-4">
       <div className="flex items-baseline justify-between gap-3">
         <span className={`text-[14px] font-semibold tabular-nums ${full && !u.compacted && !u.compacting ? "text-info" : "text-ink"}`}>{headline}</span>
-        {known && !u.compacting && !u.compacted && <span className="shrink-0 text-[12px] text-muted tabular-nums">{`${compactNumber(u.used)} / ${compactNumber(u.limit)}`}</span>}
+        {known && !u.compacting && !u.compacted && <span className="shrink-0 text-[12px] text-muted font-mono tabular-nums">{`${compactNumber(u.used)} / ${compactNumber(u.limit)}`}</span>}
       </div>
       {known && (
-        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-active" role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(u.pct * 100)} aria-label="Context used">
-          <div
-            className="h-full rounded-full transition-[width] duration-200 ease-out"
-            style={{ width: u.compacted || u.compacting ? 0 : `${Math.max(u.pct * 100, u.used ? 1.5 : 0)}%`, background: full ? "var(--info)" : "var(--text-2)" }}
-          />
+        <div className={`mt-2.5 ${full && !u.compacted ? "text-info" : "text-ink-2"}`} role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(u.pct * 100)} aria-label="Context used">
+          <DitherMeter pct={u.compacted || u.compacting ? 0 : Math.max(u.pct, u.used ? 0.015 : 0)} />
         </div>
       )}
       <p className="mt-2 text-[12px] leading-snug text-muted">{note}</p>

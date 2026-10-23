@@ -21,6 +21,7 @@ import { Button, IconButton } from "../ui/Button";
 import { AgentClock, Spinner } from "../ui/AgentClock";
 import { browserSteps, shortUrl } from "../../lib/browserSteps";
 import { PanelEmpty } from "./SidePanel";
+import { Pip } from "../ui/Pip";
 
 type Load = { state: "loading"; detail?: string } | { state: "ready"; url: string } | { state: "error"; message: string };
 
@@ -297,7 +298,7 @@ export function ControlBar({
 
   return (
     <div className={`flex shrink-0 items-center gap-2 pr-2 pl-3 ${tall ? "h-[52px]" : "h-10 border-b border-line"}`} data-tauri-drag-region={tall || undefined}>
-      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${control ? "bg-info" : busy ? "bg-accent" : "bg-line-strong"}`} />
+      <Pip tone={control ? "needs" : busy ? "live" : "off"} />
       <span className="min-w-0 flex-1 truncate text-[12px] text-muted" data-tauri-drag-region={tall || undefined}>
         {control ? (paused ? "You're in control · the agent is paused" : "You're in control") : busy ? "Watching the agent work" : "Watching"}
       </span>

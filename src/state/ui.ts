@@ -99,7 +99,7 @@ const resolve = (t: ThemePref): "light" | "dark" => (t === "system" ? (media?.ma
 
 function applyTheme(mode: "light" | "dark") {
   document.documentElement.dataset.theme = mode;
-  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", mode === "dark" ? "#11121f" : "#eef0f7");
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", mode === "dark" ? "#1a1b1e" : "#eef1f5");
   if (isTauri) {
     void import("@tauri-apps/api/window")
       .then(({ getCurrentWindow }) => getCurrentWindow().setTheme(mode))

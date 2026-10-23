@@ -18,6 +18,7 @@ import { BrowserSurface } from "./BrowserSurface";
 import { ProjectSurface } from "./ProjectSurface";
 import { MemorySurface } from "./MemorySurface";
 import { kbd } from "../../hooks/useShortcuts";
+import { Pip } from "../ui/Pip";
 
 export const SURFACES: { id: PanelSurface; label: string; keys: string; icon: (size: number) => ReactNode }[] = [
   { id: "files", label: "Files", keys: "⌘⇧E", icon: (s) => <FolderTree size={s} /> },
@@ -242,7 +243,7 @@ export function PanelToggle() {
   return (
     <IconButton label={open ? "Hide panel" : "Show panel"} keys={kbd("⌘⇧\\")} active={open} aria-pressed={open} className="no-drag relative" onClick={toggle}>
       <PanelRight size={17} />
-      {waiting && <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-info ring-2 ring-[var(--bg-panel)]" />}
+      {waiting && <Pip tone="needs" label="Waiting for you" className="absolute top-1 right-1" />}
     </IconButton>
   );
 }
@@ -281,8 +282,8 @@ function SurfaceMenu() {
               label={
                 <span className="flex items-center gap-1.5">
                   {x.label}
-                  {x.id === "terminal" && terms > 0 && <span className="text-[12px] text-faint tabular-nums">{terms}</span>}
-                  {x.id === "browser" && waiting && x.id !== panel && <span className="h-1.5 w-1.5 rounded-full bg-info" />}
+                  {x.id === "terminal" && terms > 0 && <span className="text-[12px] text-faint font-mono tabular-nums">{terms}</span>}
+                  {x.id === "browser" && waiting && x.id !== panel && <Pip tone="needs" label="Waiting for you" />}
                 </span>
               }
               right={x.id === panel ? <Check size={14} className="text-ink" /> : <kbd className="font-sans text-[12px] text-faint">{kbd(x.keys)}</kbd>}

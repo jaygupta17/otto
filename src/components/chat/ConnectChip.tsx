@@ -8,6 +8,7 @@ import { useState, type ReactNode } from "react";
 import { APPS, appLogo, appName } from "../../lib/composio";
 import { useChat } from "../../state/chat";
 import { useConnectors } from "../../state/connectors";
+import { Pip } from "../ui/Pip";
 
 /** "Connect googlecalendar", "Connect Google Calendar" → the app. */
 function appFrom(label: string): string | null {
@@ -41,10 +42,10 @@ export function ConnectChip({ href, children }: { href: string; children: ReactN
       >
         <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-white">{slug ? <img src={appLogo(slug)} alt="" width={14} height={14} draggable={false} /> : null}</span>
         <span className="truncate">{state === "connected" ? `${name} connected` : state === "waiting" ? "Waiting for you in the browser…" : `Connect ${name}`}</span>
-        {state === "connected" ? <Check size={14} className="text-ok" /> : state === "waiting" ? <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-info" aria-hidden /> : null}
+        {state === "connected" ? <Check size={14} className="text-ok" /> : state === "waiting" ? <Pip tone="live" /> : null}
       </button>
       {state === "connected" && !told && (
-        <button onClick={carryOn} className="inline-flex h-8 items-center rounded-full bg-ink px-3 text-[13px] font-medium text-bg no-underline hover:opacity-90">
+        <button onClick={carryOn} className="inline-flex h-8 items-center rounded-full bg-accent px-3 text-[13px] font-medium text-on-accent no-underline hover:opacity-90">
           Carry on
         </button>
       )}

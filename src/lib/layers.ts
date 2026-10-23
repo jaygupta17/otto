@@ -69,7 +69,9 @@ export function useFocusTrap(ref: RefObject<HTMLElement | null>, active: boolean
     if (!root) return;
     if (!root.contains(document.activeElement)) {
       // Never a text field unless asked: on a phone that pops the keyboard over the sheet.
-      const first = root.querySelector<HTMLElement>("[data-autofocus], [autofocus]") ?? focusables(root).find((el) => !el.matches("input, textarea, [contenteditable='true']")) ?? root;
+      // A pushed page (`data-focus-self`) takes focus itself, so its back button doesn't open with a ring round it.
+      const asked = root.querySelector<HTMLElement>("[data-autofocus], [autofocus]");
+      const first = asked ?? (root.dataset.focusSelf !== undefined ? root : (focusables(root).find((el) => !el.matches("input, textarea, [contenteditable='true']")) ?? root));
       first.focus({ preventScroll: true });
     }
     const onKey = (e: KeyboardEvent) => {

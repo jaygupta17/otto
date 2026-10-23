@@ -13,6 +13,7 @@ import { useActiveWorkspace, useWorkspaces } from "../../state/workspaces";
 import { useUI } from "../../state/ui";
 import { useNow } from "../../hooks/useNow";
 import { IconButton } from "../ui/Button";
+import { Pip, connectionTone } from "../ui/Pip";
 import { InboxButton } from "./Inbox";
 import { Popover, MenuItem } from "../ui/Popover";
 import { useTrafficLights } from "../../hooks/useChrome";
@@ -45,11 +46,11 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
 
       <button
         onClick={() => useUI.getState().setPalette(true)}
-        className="mx-3 flex h-8 shrink-0 items-center gap-2 rounded-lg bg-hover px-2.5 text-left text-[13px] text-muted transition-colors hover:bg-active"
+        className="field mx-3 flex h-8 shrink-0 items-center gap-2 rounded-lg px-2.5 text-left text-[13px] text-muted"
       >
         <Search size={14} className="shrink-0" />
         <span className="flex-1">Search</span>
-        <kbd className="font-sans text-[11px] text-muted">{kbd("⌘K")}</kbd>
+        <kbd className="kbd">{kbd("⌘K")}</kbd>
       </button>
       <SessionList query="" onNavigate={onNavigate} />
       <UpdatePill />
@@ -75,7 +76,7 @@ function WorkspaceSwitcher() {
         <div className="min-w-0 flex-1">
           <div className="truncate text-[13px] font-semibold text-ink">{ws?.name ?? "No workspace"}</div>
           <div className="flex items-center gap-1.5 truncate text-[12px] text-muted">
-            <StatusDot status={status} />
+            <Pip tone={connectionTone(status)} />
             {statusText(status)}
           </div>
         </div>
@@ -121,10 +122,10 @@ function WorkspaceSwitcher() {
   );
 }
 
-/** Neutral provider tile; connection state is shown as text + StatusDot beside it. */
+/** Neutral provider tile; connection state is shown as text and a pip beside it. */
 export function WorkspaceAvatar({ provider, size = 28 }: { provider: string; status?: string; size?: number }) {
   return (
-    <div className="grid shrink-0 place-items-center rounded-lg border border-line bg-raised text-ink-2" style={{ width: size, height: size }}>
+    <div className="bezel grid shrink-0 place-items-center rounded-lg text-ink-2" style={{ width: size, height: size }}>
       <WorkspaceIcon provider={provider} size={Math.round(size * 0.5)} />
     </div>
   );
@@ -135,11 +136,6 @@ export function WorkspaceIcon({ provider, size }: { provider: string; size: numb
   return provider === "local" ? <Laptop size={size} /> : provider === "custom" ? <Server size={size} /> : <Cloud size={size} />;
 }
 
-/** Static connection dot: green connected, red offline, amber while working on it. */
-function StatusDot({ status }: { status: string }) {
-  const color = status === "ready" ? "bg-ok" : status === "error" ? "bg-danger" : "bg-accent";
-  return <span className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${color}`} />;
-}
 
 export function statusText(status: string) {
   switch (status) {
@@ -224,10 +220,10 @@ function SessionList({ query, onNavigate }: { query: string; onNavigate?: () => 
   return (
     <div className="scroll-quiet mt-3 min-h-0 flex-1 overflow-y-auto px-2 pb-3">
       {!ready && status === "ready" && (
-        <div className="space-y-px" aria-hidden>
+        <div className="space-y-1" aria-hidden>
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="flex animate-pulse items-center gap-2.5 p-2" style={{ opacity: 1 - i * 0.13 }}>
-              <div className="h-[30px] w-[30px] shrink-0 rounded-full bg-hover" />
+            <div key={i} className="flex animate-pulse items-center gap-3 py-2 pr-2.5 pl-2" style={{ opacity: 1 - i * 0.13 }}>
+              <div className="h-11 w-11 shrink-0 rounded-full bg-hover" />
               <div className="flex-1 space-y-1.5">
                 <div className="h-2.5 w-20 rounded-full bg-hover" />
                 <div className="h-2.5 w-32 rounded-full bg-hover" />
@@ -252,16 +248,18 @@ function SessionList({ query, onNavigate }: { query: string; onNavigate?: () => 
 
 function SessionGroup({ label, list, now, onNavigate }: { label: string; list: SessionInfo[]; now: number; onNavigate?: () => void }) {
   return (
-    <div className="mt-4 first:mt-1">
-      <div className="flex items-center gap-1.5 px-2 pb-1 text-[12px] font-medium text-muted">
+    <div className="mt-5 first:mt-1">
+      <div className="flex items-center gap-1.5 px-2 pb-1.5 text-[11px] font-medium tracking-[0.06em] text-accent-ink uppercase">
         {label}
         {label === "Working" && <span className="tabular-nums">{list.length}</span>}
       </div>
-      <AnimatePresence initial={false}>
-        {list.map((s) => (
-          <SessionRow key={s.id} s={s} now={now} onNavigate={onNavigate} />
-        ))}
-      </AnimatePresence>
+      <div className="space-y-1">
+        <AnimatePresence initial={false}>
+          {list.map((s) => (
+            <SessionRow key={s.id} s={s} now={now} onNavigate={onNavigate} />
+          ))}
+        </AnimatePresence>
+      </div>
     </div>
   );
 }
@@ -274,16 +272,16 @@ function SidebarFooter({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <div className="shrink-0 border-t border-line px-2 pt-2 pb-2">
       <button
-        className={`${item} ${view === "schedules" ? "bg-active text-ink" : "text-ink-2 hover:bg-hover"}`}
+        className={`${item} ${view === "schedules" ? "chip font-medium text-ink" : "text-ink-2 hover:bg-hover"}`}
         onClick={() => {
           setView("schedules");
           onNavigate?.();
         }}
       >
-        <AlarmClock size={15} className="text-muted" /> Schedules
+        <AlarmClock size={15} className="text-accent-ink" /> Schedules
       </button>
       <button className={`${item} text-ink-2 hover:bg-hover`} onClick={() => openSettings("agents")}>
-        <Bot size={15} className="text-muted" /> Agents & tools
+        <Bot size={15} className="text-accent-ink" /> Agents & tools
       </button>
       <div className="mt-1 flex items-center gap-1">
         <div className="min-w-0 flex-1">

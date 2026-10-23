@@ -1,5 +1,5 @@
 import { AnimatePresence, motion, useDragControls } from "motion/react";
-import { ChevronDown, FolderTree, MessageCircle, MoreHorizontal, Plus, Search, SquarePen, Trash2, Pencil, Cloud, Check, Settings } from "lucide-react";
+import { ChevronDown, FolderTree, MoreHorizontal, Plus, Search, SquarePen, Trash2, Pencil, Cloud, Check, Settings } from "lucide-react";
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { SessionInfo } from "@opencode/client";
 import { sortedSessions, useChat } from "../../state/chat";
@@ -25,8 +25,12 @@ import { AskDock } from "../chat/Asks";
 import { PanelFade } from "../ui/ChatScrim";
 import { AppGlyph } from "../ui/Mark";
 import { ConnectionBanner } from "../shell/Home";
-import { AgentMark, TeammateFace } from "../ui/TeammateFace";
-import { useTeammate } from "../../state/teammates";
+import { AgentMark, Bird, PlainMark } from "../ui/Bird";
+import { useTeammate, useTeammates } from "../../state/teammates";
+import { EmptyState } from "../ui/EmptyState";
+import { PageTitle, Sky, TopBar, useBigTitle } from "../ui/Hero";
+import { useFace } from "../../state/face";
+import { Pip, connectionTone } from "../ui/Pip";
 import { FilesPanel } from "../files/FilesPanel";
 import { EditorBody } from "../files/Editor";
 import { SchedulesView } from "../schedules/SchedulesView";
@@ -118,6 +122,7 @@ function SessionsScreen({ onNew }: { onNew: () => void }) {
     return [list.filter((s) => busy[s.id]), GROUPS.filter((g) => by.has(g)).map((g) => [g, by.get(g)!] as const)];
   }, [sessions, busy, q, now]);
   const empty = active.length + groups.length === 0;
+  const { onScroll, past } = useBigTitle();
 
   const endSearch = () => {
     setSearching(false);
@@ -126,10 +131,10 @@ function SessionsScreen({ onNew }: { onNew: () => void }) {
 
   return (
     <>
-      <header className="safe-top shrink-0 px-2">
-        {searching ? (
+      {searching ? (
+        <header className="safe-top relative z-10 shrink-0 px-2">
           <div className="flex h-[52px] items-center gap-1 pl-2">
-            <label className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-[10px] bg-active px-2.5">
+            <label className="field flex h-9 min-w-0 flex-1 items-center gap-2 rounded-[10px] px-2.5">
               <Search size={16} className="shrink-0 text-faint" />
               <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search sessions" aria-label="Search sessions" className="min-w-0 flex-1 bg-transparent text-[16px] outline-none placeholder:text-faint" />
             </label>
@@ -137,22 +142,27 @@ function SessionsScreen({ onNew }: { onNew: () => void }) {
               Cancel
             </button>
           </div>
-        ) : (
-          <div className="flex h-[52px] items-center">
-            <WorkspaceSwitcher />
-            <div className="flex-1" />
-            <TopButton label="Search" onClick={() => setSearching(true)}>
-              <Search size={21} />
-            </TopButton>
-            <InboxButton size={44} buttonClassName="rounded-full! text-ink!" />
-            <TopButton label="New session" onClick={onNew}>
-              <SquarePen size={21} />
-            </TopButton>
-          </div>
-        )}
-      </header>
+        </header>
+      ) : (
+        <TopBar title="Sessions" show={past}>
+          <TopButton label="Search" onClick={() => setSearching(true)}>
+            <Search size={21} />
+          </TopButton>
+          <InboxButton size={44} buttonClassName="rounded-full! text-ink!" />
+          <TopButton label="New session" onClick={onNew}>
+            <SquarePen size={21} />
+          </TopButton>
+        </TopBar>
+      )}
 
-      <div data-scroll-root className="scroll-quiet relative min-h-0 flex-1 overflow-y-auto pb-6">
+      <div data-scroll-root onScroll={onScroll} className={`scroll-quiet relative min-h-0 flex-1 overflow-y-auto pb-6 ${searching ? "" : "safe-top"}`}>
+        {!searching && (
+          <PageTitle
+            title="Sessions"
+            // Only the workspace, because it's a switch; what's working has its own group below.
+            status={<WorkspaceSwitcher />}
+          />
+        )}
         <div className="px-4">
           <ConnectionBanner />
           <UpdatePill className="mt-2 text-[14px] [&>button]:h-11" />
@@ -163,11 +173,7 @@ function SessionsScreen({ onNew }: { onNew: () => void }) {
             {q ? (
               <div className="text-[15px] text-muted">No sessions match “{q.trim()}”</div>
             ) : (
-              <>
-                <AppGlyph size={52} />
-                <div className="mt-5 text-[17px] font-semibold">No sessions yet</div>
-                <div className="mt-1 text-[14px] text-muted">Agents keep working while your phone is locked.</div>
-              </>
+              <EmptyState mark={<EmptyBird />} title="No sessions yet" body="Agents keep working while your phone is locked." className="!py-0" />
             )}
           </div>
         )}
@@ -188,7 +194,7 @@ function TopButton({ label, onClick, children }: { label: string; onClick: () =>
   );
 }
 
-/** Where you are, as the screen's title: tap to switch workspaces. */
+/** Where you are, at the head of the Sessions status line: tap to switch workspaces. */
 function WorkspaceSwitcher() {
   const ws = useActiveWorkspace();
   const status = useConnection((s) => s.status);
@@ -202,16 +208,17 @@ function WorkspaceSwitcher() {
   const ready = status === "ready";
   return (
     <>
+      {/* Part of the title's status line, in its pixel type; the hit area reaches past the text so it's still a thumb's width. */}
       <button
         ref={anchor}
         onClick={() => setOpen(true)}
         aria-label={`${ws?.name ?? "Workspace"}, ${statusText(status)}. Switch workspace`}
-        className="flex h-11 min-w-0 items-center gap-2 rounded-full pr-2.5 pl-2 transition-colors active:bg-hover"
+        className="relative -my-2 -ml-1 flex min-w-0 items-center gap-1.5 rounded-md py-2 pr-0.5 pl-1 text-ink-2 uppercase transition-colors active:bg-hover"
       >
-        <span className={`h-2 w-2 shrink-0 rounded-full ${ready ? "bg-ok" : status === "error" ? "bg-danger" : "animate-pulse bg-warn"}`} />
-        <span className="min-w-0 truncate text-[17px] font-semibold">{ws?.name}</span>
-        {!ready && <span className="shrink-0 text-[13px] text-muted">{statusText(status)}</span>}
-        <ChevronDown size={16} className="shrink-0 text-muted" />
+        <Pip tone={connectionTone(status)} />
+        <span className="min-w-0 truncate">{ws?.name ?? "No workspace"}</span>
+        {!ready && <span className="shrink-0 text-muted">· {statusText(status)}</span>}
+        <ChevronDown size={13} className="shrink-0 text-muted" />
       </button>
       <Popover open={open} onClose={() => setOpen(false)} anchor={anchor.current} placement="bottom-start" width={270}>
         <div role="menu" className="p-1.5">
@@ -230,8 +237,8 @@ function WorkspaceSwitcher() {
 
 function Group({ label, list, now }: { label: string; list: SessionInfo[]; now: number }) {
   return (
-    <section className="mt-5">
-      <h2 className="px-4 pb-1 text-[13px] font-medium text-muted">{label}</h2>
+    <section className="mt-6 first-of-type:mt-0">
+      <h2 className="px-4 pb-1 text-[11px] font-medium tracking-[0.06em] text-accent-ink uppercase">{label}</h2>
       {list.map((s) => (
         <Row key={s.id} s={s} now={now} />
       ))}
@@ -247,22 +254,19 @@ const Row = memo(function Row({ s, now }: { s: SessionInfo; now: number }) {
   const open = useChat((st) => st.open);
   // A teammate's session wears their face, which carries the state itself.
   const mate = useTeammate(s.agent);
+  const mood = useFace(s.id);
   const where = [mate?.name, basename(s.location.directory)].filter(Boolean).join(" · ");
   return (
-    <motion.button whileTap={{ backgroundColor: "var(--hover)" }} onClick={() => open(s.id)} className="flex w-full items-center gap-3 px-4 py-2.5 text-left">
-      {mate ? (
-        <AgentMark id={s.agent} size={44} state={asking ? "needs" : busy ? "working" : unread ? "done" : "idle"} />
-      ) : (
-        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-active text-muted">{busy ? <AgentClock size={15} /> : <MessageCircle size={19} />}</span>
-      )}
+    <motion.button whileTap={{ backgroundColor: "var(--hover)" }} onClick={() => open(s.id)} className="flex w-full items-center gap-3.5 px-4 py-3 text-left">
+      {mate ? <AgentMark id={s.agent} size={56} state={mood} /> : <PlainMark size={56} state={mood} />}
       <span className="min-w-0 flex-1">
         <span className="flex items-baseline gap-2">
           <span className={`min-w-0 flex-1 truncate text-[16px] text-ink ${unread || asking ? "font-semibold" : "font-medium"}`}>{s.title || "New session"}</span>
-          <span className="shrink-0 text-[13px] text-faint tabular-nums">{busy ? "Working" : timeAgo(s.time.updated, now)}</span>
+          <span className="shrink-0 text-[13px] text-faint tabular-nums">{busy && !mate ? "Working" : timeAgo(s.time.updated, now)}</span>
         </span>
         <span className="mt-0.5 flex items-center gap-2">
           <span className={`min-w-0 flex-1 truncate text-[14px] ${asking ? "text-info" : s.outcome === "failed" ? "text-danger" : "text-muted"}`}>{asking ? "Needs you" : s.outcome === "failed" ? "Didn't finish" : where}</span>
-          {unread && !busy && !asking && <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-ink" aria-label="New result" />}
+          {unread && !busy && !asking && !mate && <Pip tone="new" label="New result" />}
         </span>
       </span>
     </motion.button>
@@ -418,7 +422,7 @@ function DraftIntro() {
     );
   return (
     <motion.div key={mate.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }} className="flex w-full flex-col items-center">
-      <TeammateFace seed={mate.face} color={mate.color} accessory={mate.accessory} size={88} attentive={typing} interactive pulse={words} label={mate.name} />
+      <Bird bird={mate.bird} seed={mate.face} size={88} attentive={typing} interactive pulse={words} label={mate.name} />
       <div className="mt-4 text-[14px] font-medium text-ink-2">{mate.name}</div>
       <div className="mt-1 text-[22px] leading-tight font-semibold">{mate.greeting || `What should ${mate.name} work on?`}</div>
       {mate.tagline && <div className="mt-2 max-w-[300px] text-[14px] text-muted">{mate.tagline}</div>}
@@ -454,6 +458,7 @@ function DraftScreen() {
       className="chat-surface absolute inset-0 z-10 flex flex-col shadow-pop"
     >
       <div className="absolute inset-y-0 left-0 z-30 w-5 touch-none" onPointerDown={(e) => drag.start(e)} />
+      <Sky />
       <header className="safe-top relative z-20 shrink-0">
         <div className="flex h-[52px] items-center pr-1.5 pl-0.5">
           <BackButton onClick={close} />
@@ -486,4 +491,10 @@ function DraftScreen() {
       </div>
     </motion.div>
   );
+}
+
+/** The lead (or else the first teammate), waiting for something to do. */
+function EmptyBird() {
+  const mate = useTeammates((s) => (s.byId ? (Object.values(s.byId).find((t) => t.leads) ?? Object.values(s.byId)[0]) : undefined));
+  return mate ? <Bird bird={mate.bird} seed={mate.face} size={64} interactive /> : <AppGlyph size={52} />;
 }

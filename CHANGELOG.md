@@ -8,6 +8,21 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 ### Changed
 
+- A new look: dark mode is a soft graphite instead of black, and each phone tab opens on a large title level with its buttons. Scroll down and a frosted bar takes over.
+- Menus, dialogs, toasts, the reply box and settings cards catch the light: a lit top edge, a soft glow and a faint dot grain. Search boxes, text fields and switches are lighter wells instead of dark holes, and whatever you've picked (a tab, a sidebar row, a segment) sits on a raised chip.
+- The phone tab bar is a capsule with the current tab on a chip that slides as you switch.
+- Desktop sidebar rows show the same crisp birds as phones, and agents without a bird get a small dot orb instead of a grey bubble. Group labels are small capitals throughout.
+- On phones, the model name in the reply box no longer shrinks to a few letters, and scrollbars stay out of sight.
+- Teammate birds nap in lists, wake when you hover their row, and catch a glint of light every so often. Session rows are taller, with bigger, sharper birds.
+- The desktop sidebar breathes: rows are taller with bigger birds and a little space between them.
+- Phone headers have room to breathe: a little more space above the title and below it, and no count lines under it (Sessions keeps its workspace switcher). Lists and cards start at the same spot on every tab, and section labels line up with the cards and rows they name. Opening a settings page no longer puts a ring round its back button.
+- Counts of things working shimmer in the accent colour.
+- A touch of ice blue runs through the app: the shimmer on live text has a cold edge of blue dots, and the light along the top of cards, menus and the reply box is faintly blue.
+- Ice blue is now the colour of doing and choosing: send, stop and primary buttons, switches, picked answers and days, the chosen row or tab, the current phone tab, section labels and the icons in settings, the sidebar and schedule templates. Bird lines are a little cold too. Send stays a dim blue until there's something to send.
+- Birds use all their faces now. Between states they have a moment: a light bulb when they start writing, hearts when you answer them, shades when they're back from retrying, a party when a run finishes, a jolt when one fails. A pat on a big bird gets hearts, and tapping a teammate's face on their profile shows every mood.
+- Handoffs to teammates are one quiet line: their bird and what they're doing right now, with their name when you hover the bird. When they finish it just says how long it took; open it for the brief and the report.
+- Coloured status dots are gone. Connections, servers, schedules, app permissions and new alerts use small pixel marks whose shape says the state, so they read without colour, and notification counts are small squares instead of red circles.
+- Birds are the same drawing at every size, and their faces follow what's happening everywhere you see them: typing while a reply streams in, shivering while a retry waits, upset when something failed, sad when stopped, and a little party when someone joins the team. Agents without a bird are the dot orb everywhere, settings included.
 - Thinking level is now a submenu on each model: hover or tap a model to pick its level, and the menu closes once you choose. The model button shows the level you picked.
 - Questions from an agent come one at a time, with a tab for each, their choices as a list with explanations, and a row where you can type your own answer instead.
 - Approval buttons are cleaner: shortcuts moved into tooltips, one row on phones, and "Always allow" for an app asks whether it covers this teammate or every teammate.
@@ -16,7 +31,7 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 - The chat header shows who you're talking to, with the session title underneath; click the name to switch teammates. The reply box is a single rounded bar, with a + menu for mentioning files, running commands and using the shell.
 - Side panels open narrower so the chat keeps its room: Files starts as a slim tree and widens when you open a file, and the chat never shrinks below a readable column. Double-click a panel's edge to reset its width.
 - The strip of panel icons on the right edge is gone. A panel button at the end of the chat header (⌘⇧\\) opens the panel where you left it, and a menu at the top of the panel switches between Files, Terminal, Browser, Context, Project and Memory.
-- Less text on screen: icon buttons say what they do, with their shortcut, in a tooltip; each reply ends with quiet copy and fork icons and how long it took, with the model and speed on hover. Section labels are no longer in capitals.
+- Less text on screen: icon buttons say what they do, with their shortcut, in a tooltip; each reply ends with quiet copy and fork icons and how long it took, with the model and speed on hover.
 - Phones get a tab bar at the bottom: Sessions, Team, Schedules and Settings, each its own place instead of a menu behind the workspace name. Sessions shows how many are waiting on you, and tapping the current tab scrolls back to the top.
 - Team on phones lists your teammates with their faces; each opens as a full page to edit, and hiring opens profiles where **Talk to** starts a session straight away.
 - Settings on phones looks like iOS Settings: your workspace at the top, then grouped sections that each open as their own page, with larger rows and buttons. Apps and workspaces keep extra actions in a … menu, and tapping a workspace switches to it.

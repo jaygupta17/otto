@@ -6,6 +6,8 @@ import { useNow } from "../../hooks/useNow";
 import { timeAgo } from "../../lib/format";
 import { Popover } from "../ui/Popover";
 import { IconButton } from "../ui/Button";
+import { EmptyState } from "../ui/EmptyState";
+import { Pip } from "../ui/Pip";
 
 const ICON: Record<AlertKind, React.ReactNode> = {
   finished: <CheckCircle2 size={15} className="text-ok" />,
@@ -25,7 +27,7 @@ export function InboxButton({ size = 32, className = "", buttonClassName = "" }:
           <Bell size={size > 36 ? 19 : 16} />
         </IconButton>
         {unread > 0 && (
-          <span className="pointer-events-none absolute top-0.5 right-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-danger px-1 text-[10px] font-semibold text-white tabular-nums">
+          <span className="pointer-events-none absolute top-0.5 right-0.5 grid h-4 min-w-4 place-items-center rounded-[5px] bg-accent px-1 font-mono text-[10px] font-semibold text-bg tabular-nums">
             {unread > 9 ? "9+" : unread}
           </span>
         )}
@@ -58,7 +60,7 @@ function InboxList({ onPick }: { onPick: () => void }) {
         )}
       </div>
       {items.length === 0 ? (
-        <div className="px-4 py-8 text-center text-[12px] text-faint">Nothing yet. You'll see here when an agent finishes or needs you.</div>
+        <EmptyState small title="All quiet" body="You'll see here when an agent finishes or needs you." />
       ) : (
         <div className="scroll-quiet max-h-[360px] overflow-y-auto p-1.5">
           {items.map((a) => (
@@ -75,11 +77,11 @@ function InboxList({ onPick }: { onPick: () => void }) {
               <span className="min-w-0 flex-1">
                 <span className="flex items-baseline gap-2">
                   <span className={`min-w-0 flex-1 truncate text-[13px] ${a.read ? "text-ink-2" : "font-medium text-ink"}`}>{a.title}</span>
-                  <span className="shrink-0 text-[11px] text-faint">{timeAgo(a.time, now)}</span>
+                  <span className="shrink-0 font-mono text-[11px] text-faint tabular-nums">{timeAgo(a.time, now)}</span>
                 </span>
                 {a.body && <span className="mt-0.5 line-clamp-2 block text-[12px] leading-snug break-words text-muted">{a.body}</span>}
               </span>
-              {!a.read && <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-info" />}
+              {!a.read && <Pip tone="new" label="New" className="mt-1.5" />}
             </button>
           ))}
         </div>

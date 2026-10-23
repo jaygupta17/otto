@@ -8,47 +8,73 @@ Glanced at on a laptop between other work, and on a phone while away from the de
 
 ## Type
 
-- UI: the platform system face (`-apple-system` / SF Pro, Segoe UI Variable, Roboto). One family, weight and size do the hierarchy.
-- Code, commands, paths, cron, IDs: JetBrains Mono. Never as decoration.
+- UI: Geist (variable). One family; weight and size do the hierarchy.
+- Meta: Geist Mono at 11–12 for timestamps, durations, counts, shortcuts, paths, IDs and code. Always tabular.
+- Display: Geist Pixel (Square), for a few moments: the live status line, empty-state headlines, big numbers, and the status line under a page's large title (13px, uppercase, tracked: the one place capitals are allowed, because pixel type reads as a readout). Never for body text.
 - Scale (px): 12 meta · 13 controls & labels · 14 UI body · 15 conversation · 17 section title · 22 page title · 28 first-run title. Ratio ≈ 1.15.
-- Phones step up one size: 16 for list titles and every text input (smaller input text makes iOS zoom), 17 for the screen title, 14 for second lines.
-- Section labels are 12–13 medium in `muted`, never counts beside them.
-- Numerals that change (timers, counts, costs) are tabular.
-- Sentence case everywhere. No uppercase tracked labels, no eyebrows above headings.
+- Phones step up one size: 16 for list titles and every text input (smaller input text makes iOS zoom), 17 for the bar title, 14 for second lines. Each tab opens on a 34px large title (`PageTitle`) that hands over to the small bar title once scrolled away.
+- Group labels are 11px uppercase (see Layout), never with counts beside them.
+- Sentence case everywhere else. The only other capitals are the pixel status line under a phone title. No eyebrows above headings.
 
 ## Colour (each hue has one job)
 
-| Role | Light | Dark | Job |
-|---|---|---|---|
-| ground | `#f2f2f1` | `#0d0d0e` | window, sidebar |
-| panel | `#ffffff` | `#161618` | main work surface |
-| raised | `#ffffff` | `#1d1d20` | inputs, menus, dialogs |
-| ink | `#161616` | `#f1f1f0` | text, primary buttons, focus |
-| ink-2 / muted / faint | `#3d3d3d` / `#6b6b6b` / `#8f8f8f` | `#c8c8c6` / `#9a9a98` / `#6d6d6b` | hierarchy |
-| line | `#e3e3e1` | `#262628` | 1px structure |
-| **amber** | `#b86e00` text · `#f0a020` fill | `#f3b13f` | agent is working, live, brand dot |
-| **blue** | `#1d5fd6` | `#6d9cff` | needs you: approvals, questions, links |
-| green | `#1f8a4c` | `#4cc488` | done, allowed |
-| red | `#c93a32` | `#ff6b62` | failed, denied, destructive |
+Cold and quiet: blue-steel neutrals in light, graphite (not black) in dark, one ice accent. Work in progress is shown by motion (shimmer, dither), not by a hue.
 
-Primary actions are ink, not a hue. Selection is neutral (`active`), never a colour.
+| Role | Frost (light) | Dark | Job |
+|---|---|---|---|
+| ground | `#eef1f5` | `#19191b` | window, sidebar, phone pages |
+| panel | `#fbfcfe` | `#1b1b1d` | main work surface |
+| surface | `#ffffff` | `#212123` | cards, menus, dialogs |
+| raised | `#ffffff` | `#252527` | cards, menus; the chosen item (`chip`) mixes in ice |
+| ink | `#0a1424` | `#eef3f8` | text, primary buttons, focus |
+| ink-2 / muted / faint | `#2c3646` / `#5d6878` / `#858f9e` | `#d0d0d4` / `#a0a0a7` / `#76767d` | hierarchy |
+| line | `#dde2e9` | `#2c2c2f` | 1px structure |
+| **ice** | `#155ea6` text · `#1a73c9` fill | `#8fd0ff` | actions, the chosen item, where you are, group labels, list icons, needs you, live, new, links |
+| mint | `#13865f` | `#5fe0b0` | done, allowed |
+| red | `#c8372f` | `#ff6f6a` | failed, denied, destructive |
+
+Ice is the one hue, and it does a job: primary actions and send are ice fills (`bg-accent text-on-accent`), switches and picked choices are ice, the chosen row or tab is a `chip` tinted ice, the current phone tab, group labels and the icons that lead settings, sidebar and template rows are ice. Body text, titles and secondary controls stay neutral, so ice still means "this one". A send with nothing to send is ice at 35%, not grey. Every surface is lighter than the page under it: nothing is ever darker than the ground, so no field, track or card reads as a hole.
+
+## Dither
+
+Otto's one texture is ordered (Bayer 8×8) dithering: tone is carried by how many hard dots are on, never by blur, glow or gradient (`lib/dither.ts`).
+
+- Dots are one CSS pixel (two from 48px up) and never smoothed (`.dither`, `image-rendering: pixelated`).
+- Dithered canvases share one ticker at 18 fps, so they read as pixels changing, not video. They hold still off screen and in a hidden tab, and draw one still frame under reduced motion.
+- Dither is for things that are alive (the agent orb, live text) and, sparingly, for big empty moments. Never behind text you have to read.
+- Shares are dots too: context used is a still pie (`DitherGauge`) in the composer and a straight bar (`DitherMeter`) in the usage card, solid up to the share over a sparse track. A pie, never a ring, so it can't be mistaken for a spinner.
+- The dither bar (`DitherBar`) is a 2px track with a band of dots running along it: work whose end you can't see. It runs down the thread line of a live trail.
+- Pages have weather (`DitherField`, `ui/Hero.tsx`): live 2px dots on an 8px grid in the accent. On Home and the new-session screen it's a faint field (`Sky`, 45%) weighted to both edges and fading in from the top. It scrolls away with the title and never reaches rows, cards or chat.
+- Live counts ("3 working") use `.shimmer.shimmer-accent`: the dithered light sweeping through accent text.
+- Edges dissolve into dots, not a soft gradient (`.dither-fade-top`, drawn at the screen's density): streaming thoughts and the top of the thread under its header fade this way.
 
 ## Shape & depth
 
-- Radius: 6 small controls · 8 buttons, inputs, rows · 10 cards & menus · 12 composer & dialogs · 16 cards inside the chat · 20 chat bubbles. Nothing rounder except pills and avatars.
+- Radius: 6 small controls · 8 buttons, inputs, rows · 10 cards & menus, and the square buttons inside the composer · 12 dialogs · 16 the composer and the ask dock above it (10 + its 6px padding, so the corners nest) · 20 chat bubbles. Nothing rounder except avatars.
 - Chat: your messages are ink bubbles on the right (`bubble-me`), the agent's words grey bubbles on the left (`bubble`). Tool activity, files and commands stay outside bubbles. A centred time starts each new stretch of conversation.
 - Structure is drawn with 1px lines. Shadows only on things that float (menus, dialogs, toasts, composer), always offset (`0 8px 24px -8px`).
+- Things that hold controls are bezels (`.bezel`, and `.surface-float` / `.surface-overlay` get it for free): a hairline, a lit top edge, a soft glow from above (both in `--lit`, the text colour cooled 40% toward the accent) and a faint dot grain fading out from the middle. Settings cards, grouped lists, the composer, menus, dialogs and toasts. Never chat activity, rows or birds: those sit bare.
+- Four materials, after DitherUI (`styles.css`), and nothing else makes a box:
+  - `bezel`: a control surface (cards, grouped lists, the composer, menus). Lighter than the page, with a hairline and a lit top edge.
+  - `well`: a recessed track: a segmented control's track, the phone tab bar, an icon socket. A touch lighter than its surroundings, with an inner shadow along the top.
+  - `chip`: the chosen item in a well or list: the active tab, sidebar row, settings page or file. Raised with a little ice mixed in (12% light, 22% dark), an ice hairline, lit top edge, small shadow. Selection never uses a flat fill. Segment pills (`seg-pill`) stay neutral, since their text carries the colour.
+  - `field`: an input, a light well with a focus ring. Search boxes and text fields everywhere use it.
+- Small extras: `kbd` is a keycap for shortcuts (search, the palette); `topbar` is a bar that is clear at rest and frosts (`topbar-on`: the page colour at 84%, blur, hairline) once the page scrolls under it.
 - Regions sit flush to the window edges and are split by 1px lines; no floating panel cards.
-- No gradients, glows or glass: every surface is a flat, solid colour. The one exception is a teammate's face (below).
+- No glass and no colour gradients. The bezel's glow is the only gradient, and it's the text colour at a few percent.
 
 ## Layout
 
 - Desktop: sidebar · chat · tools panel. No rail. The panel button at the end of the chat header (⌘⇧\\) opens the panel on the surface used last; the menu at the start of the panel's header switches between Files, Terminal, Browser, Context, Project and Memory.
-- Phone: a tab bar along the bottom with four places: Sessions · Team · Schedules · Settings. Tabs only navigate, never act; the current one has a filled symbol, Sessions carries a blue count of sessions waiting on you, and tapping the current tab scrolls it to the top. A pushed session covers the bar, so the composer owns the bottom. Each tab's header is its name, then its actions as plain icons.
-- Phone Sessions: the workspace name is the title (tap to switch, add or manage workspaces); search, inbox and new session are icons on the right. Sessions are grouped Working · Today · Yesterday · This week · Earlier, each row a face, a title and who/where.
-- Phone Settings follows iOS Settings: grouped lists on the page colour (`bg-bg`), with borderless panel cards (14px radius) and muted group headers. Settings pages push in with the same grouped look (`Sheet grouped`, wrapped in `PhonePage`); inside them `.group-card` and `.empty-card` turn borderless and a tab's own heading gives way to its description, because the page bar already names it. List rows are a choice: tap the row, a check marks the current one, and everything else sits behind `…`.
-- Bars hold plain icons, never grey circles or bordered buttons; the rest goes in the `…` menu. Deeper screens are pushed full-screen pages, never bottom sheets. Touch targets are 44pt: menu rows grow on a coarse pointer, and a page's main buttons are `h-11` at 15px.
+- Phone: a tab bar along the bottom with four places: Sessions · Team · Schedules · Settings. It's a capsule `well` (60px, 22px radius) and the current tab is a `chip` that slides between them. Tabs only navigate, never act; Sessions carries a blue count of sessions waiting on you, and tapping the current tab scrolls it to the top. A pushed session covers the bar, so the composer owns the bottom.
+- Every phone tab opens the same way (`RootPage` / `PageTitle` / `TopBar`): a 32px title level with the tab's actions (plain icons, 44pt), and, only where it's a control, a line in the pixel face (Sessions' workspace switcher). No counts ("7 teammates", "Nothing scheduled"): the list under it already says so. No dots under the header. The title row starts 16px from the top and content starts 24px under the header on every tab. Nothing sits above the title. Scroll past it and a frosted bar fades in with the name small in the middle.
+- Phone Sessions: the title is Sessions; the workspace leads the status line (tap it to switch, add or manage workspaces); search, inbox and new session are icons on the right. Sessions are grouped Working · Today · Yesterday · This week · Earlier, each row a bird, a title and who/where.
+- Phone Settings follows iOS Settings: grouped lists on the page colour (`bg-bg`), with bezel cards (14px radius) and small uppercase group labels. Settings pages push in with the same grouped look (`Sheet grouped`, wrapped in `PhonePage`); inside them `.group-card` is the same card as the list it came from, and a tab's own heading gives way to its description, because the page bar already names it. List rows are a choice: tap the row, a check marks the current one, and everything else sits behind `…`.
+- Bars hold plain icons, never grey circles or bordered buttons; the rest goes in the `…` menu. Deeper screens are pushed full-screen pages, never bottom sheets; a pushed page takes focus itself (`data-focus-self`), so its back button doesn't open ringed. Touch targets are 44pt: menu rows grow on a coarse pointer, and a page's main buttons are `h-11` at 15px.
 - Icons are Lucide at stroke 1.75, sized to the text beside them: 16–17 in desktop headers, 21–22 in phone bars.
+- Group labels everywhere (sidebar, settings, phone lists, panels) are 11px, medium, uppercase, tracked 0.06em, in ice (`text-accent-ink`). Page and row text is never uppercase. A label sits flush with the left edge of what it labels: the card under it, or the row marks in a full-bleed list, which on phones is the same 16px as the page title. Never indent a label past its card.
+- Sidebar rows are 44px marks with a 14px title and a line under it, 60px tall and 4px apart, on a `chip` when chosen. A plain agent (no bird) gets `PlainMark`: a dither orb in an empty square, never a grey circle with a speech bubble.
+- Scrollbars appear only while the pointer is over a scroller (`.scroll-quiet`) and never on touch.
 
 ## Words & controls
 
@@ -60,52 +86,91 @@ Primary actions are ink, not a hue. Selection is neutral (`active`), never a col
 - Settings are grouped rows (`Rows` / `Row`): label left, control right. Lists are one card with hairlines, not a stack of cards.
 - Secondary actions live in a `…` menu or appear on hover; a row shows at most one always-visible control.
 - Cards in settings are `.group-card`: raised with a hairline on desktop, borderless on a phone page. Use it instead of hand-rolled `rounded-2xl bg-raised` cards so both looks stay in step.
-- Profile pages (agents, teammates) lead with who it is: a large face or colour mark, the name and one line about them, then a tab switcher. Text fields sit inside a `.group-card` as `FormRow`s (a small label above a borderless input, rows split by hairlines); switches and short values use `Row`. Destructive actions are a centred red row in their own card, confirming in place.
+- Profile pages (agents, teammates) lead with who it is: a large bird or colour mark, the name and one line about them, then a tab switcher. Text fields sit inside a `.group-card` as `FormRow`s (a small label above a borderless input, rows split by hairlines); switches and short values use `Row`. Destructive actions are a centred red row in their own card, confirming in place.
 - An agent's questions and approvals dock above the composer, one at a time with a tab for each. Choices are a list with their explanation underneath, and the last row is always a field for your own answer; shortcuts sit in tooltips.
 
 ## Motion
 
 - 150–200 ms ease-out for state changes; no bounce.
-- Ambient motion belongs to agents only. A plain agent shows the **agent clock**: a ring with an amber hand that turns while it works. Everything static stays still.
-- Respect reduced motion: faces and the clock hold still and keep their state marks.
+- Ambient motion belongs to agents only. A teammate shows it through its bird; a plain agent shows the **agent orb**: a small dithered sphere in ice whose light circles it while it works. Everything static stays still.
+- Respect reduced motion: birds and the orb hold still and keep their state marks; shimmer turns to plain text.
 
-## Teammate faces
+## Teammate birds
 
-A teammate is a character, not a row: its face is its identity and its status at once.
+A teammate is a character, not a row: its bird is its identity and its status at once. The birds come from the Flock set (`lib/flock`): nyx the owl, vanta the raven, floe the penguin, fjord the puffin and flake the chickadee are the everyday five a new teammate is given at random; talon, zip and cinder are there to pick.
 
-- A soft lit body (the only gradient in the app: light top-left, shade bottom-right, one highlight) with solid white pill eyes. No pupils, no outlines. It has to read at 14px and stay calm at 120px.
-- Body colours stay clear of the status hues so a face never reads as a state. The state shows as a mark on the face, in the status hue:
-  - **idle**: breathes and sways, blinks, and does little things on its own: looks around, tilts its head, hops, wiggles.
-  - **working**: a nod as it takes the task, bobbing along, eyes narrowed and reading across, and the amber hand running round its rim (the agent clock, worn by the agent).
-  - **needs you**: wide eyes, hopping for attention, a blue beacon.
-  - **done**: jumps for joy, happy eyes and a blush, sparkles burst out, then calm.
-- Faces notice you (`faceLife.ts`). Nearby faces watch the pointer and lean toward it. Hovering what a face belongs to (its row, its card) makes it perk up and grin; pressing squishes it. Hero faces (the new-session greeting, the editor header) also nod along with each word you type, and a few quick pokes make them dizzy.
-- Every face keeps its own timing, so a roster never moves in unison. Faces in lists fidget rarely; the hero fidgets often. Below 20px: blinks and hover only, no accessory, and state marks only. Off screen or in a hidden tab, faces hold still. Under reduced motion all of it stops.
-- An accessory (antenna, glasses, headset, cap, sprout, bowtie) hints at the job. One at most.
-- Where a face carries the state (sidebar rows, the composer chip, handoff cards), don't repeat it beside the face with a clock, a dot or the word "Working".
+- **Lines only, no tile.** Each bird is ink line art in the text colour. Its inner shapes (the parts that hide lines behind them) are filled with paper (white in light, black in dark) and the art is blended (`multiply` in light, `screen` in dark), so the paper vanishes on any surface, row hover or selection. Never transform or fade `.bird` itself, which would break the blend; only `.bird-art` moves.
+- **Framed tight.** The default crop fits the whole bird to its box, so a 24px bird is all bird. `bust` (head and shoulders, clipped) and `full` (the whole 240 grid, optional perch) are for big moments. One bird everywhere: every line at every size, a touch finer when small (`lib/flock/build.ts`), so the 18px bird in a picker is the same drawing as the 88px one on its profile. No simplified small birds. Motion and scene marks (thought cloud, sparkles) stay at every size.
+- **State is the bird's expression**, with no mark beside it. Every bird asks `state/face.ts` (`faceOf` for a session; `mateFace` for a teammate, the loudest of its sessions and the parts it's doing for a lead), so it wears the same face everywhere:
+
+  | State | Face | When |
+  |---|---|---|
+  | idle | breathes, blinks; dozes in lists | nothing going on |
+  | working | thinking, eyes up; small birds bob | tools running, the model thinking |
+  | writing | typing | the reply is streaming in |
+  | retrying | shivering | waiting to try the model again |
+  | needs you | puzzled | a question or approval waits |
+  | done | happy, a hop | a result you haven't seen |
+  | failed | upset | it didn't finish (a teammate drops it once you've seen it) |
+  | stopped | sad | stopped before it finished |
+
+  Between states a bird has a moment (`reaction` in `state/face.ts`, about a second) before it settles:
+
+  | Change | Moment |
+  |---|---|
+  | working → writing | a light bulb (once per 45s, not every message) |
+  | needs you → working | hearts: thanks for answering |
+  | retrying → working | shades on: back on track |
+  | working → done | a party: star eyes, hat, confetti |
+  | working → idle (you watched it finish) | happy |
+  | working → failed | a jolt (wide eyes, "!") before it goes dizzy |
+
+  Joining the team (hiring) is a party. The profile header's face cycles through all sixteen moods when tapped.
+- **It notices you** (`ui/Bird.tsx`). Nearby birds watch the pointer. Hovering what a bird belongs to (its row, its card) perks it up; pressing squishes it. Hero birds (the new-session greeting, the profile header) greet you, look down at what you type and nod along, wink or puzzle now and then while they wait. A pat gets hearts; a few quick pokes make them cross.
+- **Asleep until needed.** A quiet list-size bird (under 64px, not working, not needing you) dozes: eyes closed, slow breath, z's drifting up. Hover its row and it wakes, then nods off again a moment after you leave.
+- **A glint of light.** Every bird's lines carry a band of the accent that sweeps across now and then (every 9s, staggered per bird; every 1.8s while thinking). It stops off screen and under reduced motion.
+- Every bird keeps its own timing, so a roster never moves in unison. Off screen or in a hidden tab, birds hold still. Under reduced motion all of it stops.
+- Birds don't overlap or stack: blended line art doesn't hide what's behind it.
+- Where a bird carries the state (sidebar rows, the composer chip, handoff lines), don't repeat it beside the bird with an orb, a pip or the word "Working".
+- Plain agents (no teammate) are the dither orb (`PlainMark`) wherever a bird would be, settings included: never a colour dot.
+
+### Status pips
+
+No round colour dots. Where no bird carries a state (connections, MCP servers, schedules and their runs, app permissions, new alerts, plain-agent rows), it's a pip (`ui/Pip.tsx`): a 3×3 block of 2px pixels whose shape says the state, so it reads without its colour.
+
+| Tone | Shape | Means |
+|---|---|---|
+| on | solid, ink | connected, ran, allowed |
+| new | solid, ice | unread, a new result |
+| live | a ring with light running round it, ice | connecting, adding, waiting on a reply |
+| needs | a plus, ice | waiting on you, asks first |
+| error | an x, red | failed, blocked |
+| off | a hollow ring, faint | off, never run |
+
+Counts on the bell and the tab bar are small ice squares, not red circles; a pager of steps is short bars, the current one longer.
 
 ### Leads and handoffs
 
 A lead (Juno, the chief of staff) takes the whole job and hands the parts to teammates through OpenCode's subagent tool. Nothing runs outside OpenCode.
 
 - Leads compile as primary agents, so nobody hands work to a lead; everyone else compiles as `all` and is offered to the lead by name, job and tagline. One level deep: a teammate doing a lead's part can't hand it on.
-- Each handoff shows in the lead's thread as a card with the teammate's face wearing that part's state, and their name. The report card wears the face too.
-- While a teammate works on a lead's part, its sidebar row and phone face show it working, with "On a task for Juno" under the name. If it asks you something, both it and the lead show "Needs you", and the question waits in the lead's thread.
+- Each handoff shows in the lead's thread as one line: the teammate's bird wearing that part's state and what they're doing right now (their latest step, else the task), shimmering, with the time so far. No name on the line: hover the bird for it (tap on phones). Done, it only says "Finished in 2m 14s"; the brief and the report wait behind the chevron. "Needs you", "Couldn't finish" and "Stopped after 40s" take its place when they apply. A report with no call in view is the same line ("Finished").
+- While a teammate works on a lead's part, its sidebar row and phone bird show it working, with "On a task for Juno" under the name. If it asks you something, both it and the lead show "Needs you", and the question waits in the lead's thread.
 - Leads sit first in the sidebar, the phone Team tab and Agents.
 
 ## Signature
 
-The agent clock plus tabular elapsed time (`Working · 1:24`) is how activity reads everywhere: composer, timeline, sidebar, schedules.
+The agent orb plus tabular elapsed time (`Working · 1:24`) is how activity reads everywhere: composer, timeline, sidebar, schedules.
 
 ### Live lines, not cards
 
 What's happening right now reads as one quiet line: a spinner, a word or two, the time, and a chevron (`◔ Working 0:24 ›`).
 
-- The spinner is the teammate's own working face when there is one, else the agent clock.
+- The spinner is the teammate's own working bird when there is one, else the agent orb.
 - A live turn shows nothing of its own while something in it is moving (words streaming, a tool or teammate running). In the gaps between, only the spinner shows, with no "Working" and no timer, so the turn never looks frozen. Only a retry gets words.
-- Live words shimmer (`.shimmer`: a soft light sweeping through the text). The shimmer is what says "live", so don't add "Running" or "In progress" next to it. When it stops, the text turns plain.
-- States are cues, not labels: a stop is struck through, a failure takes the red, needing you takes the blue. Done is the face's done state and the shimmer stopping.
-- No boxes around activity. Detail opens under the line, hanging off a thread line; content (a brief, a result, code) may sit in its own box.
+- Live words shimmer (`.shimmer`: a band of ordered-dither dots sweeping through the text, drawn in the theme's own colours, with a sparse edge of accent dots either side of the bright core). The shimmer is what says "live", so don't add "Running" or "In progress" next to it. When it stops, the text turns plain.
+- States are cues, not labels: a stop is struck through, a failure takes the red, needing you takes the blue. Done is the bird's done state and the shimmer stopping.
+- No boxes or fills around activity, teammates included: a handoff is a line like any other. Detail opens under the line, hanging off a thread line; each step on it hangs from a small square node (ice while live, red when it failed, faint when done). Content (a brief, a result, code) may sit in its own box.
 - Actions are icons that appear when you reach for the line (always shown on touch), and their tooltips name them. No words where the icon already says it: ↗ opens, ■ stops.
 - Don't show a control until it matters (Steer or Queue appears once you've typed while the agent works), and let the placeholder say the mode ("Steer Juno…").
 
@@ -113,7 +178,7 @@ What's happening right now reads as one quiet line: a spinner, a word or two, th
 
 Work that outlives its turn (a command the agent left running, a teammate on a part in the background) stays visible until it ends.
 
-- Its row stays live where it started: the shimmer, the clock, the time, and a faint "in the background". It ends in place with its own output, and its report never shows as a separate card.
+- Its row stays live where it started: the shimmer, the orb, the time, and a faint "in the background". It ends in place with its own output, and its report never shows as a separate card.
 - Above the composer, one line per thing still running for this chat (its own commands, and those of teammates working for it), with ■ on hover. Two or more fold into "2 running in the background", which opens in place. A command shorter than a breath never appears there.
 - A folded run that left work going says so on its summary line ("· 1 still running").
 - A blocking command or teammate that has run a few seconds offers "Keep running in the background" (send-to-back icon): the turn moves on and the work carries on.
@@ -122,7 +187,7 @@ Work that outlives its turn (a command the agent left running, a teammate on a p
 ### Apps
 
 - An app always shows its own logo, on a white tile (rounded square in lists, circle in chat), so it reads the same in light and dark.
-- A connect link from the agent becomes a pill button: logo and "Connect Gmail", then "Waiting for you in the browser…" with a pulsing blue dot (needs you), then "Gmail connected" with a green check and **Carry on**.
+- A connect link from the agent becomes a pill button: logo and "Connect Gmail", then "Waiting for you in the browser…" with a live pip, then "Gmail connected" with a green check and **Carry on**.
 - App calls read as what happened to the app ("Checked Google Calendar"), never as the script that made them.
 
 ### Permissions

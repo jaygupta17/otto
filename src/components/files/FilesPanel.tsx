@@ -120,7 +120,7 @@ function FileRow({ path, name, depth }: { path: string; name: string; depth: num
   const active = useUI((s) => s.activeFile === path);
   const code = langFromPath(name) !== "text";
   return (
-    <button onClick={() => openInEditor(path)} className={`flex h-7 w-full items-center gap-1.5 rounded-md pr-2 text-left text-[13px] ${active ? "bg-active text-ink" : "text-ink-2 hover:bg-hover"}`} style={{ paddingLeft: depth * 14 + 25 }}>
+    <button onClick={() => openInEditor(path)} className={`flex h-7 w-full items-center gap-1.5 rounded-md pr-2 text-left text-[13px] ${active ? "chip text-ink" : "text-ink-2 hover:bg-hover"}`} style={{ paddingLeft: depth * 14 + 25 }}>
       {code ? <FileCode2 size={14} className="shrink-0 text-muted" /> : <File size={14} className="shrink-0 text-faint" />}
       <span className="truncate">{name}</span>
     </button>

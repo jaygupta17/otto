@@ -5,7 +5,8 @@ import { motion } from "motion/react";
 import type { ModelInfo } from "@opencode/client";
 import { useChat, wsKey } from "../../state/chat";
 import { useConnection } from "../../state/connection";
-import { AgentMark } from "../ui/TeammateFace";
+import { AgentMark } from "../ui/Bird";
+import { useFace } from "../../state/face";
 import { useAgentName, useTeammates } from "../../state/teammates";
 import { isOfferedAgent } from "../../lib/teammates";
 import { Popover, MenuItem } from "../ui/Popover";
@@ -89,9 +90,10 @@ export function ModelPicker({ sessionId, compact = false }: { sessionId: string 
         onClick={() => setOpen((v) => !v)}
         aria-label={`Model: ${label}${variant ? `, ${levelName(variant)} thinking` : ""}`}
         data-tip={compact && variant ? `${levelName(variant)} thinking` : undefined}
-        className="flex h-8 min-w-0 items-center gap-1.5 rounded-md px-2 text-[13px] text-ink-2 transition-colors hover:bg-hover hover:text-ink"
+        className={`flex h-8 items-center gap-1.5 rounded-md px-2 text-[13px] text-ink-2 transition-colors hover:bg-hover hover:text-ink ${compact ? "shrink-0" : "min-w-0"}`}
       >
-        <span className={`truncate ${compact ? "max-w-[96px]" : "max-w-[220px]"}`}>{label}</span>
+        {/* On a phone the name keeps its width ("Deep…" says nothing) and drops the chevron to leave the message field room. */}
+        <span className={`truncate ${compact ? "max-w-[104px]" : "max-w-[220px]"}`}>{label}</span>
         {/* Thinking stays in sight when it's on; where room is short, the brain alone (its level in the tooltip). */}
         {variant && (
           <span className="flex shrink-0 items-center gap-1 text-muted">
@@ -99,7 +101,7 @@ export function ModelPicker({ sessionId, compact = false }: { sessionId: string 
             {!compact && levelName(variant)}
           </span>
         )}
-        <ChevronDown size={13} className="-ml-0.5 shrink-0 text-faint" />
+        {!compact && <ChevronDown size={13} className="-ml-0.5 shrink-0 text-faint" />}
       </button>
       <Popover open={open} onClose={() => setOpen(false)} anchor={anchor.current} placement="top-end" width={Math.min(320, window.innerWidth - 16)} label="Model">
         <ModelMenu sessionId={sessionId} touch={touch} onDone={() => setOpen(false)} />
@@ -189,7 +191,7 @@ function ModelMenu({ sessionId, touch = false, onDone }: { sessionId: string | n
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-1.5">
             <span className={`truncate ${touch ? "text-[16px]" : "text-[13px]"} text-ink ${active ? "font-medium" : ""}`}>{cleanName(m)}</span>
-            {freeTag && isFree(m) && <span className="shrink-0 rounded-full bg-ok-soft px-1.5 py-px text-[11px] font-medium text-ok">Free</span>}
+            {freeTag && isFree(m) && <span className="shrink-0 text-[12px] text-ok">Free</span>}
           </span>
           {showProvider && <span className="block truncate text-[12px] text-muted">{providerName(m.providerID)}</span>}
         </span>
@@ -383,13 +385,8 @@ export function AgentPicker({ sessionId, header = false, subtitle }: { sessionId
   // Loaded but nothing to talk to yet: the chip becomes the way to add a teammate.
   const empty = !current && roster !== null;
   // The face on the chip shows what this session's agent is doing.
-  const state = useChat((s) => {
-    const id = s.activeId;
-    if (!id) return "idle" as const;
-    if (Object.values(s.permissions).some((p) => p.sessionID === id) || Object.values(s.forms).some((f) => f.sessionID === id)) return "needs" as const;
-    return s.busy[id] ? ("working" as const) : ("idle" as const);
-  });
-  const stateName = state === "working" ? "working" : state === "needs" ? "needs you" : "";
+  const state = useFace(useChat((s) => s.activeId));
+  const stateName = { working: "working", writing: "writing", retrying: "retrying", needs: "needs you", failed: "didn't finish" }[state as string] ?? "";
   useEffect(() => {
     if (open && agents.length === 0) void refreshCatalog();
   }, [open, agents.length, refreshCatalog]);
@@ -421,7 +418,7 @@ export function AgentPicker({ sessionId, header = false, subtitle }: { sessionId
           </>
         ) : (
           <>
-            <AgentMark id={current} color={info?.color} size={roster?.[current] ? 18 : 12} state={state} />
+            <AgentMark id={current} color={info?.color} size={18} state={state} />
             {empty && "Add a teammate"}
             <ChevronDown size={13} className="text-faint" />
           </>
@@ -438,7 +435,7 @@ export function AgentPicker({ sessionId, header = false, subtitle }: { sessionId
             <MenuItem
               key={a.id}
               active={a.id === current}
-              icon={<AgentMark id={a.id} color={a.color} size={roster?.[a.id] ? 20 : 12} />}
+              icon={<AgentMark id={a.id} color={a.color} size={20} />}
               label={roster?.[a.id]?.name ?? a.name}
               hint={roster?.[a.id] ? roster[a.id].job || undefined : a.description}
               right={<Check size={14} className={`text-ink-2 ${a.id === current ? "" : "invisible"}`} />}
@@ -628,7 +625,7 @@ export function ProjectPicker({ disabled }: { disabled?: boolean }) {
               <button type="button" className="rounded-lg px-2.5 py-1 text-[12px] text-muted hover:bg-hover" onClick={() => setMode("list")}>
                 Back
               </button>
-              <button type="submit" disabled={working || !input.trim()} className="flex items-center gap-1.5 rounded-lg bg-ink px-3 py-1 text-[12px] font-medium text-bg disabled:opacity-50">
+              <button type="submit" disabled={working || !input.trim()} className="flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1 text-[12px] font-medium text-on-accent disabled:opacity-50">
                 {working && <Spinner size={12} />}
                 {mode === "clone" ? "Clone" : "Create"}
               </button>

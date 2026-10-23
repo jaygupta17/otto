@@ -171,7 +171,7 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
   return (
     <section className="mt-4 first:mt-2">
       <div className="flex items-baseline gap-2 px-2 pb-1.5">
-        <h3 className="text-[12px] font-medium text-muted">{title}</h3>
+        <h3 className="text-[11px] font-medium tracking-[0.06em] text-accent-ink uppercase">{title}</h3>
         {hint && <span className="text-[11px] text-faint">{hint}</span>}
       </div>
       <ul className="space-y-1">{children}</ul>
@@ -310,7 +310,7 @@ function FileEditor({ path, file, onBack }: { path: string; file: MemoryFile | u
             {file ? relPath(file) : prettyPath(path)}
           </div>
         </div>
-        <span className="shrink-0 pr-1 text-[11px] text-faint tabular-nums">{lines} lines</span>
+        <span className="shrink-0 pr-1 text-[11px] text-faint font-mono tabular-nums">{lines} lines</span>
       </div>
       <textarea
         value={text}
