@@ -6,6 +6,8 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-10-23
+
 ### Changed
 
 - A new look: dark mode is a soft graphite instead of black, and each phone tab opens on a large title level with its buttons. Scroll down and a frosted bar takes over.
@@ -318,7 +320,8 @@ First public release.
 - Scheduled tasks that run on the agent machine.
 - Project file browser with syntax highlighting.
 
-[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.14.0...HEAD
+[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.15.0...HEAD
+[0.15.0]: https://github.com/jaygupta17/otto/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/jaygupta17/otto/compare/v0.13.1...v0.14.0
 [0.13.1]: https://github.com/jaygupta17/otto/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/jaygupta17/otto/compare/v0.12.1...v0.13.0
