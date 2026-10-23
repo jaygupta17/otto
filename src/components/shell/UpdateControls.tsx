@@ -18,7 +18,7 @@ export function UpdatePill({ className = "mx-2 mb-1" }: { className?: string }) 
           ? `Update to ${version}`
           : `Otto ${version} is out`;
   return (
-    <div className={`flex items-center gap-1 rounded-lg bg-accent-soft pr-1 text-[12.5px] text-ink ${className}`}>
+    <div className={`flex items-center gap-1 rounded-lg bg-accent-soft pr-1 text-[12px] text-ink ${className}`}>
       <button
         disabled={status === "downloading"}
         onClick={() => void (status === "ready" ? restart() : install())}
@@ -90,7 +90,7 @@ export function UpdatesSection() {
           {action}
         </Row>
         {u.status === "available" && u.notes && (
-          <div className="max-h-48 overflow-y-auto px-4 py-3 text-[12.5px] leading-relaxed whitespace-pre-wrap text-muted">{u.notes}</div>
+          <div className="max-h-48 overflow-y-auto px-4 py-3 text-[12px] leading-relaxed whitespace-pre-wrap text-muted">{u.notes}</div>
         )}
         <Row label="Check automatically" hint="Otto asks before downloading anything">
           <Toggle on={u.auto} onChange={u.setAuto} label="Check for updates automatically" />

@@ -1,5 +1,5 @@
 import { motion } from "motion/react";
-import { Pin, PinOff, MoreHorizontal, Pencil, GitFork, Trash2 } from "lucide-react";
+import { Pin, PinOff, MoreHorizontal, Pencil, GitFork, Trash2, MessageCircle } from "lucide-react";
 import { memo, useRef, useState } from "react";
 import type { SessionInfo } from "@opencode/client";
 import { asksFor, useChat } from "../../state/chat";
@@ -7,6 +7,8 @@ import { timeAgo, basename } from "../../lib/format";
 import { deleteSession } from "../../lib/actions";
 import { Popover, MenuItem } from "../ui/Popover";
 import { AgentClock } from "../ui/AgentClock";
+import { AgentMark } from "../ui/TeammateFace";
+import { useAgentName, useTeammate } from "../../state/teammates";
 
 /** The one mark a session shows: working, needs you, new result, or failed. */
 export function StatusDot({ busy, asking, unread, failed }: { busy: boolean; asking: boolean; unread: boolean; failed: boolean }) {
@@ -30,9 +32,13 @@ export const SessionRow = memo(function SessionRow({ s, now, onNavigate }: { s: 
   const [editing, setEditing] = useState(false);
   const more = useRef<HTMLButtonElement>(null);
   const title = s.title || "New session";
+  const failed = s.outcome === "failed";
+  const agentName = useAgentName(s.agent);
+  // Teammates show their face; plain agents get a neutral chat tile so the column of avatars stays even.
+  const face = !!useTeammate(s.agent);
 
   return (
-    <motion.div layout="position" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.15 }}>
+    <motion.div layout="position" aria-current={active ? "true" : undefined} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.15 }}>
       <div
         role="button"
         tabIndex={0}
@@ -44,38 +50,50 @@ export const SessionRow = memo(function SessionRow({ s, now, onNavigate }: { s: 
           e.preventDefault();
           setMenu(true);
         }}
-        className={`group relative flex h-8 items-center gap-2 rounded-md px-2 text-[13px] transition-colors ${active ? "bg-active text-ink" : "text-ink-2 hover:bg-hover"}`}
+        className={`group relative flex items-center gap-2.5 rounded-lg py-2 pr-2 pl-2 transition-colors ${active ? "bg-active" : "hover:bg-hover"}`}
       >
-        <span className="grid w-3.5 shrink-0 place-items-center" title={busy ? "Working" : asking ? "Needs you" : unread ? "New result" : s.outcome === "failed" ? "Failed" : undefined}>
-          <StatusDot busy={busy} asking={asking} unread={unread} failed={s.outcome === "failed"} />
-        </span>
-        {editing ? (
-          <input
-            autoFocus
-            defaultValue={title}
-            onClick={(e) => e.stopPropagation()}
-            onBlur={(e) => {
-              setEditing(false);
-              const v = e.target.value.trim();
-              if (v && v !== title) void rename(s.id, v);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-              if (e.key === "Escape") setEditing(false);
-            }}
-            className="field min-w-0 flex-1 rounded-md px-1.5 text-[13px] outline-none"
-          />
+        {face ? (
+          <AgentMark id={s.agent} size={30} state={busy ? "working" : asking ? "needs" : unread ? "done" : "idle"} />
         ) : (
-          <span className={`min-w-0 flex-1 truncate ${unread || asking ? "font-medium text-ink" : ""}`}>{title}</span>
+          <span className="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-full bg-hover text-muted">
+            <MessageCircle size={14} />
+          </span>
         )}
-        <span className={`shrink-0 text-[12px] tabular-nums group-hover:hidden ${asking ? "text-info" : "text-faint"}`}>{busy ? "" : asking ? "Needs you" : timeAgo(s.time.updated, now)}</span>
+        <span className="min-w-0 flex-1">
+          {editing ? (
+            <input
+              autoFocus
+              defaultValue={title}
+              onClick={(e) => e.stopPropagation()}
+              onBlur={(e) => {
+                setEditing(false);
+                const v = e.target.value.trim();
+                if (v && v !== title) void rename(s.id, v);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                if (e.key === "Escape") setEditing(false);
+              }}
+              className="field w-full rounded-md px-1.5 text-[13px] outline-none"
+            />
+          ) : (
+            <span className="flex items-baseline gap-2">
+              <span className={`min-w-0 flex-1 truncate text-[13px] text-ink ${active || unread || asking ? "font-semibold" : "font-medium"}`}>{title}</span>
+              <span className="shrink-0 text-[11px] text-muted tabular-nums group-hover:invisible">{busy ? <AgentClock size={11} /> : timeAgo(s.time.updated, now)}</span>
+            </span>
+          )}
+          <span className="flex items-center gap-2">
+            <span className={`min-w-0 flex-1 truncate text-[12px] ${asking ? "text-info" : failed ? "text-danger" : "text-muted"}`}>{asking ? "Needs you" : failed ? "Didn't finish" : agentName || basename(s.location.directory)}</span>
+            {!asking && unread && !busy && <span className="h-2 w-2 shrink-0 rounded-full bg-ink" aria-label="New result" />}
+          </span>
+        </span>
         <button
           ref={more}
           onClick={(e) => {
             e.stopPropagation();
             setMenu(true);
           }}
-          className="hidden h-6 w-6 shrink-0 place-items-center rounded-md text-muted hover:bg-active hover:text-ink group-hover:grid"
+          className="absolute top-1.5 right-1.5 hidden h-6 w-6 place-items-center rounded-md text-muted hover:bg-active hover:text-ink group-hover:grid"
           aria-label="Session actions"
         >
           <MoreHorizontal size={15} />

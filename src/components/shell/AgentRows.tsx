@@ -1,16 +1,11 @@
-import { AnimatePresence, motion } from "motion/react";
-import { ChevronRight, SquarePen } from "lucide-react";
-import { memo, useEffect, useState } from "react";
+import { SquarePen } from "lucide-react";
+import { memo } from "react";
 import type { SessionInfo } from "@opencode/client";
 import { asksFor, useChat } from "../../state/chat";
 import { timeAgo } from "../../lib/format";
 import { AgentMark } from "../ui/TeammateFace";
 import { useAgentName, useTeammate } from "../../state/teammates";
 import { AgentClock } from "../ui/AgentClock";
-import { SessionRow } from "./SessionRow";
-
-/** Sessions shown under a row before "Show all". */
-const SHOWN = 6;
 
 export interface AgentGroup {
   id: string;
@@ -21,10 +16,10 @@ export interface AgentGroup {
   sessions: SessionInfo[];
 }
 
-/** One row per agent: who it is, what it's doing, and its sessions on expand. */
+/** One row per teammate, like a conversation list: who, what they last did, when. Older sessions live in the chat's history. */
 export function AgentRows({ groups, now, onNavigate }: { groups: AgentGroup[]; now: number; onNavigate?: () => void }) {
   return (
-    <div className="space-y-0.5">
+    <div className="space-y-px">
       {groups.map((g) => (
         <AgentRow key={g.id} group={g} now={now} onNavigate={onNavigate} />
       ))}
@@ -33,8 +28,6 @@ export function AgentRows({ groups, now, onNavigate }: { groups: AgentGroup[]; n
 }
 
 const AgentRow = memo(function AgentRow({ group: g, now, onNavigate }: { group: AgentGroup; now: number; onNavigate?: () => void }) {
-  const open = useChat((s) => s.agentRowsOpen.includes(g.id));
-  const toggle = useChat((s) => s.toggleAgentRow);
   const busyCount = useChat((s) => g.sessions.reduce((n, x) => n + (s.busy[x.id] ? 1 : 0), 0));
   const asking = useChat((s) => g.sessions.some((x) => Object.values(s.permissions).some((p) => asksFor(s.parents, p.sessionID, x.id)) || Object.values(s.forms).some((f) => asksFor(s.parents, f.sessionID, x.id))));
   const unread = useChat((s) => g.sessions.some((x) => !!s.unread[x.id]));
@@ -52,25 +45,18 @@ const AgentRow = memo(function AgentRow({ group: g, now, onNavigate }: { group: 
   const needs = asking || helpAsks;
   const state = needs ? "needs" : working ? "working" : unread ? "done" : "idle";
   const onActive = useChat((s) => g.sessions.some((x) => x.id === s.activeId));
-  const [all, setAll] = useState(false);
-
-  // Opening a session opens its agent's row, so the session is never hidden.
-  useEffect(() => {
-    if (onActive) toggle(g.id, true);
-  }, [onActive, g.id, toggle]);
+  // A fresh draft with this teammate picked counts as being on its row too.
+  const drafting = useChat((s) => s.activeId === null && s.pickedAgent === g.id);
+  const active = onActive || drafting;
 
   const latest = g.sessions[0];
-  const shown = all ? g.sessions : g.sessions.slice(0, SHOWN);
-  const preview = helping && !busyCount && leadName ? `On a task for ${leadName}` : latest ? latest.title || "New session" : g.job || "No sessions yet";
+  const preview = needs ? "Needs you" : helping && !busyCount && leadName ? `On a task for ${leadName}` : latest ? latest.title || "New session" : g.job || "Start a session";
 
   // New work starts in the agent's current session; with none yet, a fresh draft.
   function openAgent() {
     const st = useChat.getState();
     if (latest) st.open(latest.id);
-    else {
-      void st.setAgent(g.id, null);
-      st.open(null);
-    }
+    else startNew();
     onNavigate?.();
   }
 
@@ -82,71 +68,30 @@ const AgentRow = memo(function AgentRow({ group: g, now, onNavigate }: { group: 
   }
 
   return (
-    <div>
-      <div className="group flex items-center gap-0.5 rounded-md pr-1 hover:bg-hover">
-        <button
-          type="button"
-          onClick={() => toggle(g.id)}
-          aria-expanded={open}
-          aria-label={`${open ? "Hide" : "Show"} ${g.name}'s sessions`}
-          className="grid h-9 w-6 shrink-0 place-items-center text-muted hover:text-ink"
-        >
-          <ChevronRight size={13} className={`transition-transform duration-150 ${open ? "rotate-90" : ""}`} />
-        </button>
-        <button
-          type="button"
-          onClick={openAgent}
-          className={`flex min-w-0 flex-1 items-center gap-2 py-1.5 text-left ${onActive ? "text-ink" : "text-ink-2"}`}
-        >
-          <AgentMark id={g.id} size={22} state={state} />
-          <span className="min-w-0 flex-1">
-            <span className={`block truncate text-[13px] ${onActive || unread || needs ? "font-medium text-ink" : ""}`}>{g.name}</span>
-            <span className="block truncate text-[12px] text-faint">{preview}</span>
+    <div className={`group relative flex items-center rounded-lg transition-colors ${active ? "bg-active" : "hover:bg-hover"}`}>
+      <button type="button" onClick={openAgent} aria-current={active ? "true" : undefined} className="flex min-w-0 flex-1 items-center gap-2.5 py-2 pr-2 pl-2 text-left">
+        <AgentMark id={g.id} size={30} state={state} />
+        <span className="min-w-0 flex-1">
+          <span className="flex items-baseline gap-2">
+            <span className={`min-w-0 flex-1 truncate text-[13px] ${active || unread || needs ? "font-semibold text-ink" : "font-medium text-ink"}`}>{g.name}</span>
+            <span className="shrink-0 text-[11px] text-muted tabular-nums group-hover:invisible">{working > 0 && !face ? <AgentClock size={11} /> : latest ? timeAgo(latest.time.updated, now) : ""}</span>
           </span>
-        </button>
-        <span className="flex shrink-0 items-center gap-1.5 text-[12px] tabular-nums group-hover:hidden" title={working ? "Working" : needs ? "Needs you" : undefined}>
-          {working > 0 && (
-            <span className="flex items-center gap-1 text-muted">
-              {!face && <AgentClock size={12} />}
-              {working > 1 && working}
-            </span>
-          )}
-          {needs && <span className="flex items-center gap-1 text-info">Needs you</span>}
-          {!working && !needs && unread && !face && <span className="h-1.5 w-1.5 rounded-full bg-ink" />}
-          {!working && !needs && latest && <span className="text-faint">{timeAgo(latest.time.updated, now)}</span>}
+          <span className="flex items-center gap-2">
+            <span className={`min-w-0 flex-1 truncate text-[12px] ${needs ? "text-info" : "text-muted"}`}>{preview}</span>
+            {!needs && unread && !working && <span className="h-2 w-2 shrink-0 rounded-full bg-ink" aria-label="New result" />}
+            {working > 1 && <span className="shrink-0 text-[11px] text-muted tabular-nums">{working}</span>}
+          </span>
         </span>
-        <button
-          type="button"
-          onClick={startNew}
-          aria-label={`New session with ${g.name}`}
-          title={`New session with ${g.name}`}
-          className="hidden h-6 w-6 shrink-0 place-items-center rounded-md text-muted hover:bg-active hover:text-ink group-hover:grid"
-        >
-          <SquarePen size={13} />
-        </button>
-      </div>
-      <AnimatePresence initial={false}>
-        {open && (
-          <motion.div
-            key="sessions"
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.15 }}
-            className="overflow-hidden pl-4"
-          >
-            {shown.map((s) => (
-              <SessionRow key={s.id} s={s} now={now} onNavigate={onNavigate} />
-            ))}
-            {g.sessions.length === 0 && <div className="px-2 py-1.5 text-[12.5px] text-faint">No sessions yet.</div>}
-            {!all && g.sessions.length > SHOWN && (
-              <button type="button" onClick={() => setAll(true)} className="block px-2 py-1 text-[12.5px] text-muted hover:text-ink">
-                Show {g.sessions.length - SHOWN} more
-              </button>
-            )}
-          </motion.div>
-        )}
-      </AnimatePresence>
+      </button>
+      <button
+        type="button"
+        onClick={startNew}
+        aria-label={`New session with ${g.name}`}
+        title={`New session with ${g.name}`}
+        className="absolute top-1.5 right-1.5 hidden h-6 w-6 place-items-center rounded-md text-muted hover:bg-active hover:text-ink group-hover:grid"
+      >
+        <SquarePen size={13} />
+      </button>
     </div>
   );
 });

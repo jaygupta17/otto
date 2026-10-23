@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from "motion/react";
 import { PanelLeft, RotateCw } from "lucide-react";
-import { useMemo, type CSSProperties } from "react";
+import { useMemo } from "react";
 import { Composer } from "../chat/Composer";
 import { ProjectPicker } from "../chat/Pickers";
 import { WorkspaceIcon } from "./Sidebar";
@@ -9,7 +9,7 @@ import { Button, IconButton } from "../ui/Button";
 import { useTrafficLights } from "../../hooks/useChrome";
 import { sortedSessions, useChat } from "../../state/chat";
 import { useConnection } from "../../state/connection";
-import { useUI, backdropSettings } from "../../state/ui";
+import { useUI } from "../../state/ui";
 import { useActiveWorkspace } from "../../state/workspaces";
 import { basename, timeAgo } from "../../lib/format";
 import { openExternal } from "../../lib/platform";
@@ -20,22 +20,20 @@ import { DAYTONA_BILLING_URL } from "../../lib/providers/daytona";
 import { useWorkspaces } from "../../state/workspaces";
 import { kbd } from "../../hooks/useShortcuts";
 import { SessionHistory } from "../chat/SessionHistory";
+import { PanelToggle } from "../panel/SidePanel";
 import { TeammateFace } from "../ui/TeammateFace";
 import { useTeammate } from "../../state/teammates";
 import type { Teammate } from "../../lib/teammates";
 
 /**
- * New-session screen. With a background photo there is no panel here at all:
- * the photo is the surface, and the prompt, its context and recent sessions
- * float over it as separate pieces of glass.
+ * New-session screen: the prompt, its context and recent sessions, centred on the panel.
  */
 export function Home({ compact = false }: { compact?: boolean }) {
   const ws = useActiveWorkspace();
   const sessions = useChat((s) => s.sessions);
   const busy = useChat((s) => s.busy);
   const open = useChat((s) => s.open);
-  const photo = backdropSettings(useUI((s) => s.backdrop)).on;
-  const recent = useMemo(() => sortedSessions(sessions).slice(0, photo ? 4 : 6), [sessions, photo]);
+  const recent = useMemo(() => sortedSessions(sessions).slice(0, 6), [sessions]);
   const sidebarOpen = useUI((s) => s.sidebarOpen);
   const toggleSidebar = useUI((s) => s.toggleSidebar);
   const mac = useTrafficLights();
@@ -44,22 +42,22 @@ export function Home({ compact = false }: { compact?: boolean }) {
 
   return (
     <div className="relative flex h-full flex-col overflow-hidden">
-      {photo && <div aria-hidden className="home-scrim pointer-events-none absolute inset-0" style={compact ? ({ "--scrim-y": "50%" } as CSSProperties) : undefined} />}
       <header className={`drag relative z-10 flex h-[52px] shrink-0 items-center gap-2 pr-3 ${!sidebarOpen && mac ? "pl-[84px]" : "pl-3"}`} data-tauri-drag-region>
         {!sidebarOpen && (
-          <IconButton label={`Show sidebar (${kbd("⌘B")})`} className="no-drag" onClick={() => toggleSidebar(true)}>
+          <IconButton label="Show sidebar" keys={kbd("⌘B")} className="no-drag" onClick={() => toggleSidebar(true)}>
             <PanelLeft size={17} />
           </IconButton>
         )}
         <div className="flex-1" data-tauri-drag-region />
         <SessionHistory sessionId={null} />
+        <PanelToggle />
       </header>
       <div className="scroll-quiet relative min-h-0 flex-1 overflow-y-auto px-5">
         {/* Compact home has no recent list, so the prompt block can
             sit in the middle of the pane; min-h-full keeps it centred only when
             there is room, and the pane still scrolls once it grows past it. */}
         <div className={`mx-auto w-full max-w-[660px] ${compact ? "flex min-h-full flex-col justify-center py-10" : "pt-[14vh] pb-16"}`}>
-          {mate ? <Hello mate={mate} compact={compact} /> : <h1 className={`on-photo mb-5 font-semibold tracking-[-0.01em] text-ink ${compact ? "text-[20px]" : "text-[26px]"}`}>What should the agent work on?</h1>}
+          {mate ? <Hello mate={mate} compact={compact} /> : <h1 className={`mb-5 font-semibold tracking-[-0.01em] text-ink ${compact ? "text-[20px]" : "text-[26px]"}`}>What should the agent work on?</h1>}
 
           <ConnectionBanner />
 
@@ -77,14 +75,14 @@ export function Home({ compact = false }: { compact?: boolean }) {
 
           {recent.length > 0 && !compact && (
             <section className="mt-12">
-              <h2 className="on-photo mb-2 px-1 text-[12px] font-medium text-muted">Recent</h2>
+              <h2 className="mb-2 px-1 text-[12px] font-medium text-muted">Recent</h2>
               <ul className="flex flex-col gap-1.5">
                 {recent.map((s) => (
                   <li key={s.id}>
                     <button onClick={() => open(s.id)} className="surface-thin flex h-11 w-full items-center gap-3 rounded-2xl px-4 text-left">
                       {busy[s.id] && <AgentClock size={12} />}
                       <span className="min-w-0 flex-1 truncate text-[14px] text-ink">{s.title || "New session"}</span>
-                      <span className="hidden shrink-0 truncate text-[12.5px] text-muted sm:block">{basename(s.location.directory)}</span>
+                      <span className="hidden shrink-0 truncate text-[12px] text-muted sm:block">{basename(s.location.directory)}</span>
                       <span className="w-9 shrink-0 text-right text-[12px] text-faint tabular-nums">{timeAgo(s.time.updated)}</span>
                     </button>
                   </li>
@@ -116,8 +114,8 @@ function Hello({ mate, compact }: { mate: Teammate; compact: boolean }) {
         {/* Listening while you write: a little attentive, then back to itself. */}
         <TeammateFace seed={mate.face} color={mate.color} accessory={mate.accessory} size={compact ? 52 : 68} follow attentive={typing} interactive pulse={words} />
         <div className="min-w-0">
-          <div className="on-photo truncate text-[13px] font-medium text-ink-2">{mate.name}</div>
-          <h1 className={`on-photo mt-0.5 font-semibold tracking-[-0.01em] text-ink ${compact ? "text-[20px]" : "text-[26px]"}`}>{mate.greeting || `What should ${mate.name} work on?`}</h1>
+          <div className="truncate text-[13px] font-medium text-ink-2">{mate.name}</div>
+          <h1 className={`mt-0.5 font-semibold tracking-[-0.01em] text-ink ${compact ? "text-[20px]" : "text-[26px]"}`}>{mate.greeting || `What should ${mate.name} work on?`}</h1>
         </div>
       </motion.div>
     </AnimatePresence>

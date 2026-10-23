@@ -1,5 +1,5 @@
 import { AnimatePresence } from "motion/react";
-import { Check, ChevronsUpDown, PanelLeft, Plus, Search, Settings, SquarePen, Keyboard, Cloud, Server, AlarmClock, Bot, Laptop } from "lucide-react";
+import { Check, ChevronsUpDown, PanelLeft, Plus, Search, Settings, SquarePen, Cloud, Server, AlarmClock, Bot, Laptop } from "lucide-react";
 import { UpdatePill } from "./UpdateControls";
 import { useMemo, useRef, useState } from "react";
 import type { SessionInfo } from "@opencode/client";
@@ -15,75 +15,45 @@ import { useNow } from "../../hooks/useNow";
 import { IconButton } from "../ui/Button";
 import { InboxButton } from "./Inbox";
 import { Popover, MenuItem } from "../ui/Popover";
-import { AgentClock } from "../ui/AgentClock";
 import { useTrafficLights } from "../../hooks/useChrome";
 import { kbd } from "../../hooks/useShortcuts";
 
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const toggle = useUI((s) => s.toggleSidebar);
+  const open = useChat((s) => s.open);
   const mac = useTrafficLights();
 
   return (
     <div className="flex h-full w-full flex-col">
-      <div className={`drag flex h-[52px] shrink-0 items-center gap-1 pr-2 ${mac ? "pl-[84px]" : "pl-3"}`} data-tauri-drag-region>
-        <IconButton label={`Hide sidebar (${kbd("⌘B")})`} className="no-drag" onClick={() => toggle(false)}>
+      <div className={`drag flex h-[52px] shrink-0 items-center gap-0.5 pr-2 ${mac ? "pl-[84px]" : "pl-3"}`} data-tauri-drag-region>
+        <IconButton label="Hide sidebar" keys={kbd("⌘B")} className="no-drag" onClick={() => toggle(false)}>
           <PanelLeft size={17} />
         </IconButton>
         <div className="flex-1" data-tauri-drag-region />
         <InboxButton className="no-drag" />
+        <IconButton
+          label="New session" keys={kbd("⌘N")}
+          className="no-drag"
+          onClick={() => {
+            open(null);
+            onNavigate?.();
+          }}
+        >
+          <SquarePen size={16} />
+        </IconButton>
       </div>
 
-      <div className="px-2">
-        <WorkspaceSwitcher />
-      </div>
-
-      <NavLinks onNavigate={onNavigate} />
       <button
         onClick={() => useUI.getState().setPalette(true)}
-        className="mx-2 mt-3 flex h-8 items-center gap-2 rounded-md px-2 text-left text-[13px] text-muted transition-colors hover:bg-hover hover:text-ink"
+        className="mx-3 flex h-8 shrink-0 items-center gap-2 rounded-lg bg-hover px-2.5 text-left text-[13px] text-muted transition-colors hover:bg-active"
       >
         <Search size={14} className="shrink-0" />
         <span className="flex-1">Search</span>
-        <kbd className="font-sans text-[12px] text-faint">{kbd("⌘K")}</kbd>
+        <kbd className="font-sans text-[11px] text-muted">{kbd("⌘K")}</kbd>
       </button>
       <SessionList query="" onNavigate={onNavigate} />
       <UpdatePill />
-      <SidebarFooter />
-    </div>
-  );
-}
-
-function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
-  const view = useUI((s) => s.view);
-  const setView = useUI((s) => s.setView);
-  const openSettings = useUI((s) => s.openSettings);
-  const open = useChat((s) => s.open);
-  const onHome = useChat((s) => s.activeId === null);
-  const item = "flex h-8 w-full items-center gap-2.5 rounded-md px-2 text-[13px] transition-colors";
-  return (
-    <div className="mt-2 px-2">
-      <button
-        className={`${item} ${view === "chat" && onHome ? "bg-active text-ink" : "text-ink-2 hover:bg-hover"}`}
-        onClick={() => {
-          open(null);
-          onNavigate?.();
-        }}
-      >
-        <SquarePen size={15} className="text-muted" /> New session
-        <kbd className="ml-auto font-sans text-[12px] text-faint">{kbd("⌘N")}</kbd>
-      </button>
-      <button
-        className={`${item} ${view === "schedules" ? "bg-active text-ink" : "text-ink-2 hover:bg-hover"}`}
-        onClick={() => {
-          setView("schedules");
-          onNavigate?.();
-        }}
-      >
-        <AlarmClock size={15} className="text-muted" /> Schedules
-      </button>
-      <button className={`${item} text-ink-2 hover:bg-hover`} title="Agents & tools" onClick={() => openSettings("agents")}>
-        <Bot size={15} className="text-muted" /> Agents
-      </button>
+      <SidebarFooter onNavigate={onNavigate} />
     </div>
   );
 }
@@ -111,7 +81,7 @@ function WorkspaceSwitcher() {
         </div>
         <ChevronsUpDown size={14} className="text-faint" />
       </button>
-      <Popover open={open} onClose={() => setOpen(false)} anchor={anchor.current} width={264}>
+      <Popover open={open} onClose={() => setOpen(false)} anchor={anchor.current} width={264} placement="top-start">
         <div className="p-1.5">
           <div className="px-2 pt-1.5 pb-1 text-[12px] font-medium text-muted">Workspaces</div>
           {all.map((w) => (
@@ -188,7 +158,7 @@ export function statusText(status: string) {
   }
 }
 
-function groupOf(ts: number, now: number) {
+export function groupOf(ts: number, now: number) {
   const d = new Date(ts);
   const today = new Date(now);
   today.setHours(0, 0, 0, 0);
@@ -211,6 +181,8 @@ function SessionList({ query, onNavigate }: { query: string; onNavigate?: () => 
   const roster = useTeammates((s) => s.byId);
   const status = useConnection((s) => s.status);
   const now = useNow(true, 30_000);
+  // Sessions split by teammate, so wait for the roster too: otherwise every session lands under a date first and then jumps.
+  const ready = loaded && roster !== null;
 
   const { pins, rows, groups } = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -250,23 +222,28 @@ function SessionList({ query, onNavigate }: { query: string; onNavigate?: () => 
   }, [sessions, busy, query, now, pinned, roster, catalog]);
 
   return (
-    <div className="scroll-quiet mt-2 min-h-0 flex-1 overflow-y-auto px-2 pb-3">
-      {!loaded && status === "ready" && (
-        <div className="space-y-1 px-1">
+    <div className="scroll-quiet mt-3 min-h-0 flex-1 overflow-y-auto px-2 pb-3">
+      {!ready && status === "ready" && (
+        <div className="space-y-px" aria-hidden>
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="h-7 animate-pulse rounded-md bg-hover" style={{ opacity: 1 - i * 0.13 }} />
+            <div key={i} className="flex animate-pulse items-center gap-2.5 p-2" style={{ opacity: 1 - i * 0.13 }}>
+              <div className="h-[30px] w-[30px] shrink-0 rounded-full bg-hover" />
+              <div className="flex-1 space-y-1.5">
+                <div className="h-2.5 w-20 rounded-full bg-hover" />
+                <div className="h-2.5 w-32 rounded-full bg-hover" />
+              </div>
+            </div>
           ))}
         </div>
       )}
-      {loaded && pins.length === 0 && rows.length === 0 && groups.length === 0 && <div className="px-2 py-3 text-[13px] text-muted">{query ? `Nothing matches “${query}”.` : "Sessions you start appear here."}</div>}
-      {pins.length > 0 && <SessionGroup label="Pinned" list={pins} now={now} onNavigate={onNavigate} />}
-      {rows.length > 0 && (
-        <div className="mt-3 first:mt-1">
-          <div className="px-2 pb-1 text-[12px] font-medium text-muted">Teammates</div>
+      {ready && pins.length === 0 && rows.length === 0 && groups.length === 0 && <div className="px-2 py-3 text-[13px] text-muted">{query ? `Nothing matches “${query}”.` : "Sessions you start appear here."}</div>}
+      {ready && pins.length > 0 && <SessionGroup label="Pinned" list={pins} now={now} onNavigate={onNavigate} />}
+      {ready && rows.length > 0 && (
+        <div className="mt-1">
           <AgentRows groups={rows} now={now} onNavigate={onNavigate} />
         </div>
       )}
-      {groups.map(([label, list]) => (
+      {ready && groups.map(([label, list]) => (
         <SessionGroup key={label} label={label} list={list} now={now} onNavigate={onNavigate} />
       ))}
     </div>
@@ -275,7 +252,7 @@ function SessionList({ query, onNavigate }: { query: string; onNavigate?: () => 
 
 function SessionGroup({ label, list, now, onNavigate }: { label: string; list: SessionInfo[]; now: number; onNavigate?: () => void }) {
   return (
-    <div className="mt-3 first:mt-1">
+    <div className="mt-4 first:mt-1">
       <div className="flex items-center gap-1.5 px-2 pb-1 text-[12px] font-medium text-muted">
         {label}
         {label === "Working" && <span className="tabular-nums">{list.length}</span>}
@@ -289,29 +266,32 @@ function SessionGroup({ label, list, now, onNavigate }: { label: string; list: S
   );
 }
 
-function SidebarFooter() {
+function SidebarFooter({ onNavigate }: { onNavigate?: () => void }) {
+  const view = useUI((s) => s.view);
+  const setView = useUI((s) => s.setView);
   const openSettings = useUI((s) => s.openSettings);
-  const busyCount = useChat((s) => Object.keys(s.busy).filter((id) => s.busy[id] && s.sessions[id]).length);
-  const stream = useConnection((s) => s.stream);
-  const status = useConnection((s) => s.status);
+  const item = "flex h-8 w-full items-center gap-2.5 rounded-lg px-2 text-[13px] transition-colors";
   return (
-    <div className="flex h-11 shrink-0 items-center gap-2 px-2">
-      <IconButton label={`Settings (${kbd("⌘,")})`} onClick={() => openSettings()}>
-        <Settings size={16} />
-      </IconButton>
-      <IconButton label={`Keyboard shortcuts (${kbd("⌘/")})`} onClick={() => useUI.getState().setShortcuts(true)}>
-        <Keyboard size={16} />
-      </IconButton>
-      <div className="ml-auto flex items-center gap-1.5 px-2 text-[12px] text-muted tabular-nums">
-        {busyCount > 0 ? (
-          <>
-            <AgentClock size={12} /> {busyCount} working
-          </>
-        ) : status === "ready" && stream !== "live" ? (
-          <>
-            <span className="h-1.5 w-1.5 rounded-full bg-accent" /> Reconnecting
-          </>
-        ) : null}
+    <div className="shrink-0 border-t border-line px-2 pt-2 pb-2">
+      <button
+        className={`${item} ${view === "schedules" ? "bg-active text-ink" : "text-ink-2 hover:bg-hover"}`}
+        onClick={() => {
+          setView("schedules");
+          onNavigate?.();
+        }}
+      >
+        <AlarmClock size={15} className="text-muted" /> Schedules
+      </button>
+      <button className={`${item} text-ink-2 hover:bg-hover`} onClick={() => openSettings("agents")}>
+        <Bot size={15} className="text-muted" /> Agents & tools
+      </button>
+      <div className="mt-1 flex items-center gap-1">
+        <div className="min-w-0 flex-1">
+          <WorkspaceSwitcher />
+        </div>
+        <IconButton label="Settings" keys={kbd("⌘,")} onClick={() => openSettings()}>
+          <Settings size={16} />
+        </IconButton>
       </div>
     </div>
   );
