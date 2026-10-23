@@ -1,5 +1,7 @@
-import { Check, ChevronDown, Folder, FolderGit2, FolderPlus, FolderSearch, GitBranchPlus, History, Search } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Brain, Check, ChevronDown, ChevronLeft, ChevronRight, Folder, FolderGit2, FolderPlus, FolderSearch, GitBranchPlus, History, Search } from "lucide-react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { motion } from "motion/react";
 import type { ModelInfo } from "@opencode/client";
 import { useChat, wsKey } from "../../state/chat";
 import { useConnection } from "../../state/connection";
@@ -8,9 +10,10 @@ import { useAgentName, useTeammates } from "../../state/teammates";
 import { isOfferedAgent } from "../../lib/teammates";
 import { Popover, MenuItem } from "../ui/Popover";
 import { useTouch } from "../../hooks/useMedia";
+import { rovingKeys } from "../../lib/layers";
 import { kv } from "../../lib/kv";
 import { Spinner } from "../ui/AgentClock";
-import { basename, compactNumber, prettyPath } from "../../lib/format";
+import { basename, prettyPath } from "../../lib/format";
 import type { ModelRef } from "../../lib/opencode/client";
 import { toast, useUI } from "../../state/ui";
 import { FolderBrowser } from "./FolderBrowser";
@@ -57,10 +60,19 @@ function cleanName(m: ModelInfo) {
 const RECENT_KEY = "models.recent";
 const keyOf = (m: { providerID: string; id: string }) => `${m.providerID}/${m.id}`;
 
+/** Thinking levels by their variant ids, in plain words. */
+const LEVELS: Record<string, string> = { default: "Default", none: "Off", minimal: "Minimal", low: "Low", medium: "Medium", high: "High", xhigh: "Extra high", max: "Max" };
+export const levelName = (id: string) => LEVELS[id] ?? cap(id);
+/** A model's thinking levels, with the model's own default first. */
+const levelsOf = (m: ModelInfo) => {
+  const ids = m.variants?.map((v) => v.id) ?? [];
+  return ids.includes("default") ? ids : ["default", ...ids];
+};
+
 /**
- * The model menu: what's in use (with its effort levels) on top, then the
- * models used lately, then every provider's catalog. A dropdown by the
- * button everywhere; on touch screens its rows are sized for a finger.
+ * The model menu: models used lately, then every provider's catalog. A model
+ * that can think harder opens a submenu of thinking levels beside it (on
+ * touch, a page inside the menu); picking a level picks both and closes.
  */
 export function ModelPicker({ sessionId, compact = false }: { sessionId: string | null; compact?: boolean }) {
   const anchor = useRef<HTMLButtonElement>(null);
@@ -75,13 +87,21 @@ export function ModelPicker({ sessionId, compact = false }: { sessionId: string 
       <button
         ref={anchor}
         onClick={() => setOpen((v) => !v)}
-        className="flex h-8 min-w-0 items-center gap-1 rounded-md px-2 text-[13px] text-ink-2 transition-colors hover:bg-hover hover:text-ink"
+        aria-label={`Model: ${label}${variant ? `, ${levelName(variant)} thinking` : ""}`}
+        data-tip={compact && variant ? `${levelName(variant)} thinking` : undefined}
+        className="flex h-8 min-w-0 items-center gap-1.5 rounded-md px-2 text-[13px] text-ink-2 transition-colors hover:bg-hover hover:text-ink"
       >
-        <span className={`truncate ${compact ? "max-w-[118px]" : "max-w-[220px]"}`}>{label}</span>
-        {variant && <span className="shrink-0 text-muted">{cap(variant)}</span>}
-        <ChevronDown size={13} className="shrink-0 text-faint" />
+        <span className={`truncate ${compact ? "max-w-[96px]" : "max-w-[220px]"}`}>{label}</span>
+        {/* Thinking stays in sight when it's on; where room is short, the brain alone (its level in the tooltip). */}
+        {variant && (
+          <span className="flex shrink-0 items-center gap-1 text-muted">
+            <Brain size={13} />
+            {!compact && levelName(variant)}
+          </span>
+        )}
+        <ChevronDown size={13} className="-ml-0.5 shrink-0 text-faint" />
       </button>
-      <Popover open={open} onClose={() => setOpen(false)} anchor={anchor.current} placement="top-end" width={Math.min(360, window.innerWidth - 16)} label="Model">
+      <Popover open={open} onClose={() => setOpen(false)} anchor={anchor.current} placement="top-end" width={Math.min(320, window.innerWidth - 16)} label="Model">
         <ModelMenu sessionId={sessionId} touch={touch} onDone={() => setOpen(false)} />
       </Popover>
     </>
@@ -92,18 +112,22 @@ function ModelMenu({ sessionId, touch = false, onDone }: { sessionId: string | n
   const [q, setQ] = useState("");
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [recent, setRecent] = useState<string[]>([]);
+  // The model whose thinking levels are showing: beside its row, or (touch) as the menu's page.
+  const [sub, setSub] = useState<{ m: ModelInfo; row: HTMLElement; keyboard?: boolean } | null>(null);
+  const hover = useRef<number | undefined>(undefined);
   const models = useChat((s) => s.models);
   const broken = useChat((s) => s.brokenModels);
   const setModel = useChat((s) => s.setModel);
   const refreshCatalog = useChat((s) => s.refreshCatalog);
   const catalog = useConnection((s) => s.catalog);
   const catalogError = useChat((s) => s.catalogError);
-  const { ref, info } = useCurrentModel(sessionId);
+  const { ref } = useCurrentModel(sessionId);
 
   useEffect(() => {
     if (models.length === 0) void refreshCatalog();
     void kv.get<string[]>(RECENT_KEY).then((r) => setRecent(r ?? []));
   }, [models.length, refreshCatalog]);
+  useEffect(() => () => window.clearTimeout(hover.current), []);
 
   const usable = useMemo(() => models.filter((m) => m.status !== "deprecated" && m.enabled !== false && !broken.includes(keyOf(m))), [models, broken]);
   const term = q.trim().toLowerCase();
@@ -126,64 +150,64 @@ function ModelMenu({ sessionId, touch = false, onDone }: { sessionId: string | n
       .slice(0, 4);
   }, [recent, usable, ref, term]);
 
-  const pick = (m: ModelInfo) => {
-    void setModel({ providerID: m.providerID, id: m.id }, sessionId);
+  const pick = (m: ModelInfo, variant?: string) => {
+    void setModel({ providerID: m.providerID, id: m.id, ...(variant ? { variant } : {}) }, sessionId);
     const next = [keyOf(m), ...recent.filter((k) => k !== keyOf(m))].slice(0, 8);
     setRecent(next);
     void kv.set(RECENT_KEY, next);
-    // Stay open when there's an effort level to choose next.
-    if (!m.variants?.length) onDone();
+    onDone();
+  };
+  const isCurrent = (m: ModelInfo) => ref?.providerID === m.providerID && ref?.id === m.id;
+  /** Hover intent: a short wait before switching, so a diagonal path to the submenu doesn't flick it shut. */
+  const hoverTo = (next: { m: ModelInfo; row: HTMLElement } | null) => {
+    window.clearTimeout(hover.current);
+    hover.current = window.setTimeout(() => setSub(next), sub ? 160 : 70);
   };
 
   const row = (m: ModelInfo, showProvider = false, freeTag = true) => {
-    const active = ref?.providerID === m.providerID && ref?.id === m.id;
+    const active = isCurrent(m);
+    const levels = m.variants?.length > 0;
+    const open = sub?.m === m;
+    const level = active && ref?.variant && ref.variant !== "default" ? levelName(ref.variant) : null;
     return (
       <button
         key={keyOf(m)}
-        onClick={() => pick(m)}
-        className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 text-left transition-colors hover:bg-hover ${touch ? "py-2" : "py-1.5"} ${active ? "bg-active" : ""}`}
+        role="menuitem"
+        aria-haspopup={levels ? "menu" : undefined}
+        aria-expanded={levels ? open : undefined}
+        aria-checked={active}
+        onClick={(e) => (levels ? (window.clearTimeout(hover.current), setSub({ m, row: e.currentTarget })) : pick(m))}
+        onMouseEnter={(e) => !touch && hoverTo(levels ? { m, row: e.currentTarget } : null)}
+        onKeyDown={(e) => {
+          if (levels && (e.key === "ArrowRight" || e.key === "Enter" || e.key === " ")) {
+            e.preventDefault();
+            setSub({ m, row: e.currentTarget, keyboard: true });
+          }
+        }}
+        className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 text-left transition-colors outline-none hover:bg-hover focus-visible:bg-hover ${touch ? "py-2.5" : "py-1.5"} ${open ? "bg-hover" : active ? "bg-active" : ""}`}
       >
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-1.5">
-            <span className={`truncate ${touch ? "text-[14.5px]" : "text-[13px]"} text-ink`}>{cleanName(m)}</span>
-            {freeTag && isFree(m) && <span className="shrink-0 rounded-full bg-ok-soft px-1.5 py-px text-[10.5px] font-medium text-ok">Free</span>}
+            <span className={`truncate ${touch ? "text-[16px]" : "text-[13px]"} text-ink ${active ? "font-medium" : ""}`}>{cleanName(m)}</span>
+            {freeTag && isFree(m) && <span className="shrink-0 rounded-full bg-ok-soft px-1.5 py-px text-[11px] font-medium text-ok">Free</span>}
           </span>
           {showProvider && <span className="block truncate text-[12px] text-muted">{providerName(m.providerID)}</span>}
         </span>
-        <span className="shrink-0 text-[11.5px] text-faint tabular-nums" title={`${m.limit.context.toLocaleString()} token context`}>
-          {compactNumber(m.limit.context)}
-        </span>
-        <Check size={14} className={`shrink-0 text-ink-2 ${active ? "" : "invisible"}`} />
+        {level && <span className={`shrink-0 text-muted ${touch ? "text-[14px]" : "text-[12px]"}`}>{level}</span>}
+        {levels ? <ChevronRight size={14} className="shrink-0 text-faint" /> : <Check size={14} className={`shrink-0 text-ink-2 ${active ? "" : "invisible"}`} />}
       </button>
     );
   };
 
+  // Touch: the levels replace the list, with a way back.
+  if (touch && sub) return <LevelPage m={sub.m} current={isCurrent(sub.m) ? (ref?.variant ?? "default") : null} onBack={() => setSub(null)} onPick={(v) => pick(sub.m, v)} />;
+
   const LIMIT = 6;
   return (
     <div className="flex max-h-[var(--pop-max,100%)] flex-col">
-      {info && info.variants?.length > 0 && !term && (
-        <div className="border-b border-line px-3 py-2.5">
-          <div className="mb-1.5 flex items-center justify-between text-[12px] text-muted">
-            <span className="truncate">
-              Effort for <span className="text-ink-2">{cleanName(info)}</span>
-            </span>
-          </div>
-          <div className="flex gap-1 rounded-lg bg-hover p-0.5">
-            {info.variants.map((v) => (
-              <button
-                key={v.id}
-                onClick={() => void setModel({ providerID: info.providerID, id: info.id, variant: v.id }, sessionId)}
-                className={`flex-1 rounded-md px-2 text-[12.5px] transition-colors ${touch ? "py-1.5" : "py-1"} ${(ref?.variant ?? "default") === v.id ? "bg-raised font-medium text-ink shadow-soft" : "text-muted hover:text-ink"}`}
-              >
-                {cap(v.id)}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
       {(usable.length > 8 || term) && (
         <div className="border-b border-line p-2">
-          <div className={`field flex items-center gap-2 rounded-lg px-2.5 ${touch ? "h-9" : "h-8"}`}>
+          <div className={`field flex items-center gap-2 rounded-lg px-2.5 ${touch ? "h-10" : "h-8"}`}>
             <Search size={14} className="text-faint" />
             <input
               // No keyboard popping up over the list on phones; tap to search.
@@ -191,12 +215,13 @@ function ModelMenu({ sessionId, touch = false, onDone }: { sessionId: string | n
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Search models"
+              aria-label="Search models"
               className={`min-w-0 flex-1 bg-transparent outline-none placeholder:text-faint ${touch ? "text-[16px]" : "text-[13px]"}`}
             />
           </div>
         </div>
       )}
-      <div className="scroll-quiet max-h-[420px] min-h-0 flex-1 overflow-y-auto overscroll-contain p-1.5">
+      <div className="scroll-quiet max-h-[420px] min-h-0 flex-1 overflow-y-auto overscroll-contain p-1.5" onScroll={() => !touch && sub && setSub(null)}>
         {models.length === 0 && (
           <div className="p-6 text-center text-[13px] text-muted" title={catalog === "degraded" ? catalogError : undefined}>
             {catalog === "ready" ? "No models yet. Connect a provider in Settings." : catalog === "degraded" ? "Models didn't load. Reconnect to try again." : "Loading models…"}
@@ -224,7 +249,7 @@ function ModelMenu({ sessionId, touch = false, onDone }: { sessionId: string | n
               {shown.map((m) => row(m, false, !allFree))}
               {current && row(current, false, !allFree)}
               {!all && ms.length > LIMIT && (
-                <button onClick={() => setExpanded((e) => ({ ...e, [provider]: true }))} className="w-full rounded-lg px-2.5 py-1.5 text-left text-[12.5px] text-muted hover:bg-hover hover:text-ink">
+                <button onClick={() => setExpanded((e) => ({ ...e, [provider]: true }))} className="w-full rounded-lg px-2.5 py-1.5 text-left text-[12px] text-muted hover:bg-hover hover:text-ink">
                   Show {ms.length - shown.length - (current ? 1 : 0)} more
                 </button>
               )}
@@ -232,11 +257,112 @@ function ModelMenu({ sessionId, touch = false, onDone }: { sessionId: string | n
           );
         })}
       </div>
+      {!touch && sub && (
+        <LevelMenu
+          key={keyOf(sub.m)}
+          m={sub.m}
+          row={sub.row}
+          keyboard={!!sub.keyboard}
+          current={isCurrent(sub.m) ? (ref?.variant ?? "default") : null}
+          onEnter={() => window.clearTimeout(hover.current)}
+          onBack={() => {
+            sub.row.focus();
+            setSub(null);
+          }}
+          onPick={(v) => pick(sub.m, v)}
+        />
+      )}
     </div>
   );
 }
 
-export function AgentPicker({ sessionId }: { sessionId: string | null }) {
+/** The thinking levels beside a model's row, on whichever side of the menu has room. */
+function LevelMenu({ m, row, keyboard, current, onEnter, onBack, onPick }: { m: ModelInfo; row: HTMLElement; keyboard: boolean; current: string | null; onEnter: () => void; onBack: () => void; onPick: (v: string) => void }) {
+  const box = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  const W = 196;
+  useLayoutEffect(() => {
+    const r = row.getBoundingClientRect();
+    const menu = row.closest('[role="dialog"]')?.getBoundingClientRect() ?? r;
+    const h = box.current?.offsetHeight ?? 220;
+    const right = menu.right + 4;
+    const left = right + W <= window.innerWidth - 8 ? right : Math.max(8, menu.left - 4 - W);
+    setPos({ left, top: Math.max(8, Math.min(r.top - 6, window.innerHeight - h - 8)) });
+  }, [row]);
+  useEffect(() => {
+    if (!keyboard || !pos) return;
+    const items = [...(box.current?.querySelectorAll<HTMLElement>('[role="menuitemradio"]') ?? [])];
+    (items.find((el) => el.getAttribute("aria-checked") === "true") ?? items[0])?.focus();
+  }, [keyboard, pos]);
+
+  return createPortal(
+    <motion.div
+      ref={box}
+      data-pop-child
+      role="menu"
+      aria-label={`Thinking for ${cleanName(m)}`}
+      initial={{ opacity: 0, x: -3 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.12, ease: [0.22, 1, 0.36, 1] }}
+      onMouseEnter={onEnter}
+      onKeyDown={(e) => {
+        // It sits inside the menu in React's tree: keep its arrows from also moving the menu's focus.
+        if (["ArrowDown", "ArrowUp", "Home", "End", "ArrowLeft"].includes(e.key)) e.stopPropagation();
+        rovingKeys(e, '[role="menuitemradio"]');
+        if (e.key === "ArrowLeft") {
+          e.preventDefault();
+          onBack();
+        }
+      }}
+      className="surface-overlay fixed z-50 rounded-xl border border-line bg-raised p-1.5 shadow-pop"
+      style={{ left: pos?.left ?? -9999, top: pos?.top ?? 0, width: W, visibility: pos ? "visible" : "hidden" }}
+    >
+      <div className="flex items-center gap-1.5 px-2 pt-1 pb-1.5 text-[12px] font-medium text-muted">
+        <Brain size={13} />
+        Thinking
+      </div>
+      {levelsOf(m).map((v) => (
+        <button
+          key={v}
+          role="menuitemradio"
+          aria-checked={current === v}
+          onClick={() => onPick(v)}
+          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-ink transition-colors outline-none hover:bg-hover focus-visible:bg-hover"
+        >
+          <span className="flex-1">{levelName(v)}</span>
+          <Check size={14} className={`shrink-0 text-ink-2 ${current === v ? "" : "invisible"}`} />
+        </button>
+      ))}
+    </motion.div>,
+    document.body,
+  );
+}
+
+/** Touch: the thinking levels as the menu's own page. */
+function LevelPage({ m, current, onBack, onPick }: { m: ModelInfo; current: string | null; onBack: () => void; onPick: (v: string) => void }) {
+  return (
+    <div role="menu" aria-label={`Thinking for ${cleanName(m)}`} className="p-1.5">
+      <div className="flex items-center gap-1 pb-1">
+        <button onClick={onBack} aria-label="Back to models" className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-ink active:bg-hover">
+          <ChevronLeft size={22} />
+        </button>
+        <div className="min-w-0">
+          <div className="truncate text-[15px] font-semibold">{cleanName(m)}</div>
+          <div className="text-[12px] text-muted">Thinking</div>
+        </div>
+      </div>
+      {levelsOf(m).map((v) => (
+        <button key={v} role="menuitemradio" aria-checked={current === v} onClick={() => onPick(v)} className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-[16px] text-ink active:bg-hover">
+          <span className="flex-1">{levelName(v)}</span>
+          {current === v && <Check size={16} className="shrink-0 text-ink-2" />}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Who you're talking to. A small chip in the composer, or in a session's header the face and name over `subtitle`. Either opens the switcher. */
+export function AgentPicker({ sessionId, header = false, subtitle }: { sessionId: string | null; header?: boolean; subtitle?: ReactNode }) {
   const anchor = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
   const agents = useChat((s) => s.agents);
@@ -276,13 +402,32 @@ export function AgentPicker({ sessionId }: { sessionId: string | null }) {
         aria-label={empty ? "Add a teammate" : `Agent: ${name || "none"}${stateName ? `, ${stateName}` : ""}`}
         aria-haspopup="menu"
         aria-expanded={open}
-        className={`flex h-8 items-center gap-1 rounded-md px-1.5 text-[13px] hover:bg-hover hover:text-ink ${empty ? "text-ink" : "text-ink-2"}`}
+        className={
+          header
+            ? "no-drag flex min-w-0 items-center gap-2.5 rounded-lg py-1 pr-2 pl-1 text-left transition-colors hover:bg-hover"
+            : `flex h-8 items-center gap-1 rounded-md px-1.5 text-[13px] hover:bg-hover hover:text-ink ${empty ? "text-ink" : "text-ink-2"}`
+        }
       >
-        <AgentMark id={current} color={info?.color} size={roster?.[current] ? 18 : 12} state={state} />
-        {empty && "Add a teammate"}
-        <ChevronDown size={13} className="text-faint" />
+        {header ? (
+          <>
+            <AgentMark id={current} color={info?.color} size={30} state={state} />
+            <span className="min-w-0">
+              <span className="flex items-center gap-1 text-[14px] leading-tight font-semibold text-ink">
+                <span className="truncate">{empty ? "Add a teammate" : name || "Agent"}</span>
+                <ChevronDown size={13} className="shrink-0 text-faint" />
+              </span>
+              {subtitle && <span className="block truncate text-[12px] leading-tight text-muted">{subtitle}</span>}
+            </span>
+          </>
+        ) : (
+          <>
+            <AgentMark id={current} color={info?.color} size={roster?.[current] ? 18 : 12} state={state} />
+            {empty && "Add a teammate"}
+            <ChevronDown size={13} className="text-faint" />
+          </>
+        )}
       </button>
-      <Popover open={open} onClose={() => setOpen(false)} anchor={anchor.current} placement="top-start" width={280}>
+      <Popover open={open} onClose={() => setOpen(false)} anchor={anchor.current} placement={header ? "bottom-start" : "top-start"} width={280}>
         <div role="menu" className="scroll-quiet max-h-[min(50vh,var(--pop-max))] overflow-y-auto p-1.5">
           {primary.length === 0 && (
             <div className="flex justify-center py-4 text-muted">
@@ -480,10 +625,10 @@ export function ProjectPicker({ disabled }: { disabled?: boolean }) {
             />
             {mode === "clone" && <p className="mt-1.5 text-[12px] text-muted">Private repos need git credentials on the sandbox.</p>}
             <div className="mt-3 flex justify-end gap-2">
-              <button type="button" className="rounded-lg px-2.5 py-1 text-[12.5px] text-muted hover:bg-hover" onClick={() => setMode("list")}>
+              <button type="button" className="rounded-lg px-2.5 py-1 text-[12px] text-muted hover:bg-hover" onClick={() => setMode("list")}>
                 Back
               </button>
-              <button type="submit" disabled={working || !input.trim()} className="flex items-center gap-1.5 rounded-lg bg-ink px-3 py-1 text-[12.5px] font-medium text-bg disabled:opacity-50">
+              <button type="submit" disabled={working || !input.trim()} className="flex items-center gap-1.5 rounded-lg bg-ink px-3 py-1 text-[12px] font-medium text-bg disabled:opacity-50">
                 {working && <Spinner size={12} />}
                 {mode === "clone" ? "Clone" : "Create"}
               </button>

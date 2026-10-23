@@ -109,7 +109,8 @@ export function Popover({
     if (!open) return;
     const onDown = (e: PointerEvent) => {
       const t = e.target as Node;
-      if (ref.current?.contains(t) || anchor?.contains(t)) return;
+      // Submenus portal out on their own (`data-pop-child`) but still belong to this menu.
+      if (ref.current?.contains(t) || anchor?.contains(t) || (t as Element).closest?.("[data-pop-child]")) return;
       onClose();
     };
     window.addEventListener("pointerdown", onDown, true);
@@ -178,7 +179,8 @@ export function MenuItem({
       type="button"
       role="menuitem"
       onClick={onClick}
-      className={`flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-[13px] transition-colors outline-none hover:bg-hover focus-visible:bg-hover ${active ? "bg-active" : ""} ${danger ? "text-danger" : "text-ink"}`}
+      // Fingers get a full 44pt row.
+      className={`flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-[13px] transition-colors outline-none hover:bg-hover focus-visible:bg-hover [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:rounded-lg [@media(pointer:coarse)]:px-3 [@media(pointer:coarse)]:text-[15px] ${active ? "bg-active" : ""} ${danger ? "text-danger" : "text-ink"}`}
     >
       {icon && <span className={`grid w-4 shrink-0 place-items-center ${danger ? "" : "text-muted"}`}>{icon}</span>}
       <span className="min-w-0 flex-1">
