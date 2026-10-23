@@ -6,6 +6,10 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 ## [Unreleased]
 
+### Added
+
+- Otto has themes: separate light and dark palettes, six built-in variants (Catppuccin, Flexoki, Tokyo Night) and local import from Otto JSON, Tweakcn/shadcn CSS, VS Code or OpenChamber theme files. Imported themes stay on your machine and can be removed from the picker.
+
 ## [0.13.1] - 2026-10-22
 
 ### Changed

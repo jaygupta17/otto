@@ -40,19 +40,19 @@ copied theme files. Each is distributed under the MIT License.
 
 Source: https://github.com/catppuccin/catppuccin
 
-MIT License — Copyright (c) Catppuccin
+MIT License — Copyright (c) 2021 Catppuccin
 
 ### Flexoki — Light, Dark
 
 Source: https://github.com/kepano/flexoki
 
-MIT License — Copyright (c) Steph Ango
+MIT License — Copyright (c) 2023 Steph Ango
 
 ### Tokyo Night — Day, Night
 
 Source: https://github.com/enkia/tokyo-night-vscode-theme
 
-MIT License — Copyright (c) enkia
+MIT License — Copyright (c) 2018-present Enkia
 
 The full MIT License text appears in the OpenChamber notice above and applies
 to each of these notices.

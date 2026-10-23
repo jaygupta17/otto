@@ -147,7 +147,7 @@ function ThemeItem({ theme, selected, onSelect, onRemove }: { theme: Theme; sele
           title="Remove theme"
           aria-label={`Remove ${theme.name}`}
           onClick={onRemove}
-          className="mr-1.5 grid h-6 w-6 shrink-0 place-items-center rounded-md text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:bg-active hover:text-ink focus-visible:opacity-100"
+          className="mr-1.5 grid h-6 w-6 shrink-0 place-items-center rounded-md text-muted opacity-60 transition-opacity group-hover:opacity-100 hover:bg-active hover:text-ink focus-visible:opacity-100"
         >
           <Trash2 size={13} />
         </button>
