@@ -66,7 +66,7 @@ function ThemeRow({ variant, label }: { variant: ThemeVariant; label: string }) 
           aria-label={`${label}: ${theme.name}`}
           title={meta}
           onClick={() => setOpen((v) => !v)}
-          className="field flex h-8 w-[220px] items-center gap-2 rounded-lg pr-2 pl-1.5 text-left outline-none"
+          className="field flex h-8 w-[220px] items-center gap-2 rounded-lg pr-2 pl-1.5 text-left outline-none max-sm:w-[176px]"
         >
           <Swatch theme={theme} width={30} height={18} />
           <span className="min-w-0 flex-1 truncate text-[13px] text-ink">{theme.name}</span>

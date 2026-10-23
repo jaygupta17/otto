@@ -1,8 +1,5 @@
-import { ImagePlus, Palette, X } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { useUI, toast, backdropSettings, BACKDROP_DEFAULTS, BUILTIN_BACKDROPS } from "../../state/ui";
-import { asImage } from "../ui/Backdrop";
-import { uid } from "../../lib/id";
+import { useContext, useEffect, useState } from "react";
+import { useUI, toast } from "../../state/ui";
 import { useChat } from "../../state/chat";
 import { useExtensions } from "../../state/extensions";
 import { modelRefToString, modelStringToRef } from "../../lib/opencode/config";
@@ -16,16 +13,17 @@ import { useSchedules } from "../../state/schedules";
 import { useTeammates } from "../../state/teammates";
 import { isOfferedAgent } from "../../lib/teammates";
 import { Spinner } from "../ui/AgentClock";
-import { Row, Rows, Section, Segmented, Slider, Toggle } from "./common";
+import { PhonePage, Row, Rows, Section, Segmented, Toggle } from "./common";
 import { ThemePicker } from "./ThemePicker";
 import { ModelSelect } from "./ModelSelect";
 import { PermissionsEditor } from "./AgentsTab";
 import { UpdatesSection } from "../shell/UpdateControls";
 
 export function GeneralTab() {
+  const phone = useContext(PhonePage);
   return (
     <>
-      <h2 className="mb-6 text-[20px] font-semibold tracking-[-0.01em]">General</h2>
+      {!phone && <h2 className="mb-6 text-[20px] font-semibold tracking-[-0.01em]">General</h2>}
       <AppearanceSection />
       <NotificationsSection />
       <DefaultsSection />
@@ -50,12 +48,12 @@ function NotificationsSection() {
   return (
     <Section
       title="Notifications"
-      desc="While Otto is open on another session you get a banner; in the background, a system notification. Phones get them while Otto is running or recently closed."
+      desc="A banner while you're in Otto, a system notification when it's in the background."
     >
       <Rows>
         <Row
           label="System notifications"
-          hint={perm === "denied" ? "Blocked. Allow notifications for Otto in your system settings." : "When Otto is in the background"}
+          hint={perm === "denied" ? <span className="text-danger">Blocked. Allow Otto in System Settings.</span> : "When Otto is in the background"}
         >
           <Toggle
             on={prefs.system && perm !== "denied"}
@@ -227,7 +225,7 @@ function AutomationSection() {
   return (
     <Section title="Automation" desc="On the machine your agents run on.">
       <Rows>
-        <Row label="Agents can manage schedules" hint="They can create and run schedules; creating, changing or deleting one asks you first">
+        <Row label="Agents can manage schedules" hint="Creating, changing or deleting a schedule still asks you first">
           <Toggle
             on={!schedulesOff}
             disabled={!client || busy}
@@ -247,12 +245,8 @@ function AutomationSection() {
 function AppearanceSection() {
   const theme = useUI((s) => s.theme);
   const setTheme = useUI((s) => s.setTheme);
-  const backdrop = useUI((s) => s.backdrop);
-  const setBackdrop = useUI((s) => s.setBackdrop);
   const homeCompact = useUI((s) => s.homeCompact);
   const setHomeCompact = useUI((s) => s.setHomeCompact);
-  const img = backdropSettings(backdrop).on;
-  const isPhoto = backdrop.kind === "image";
   return (
     <Section title="Appearance">
       <Rows>
@@ -270,177 +264,10 @@ function AppearanceSection() {
           />
         </Row>
         <ThemePicker />
-        <div className="px-4 py-3">
-          <div className="mb-2.5 text-[13.5px] text-ink">Background</div>
-          <BackgroundPicker />
-        </div>
-        {img && (
-          <>
-            <Row label={isPhoto ? "Photo visibility" : "Visibility"}>
-              <Slider label="Visibility" value={backdrop.intensity ?? BACKDROP_DEFAULTS.intensity} min={0.1} max={1} format={pct} onChange={(v) => setBackdrop({ intensity: v })} />
-            </Row>
-            <Row label="Chat fade" hint="Toward the composer">
-              <Slider label="Chat fade" value={backdrop.chatFade ?? BACKDROP_DEFAULTS.chatFade} min={0} max={1} format={pct} onChange={(v) => setBackdrop({ chatFade: v })} />
-            </Row>
-            <Row label="Fade at the bottom">
-              <Slider label="Fade at the bottom" value={backdrop.fade ?? BACKDROP_DEFAULTS.fade} min={0} max={1} format={pct} onChange={(v) => setBackdrop({ fade: v })} />
-            </Row>
-            {isPhoto && (
-              <Row label="Blur">
-                <Slider label="Blur" value={backdrop.blur ?? BACKDROP_DEFAULTS.blur} min={0} max={30} step={1} format={(v) => `${v}px`} onChange={(v) => setBackdrop({ blur: v })} />
-              </Row>
-            )}
-            <Row label="See-through panels">
-              <Slider label="See-through panels" value={backdrop.glass ?? BACKDROP_DEFAULTS.glass} min={0} max={0.85} format={pct} onChange={(v) => setBackdrop({ glass: v })} />
-            </Row>
-          </>
-        )}
-        <Row label="Compact home" hint="Prompt centred on an empty screen, without the recent list">
+        <Row label="Compact home" hint="Just the prompt, without recent sessions">
           <Toggle on={homeCompact} onChange={setHomeCompact} label="Compact home" />
         </Row>
       </Rows>
     </Section>
   );
 }
-
-/** The built-in skies, saved photos and fills, and buttons to add more. */
-function BackgroundPicker() {
-  const backdrop = useUI((s) => s.backdrop);
-  const saved = useUI((s) => s.backdrops);
-  const apply = useUI((s) => s.applyBackdrop);
-  const remove = useUI((s) => s.removeBackdrop);
-  const setBackdrop = useUI((s) => s.setBackdrop);
-  const fileInput = useRef<HTMLInputElement>(null);
-  const [making, setMaking] = useState(false);
-  const activeId = backdrop.kind === "none" ? "none" : backdrop.activeId;
-  // A photo and a colour can look alike at thumbnail size; label them only when both are saved.
-  const mixed = saved.some((b) => b.kind === "image") && saved.some((b) => b.kind === "fill");
-
-  async function onPick(files: FileList) {
-    for (const file of Array.from(files).slice(0, 6)) {
-      try {
-        await apply({ id: uid("bg_"), kind: "image", image: await downscale(file, 2400), name: file.name });
-      } catch {
-        toast({ tone: "error", title: `Couldn't use ${file.name}` });
-      }
-    }
-  }
-
-  return (
-    <div>
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(88px,1fr))] gap-2">
-        <Tile label="None" active={activeId === "none"} onClick={() => setBackdrop({ kind: "none", activeId: null })}>
-          <div className="grid h-full w-full place-items-center bg-bg text-[11px] text-faint">None</div>
-        </Tile>
-        {BUILTIN_BACKDROPS.map((b) => (
-          <Tile key={b.id} label={b.name!} active={activeId === b.id} onClick={() => void apply(b)}>
-            <div className="h-full w-full bg-cover bg-center" style={{ backgroundImage: `url(${b.image})` }} />
-          </Tile>
-        ))}
-        {saved.map((b) => (
-          <Tile
-            key={b.id}
-            label={b.name ?? (b.kind === "image" ? "Photo" : "Colour")}
-            badge={mixed ? (b.kind === "image" ? "Photo" : "Colour") : undefined}
-            active={activeId === b.id}
-            onClick={() => void apply(b)}
-            onRemove={() => void remove(b.id)}
-          >
-            <div className="h-full w-full bg-cover bg-center" style={{ backgroundImage: b.kind === "image" ? `url(${b.image})` : asImage(b.css ?? "") }} />
-          </Tile>
-        ))}
-        <button onClick={() => fileInput.current?.click()} className="flex aspect-[16/10] flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-line-strong text-[11px] text-muted transition-colors hover:bg-hover hover:text-ink">
-          <ImagePlus size={15} /> <span className="whitespace-nowrap">Add photo</span>
-        </button>
-        <button onClick={() => setMaking((v) => !v)} aria-expanded={making} className={`flex aspect-[16/10] flex-col items-center justify-center gap-1 rounded-lg border border-dashed text-[11px] transition-colors hover:bg-hover hover:text-ink ${making ? "border-ink text-ink" : "border-line-strong text-muted"}`}>
-          <Palette size={15} /> <span className="whitespace-nowrap">Choose colour</span>
-        </button>
-      </div>
-      <input ref={fileInput} type="file" accept="image/*" multiple className="hidden" onChange={(e) => e.target.files?.length && void onPick(e.target.files).finally(() => (e.target.value = ""))} />
-      {making && (
-        <FillMaker
-          onSave={(css) => {
-            void apply({ id: uid("bg_"), kind: "fill", css });
-            setMaking(false);
-          }}
-        />
-      )}
-    </div>
-  );
-}
-
-function Tile({ label, badge, active, onClick, onRemove, children }: { label: string; badge?: string; active: boolean; onClick: () => void; onRemove?: () => void; children: ReactNode }) {
-  return (
-    <div className="group relative">
-      <button onClick={onClick} title={label} aria-label={label} aria-pressed={active} className={`block aspect-[16/10] w-full overflow-hidden rounded-lg transition-shadow ${active ? "shadow-[0_0_0_2px_var(--text)]" : "hairline hover:shadow-[0_0_0_1px_var(--border-strong)]"}`}>
-        {children}
-      </button>
-      {badge && <span className="pointer-events-none absolute bottom-1 left-1 rounded bg-black/55 px-1 py-0.5 text-[10px] leading-none font-medium text-white">{badge}</span>}
-      {onRemove && (
-        <button
-          onClick={onRemove}
-          aria-label={`Remove ${label}`}
-          title="Remove background"
-          className="absolute top-1 right-1 grid h-6 w-6 place-items-center rounded-full border border-line bg-raised text-muted opacity-60 shadow-soft transition-opacity hover:text-ink hover:opacity-100 focus-visible:opacity-100 group-hover:opacity-100"
-        >
-          <X size={12} />
-        </button>
-      )}
-    </div>
-  );
-}
-
-type FillKind = "linear" | "radial" | "solid";
-
-/** Two colours, a style and a direction → a CSS background, previewed live. */
-function FillMaker({ onSave }: { onSave: (css: string) => void }) {
-  const [kind, setKind] = useState<FillKind>("linear");
-  const [a, setA] = useState("#2a3a8c");
-  const [b, setB] = useState("#e0845e");
-  const [angle, setAngle] = useState(160);
-  const css = kind === "solid" ? a : kind === "radial" ? `radial-gradient(120% 120% at 30% 20%, ${a} 0%, ${b} 100%)` : `linear-gradient(${angle}deg, ${a} 0%, ${b} 100%)`;
-  return (
-    <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-line p-3">
-      <div className="aspect-[16/10] w-24 shrink-0 rounded-lg hairline" style={{ background: css }} />
-      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
-        <Segmented
-          id="fill-kind"
-          size="sm"
-          value={kind}
-          onChange={setKind}
-          options={[
-            { id: "linear", label: "Linear" },
-            { id: "radial", label: "Radial" },
-            { id: "solid", label: "Solid" },
-          ]}
-        />
-        <ColorSwatch label="First colour" value={a} onChange={setA} />
-        {kind !== "solid" && <ColorSwatch label="Second colour" value={b} onChange={setB} />}
-        {kind === "linear" && <Slider label="Angle" value={angle} min={0} max={360} step={5} format={(v) => `${v}°`} onChange={setAngle} />}
-      </div>
-      <Button size="sm" variant="primary" onClick={() => onSave(css)}>
-        Use
-      </Button>
-    </div>
-  );
-}
-
-function ColorSwatch({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
-  return (
-    <label title={label} className="relative block h-7 w-7 cursor-pointer overflow-hidden rounded-full shadow-[0_0_0_1px_var(--border-strong)] transition-transform hover:scale-105" style={{ background: value }}>
-      <input type="color" aria-label={label} value={value} onChange={(e) => onChange(e.target.value)} className="absolute inset-0 cursor-pointer opacity-0" />
-    </label>
-  );
-}
-
-async function downscale(file: File, max: number): Promise<string> {
-  const bmp = await createImageBitmap(file);
-  const scale = Math.min(1, max / Math.max(bmp.width, bmp.height));
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.round(bmp.width * scale);
-  canvas.height = Math.round(bmp.height * scale);
-  canvas.getContext("2d")!.drawImage(bmp, 0, 0, canvas.width, canvas.height);
-  return canvas.toDataURL("image/jpeg", 0.86);
-}
-
-const pct = (v: number) => `${Math.round(v * 100)}%`;
