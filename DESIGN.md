@@ -205,6 +205,7 @@ Work that outlives its turn (a command the agent left running, a teammate on a p
 - The agent gets a note at the end of the message with every file's path; PNG, JPEG, GIF and WebP also go to the model as images when it takes them. The note is for the agent only: the thread hides it and shows the files above the bubble instead.
 - Sent images come from the message itself (OpenCode keeps the bytes), or from the machine when they weren't sent to the model; other files are chips that open in the editor.
 
+- Full-screen viewers (images, a subagent's conversation) take a browser history entry while open (`useHistoryEntry` in `lib/back.ts`), so any Back closes them rather than the app. Images page sideways with a "2 of 3" hint, close on a pull down or a swipe in from the left edge; subagents handed parts in one turn page the same way ("1 of 2", previous/next, ←/→). Gesture thresholds live in `lib/pager.ts`.
 - Sharing into Otto from another app (Android) opens a **Share to** page: what's shared on top (thumbnails, file chips, the text), then your agents for a new session, then active and recent sessions as plain rows. Picking one puts it in that reply box to add to and send; nothing is sent by itself.
 
 ### Apps

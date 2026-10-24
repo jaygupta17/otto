@@ -2,7 +2,8 @@ import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import type { SessionInfo, SessionMessageInfo, SessionMessagesResponse } from "@opencode/client";
 import { kv } from "../lib/kv";
 import type { OpenCode } from "../lib/opencode/client";
-import { PREFS_DEBOUNCE_MS, TIMELINE_PAGE, TIMELINE_TAIL, pruneDrafts, useChat } from "./chat";
+import { PREFS_DEBOUNCE_MS, TIMELINE_PAGE, TIMELINE_TAIL, inboxOf, pruneDrafts, takeBack, useChat } from "./chat";
+import { useAttachments } from "./attachments";
 import { useWorkspaces } from "./workspaces";
 
 const user = (id: string, text = id, created = 1): SessionMessageInfo => ({ id, type: "user", text, time: { created } }) as unknown as SessionMessageInfo;
@@ -277,5 +278,50 @@ describe("reload persistence", () => {
     } finally {
       kvFake.restore();
     }
+  });
+});
+
+describe("stopping a run with messages still waiting", () => {
+  type Msg = Parameters<typeof takeBack>[1][number];
+  const waiting = (id: string, text: string, extra: Partial<Msg> = {}): Msg => ({ kind: "user", id, text, time: 1, pending: true, delivery: "steer", ...extra }) as Msg;
+  const doc = { path: "/w/a.pdf", name: "a.pdf", mime: "application/pdf", size: 3 };
+
+  test("only inbox messages count, not a send still on its way", () => {
+    const sent = { kind: "user", id: "local", text: "x", time: 1, pending: true } as Msg;
+    expect(inboxOf([sent, waiting("in1", "a"), { ...waiting("old", "b"), pending: false }]).map((m) => m.id)).toEqual(["in1"]);
+    expect(inboxOf(undefined)).toEqual([]);
+  });
+
+  test("takeBack puts them after what's typed, in order, with their files", () => {
+    const shot = { uri: "data:image/png;base64,AA", name: "s.png", mime: "image/png" };
+    const back = takeBack("half a thought  ", [waiting("in1", " look at this "), waiting("in2", "and this", { attachments: [doc], files: [shot] })]);
+    expect(back.text).toBe("half a thought\n\nlook at this\n\nand this");
+    expect(back.attachments).toEqual([doc]);
+    expect(back.previews).toEqual({ "s.png": shot.uri });
+    expect(takeBack("   ", [waiting("in1", "only")]).text).toBe("only");
+  });
+
+  test("interrupt cancels them, returns them to the box, then stops", async () => {
+    const calls: string[] = [];
+    const client = {
+      cancelInbox: async (_sid: string, id: string) => {
+        calls.push(`cancel ${id}`);
+        if (id === "in2") throw new Error("already delivered");
+      },
+      interrupt: async () => void calls.push("interrupt"),
+    } as unknown as OpenCode;
+    useChat.setState({
+      client,
+      drafts: { ses: "typed" },
+      timelines: { ses: { loaded: true, loading: false, messages: [waiting("in1", "first", { attachments: [doc] }), waiting("in2", "second", { delivery: "queue" })] } },
+    });
+    const kvFake = fakeKv();
+    await useChat.getState().interrupt("ses").finally(kvFake.restore);
+    expect(calls).toEqual(["cancel in1", "cancel in2", "interrupt"]);
+    // The one the server already handed over stays where it is.
+    expect(useChat.getState().drafts.ses).toBe("typed\n\nfirst");
+    expect(timeline().messages.map((m) => m.id)).toEqual(["in2"]);
+    expect(useAttachments.getState().byKey.ses?.map((a) => a.path)).toEqual([doc.path]);
+    useAttachments.getState().clear("ses");
   });
 });

@@ -73,16 +73,35 @@ function TrayItem({ a, onRemove }: { a: Pending; onRemove: () => void }) {
 /** A sent message's files, above its bubble: images as thumbnails, the rest as chips that open the file. */
 export function MessageAttachments({ attachments, files, pending }: { attachments?: Attachment[]; files?: UserFile[]; pending?: boolean }) {
   const openFile = useOpenFile();
-  const [open, setOpen] = useState<{ src: string; name: string } | null>(null);
+  const [open, setOpen] = useState<number | null>(null);
+  // Images read back from the machine, by position, so the viewer can page through them all.
+  const [loaded, setLoaded] = useState<Record<number, string>>({});
   // A message from elsewhere may carry images without our list of uploads.
   const list: Attachment[] = attachments ?? (files ?? []).filter((f) => /^(data|blob):/.test(f.uri)).map((f) => ({ path: "", name: f.name ?? "Image", mime: f.mime ?? "image/png", size: 0 }));
   if (!list.length) return null;
   const srcOf = (a: Attachment) => files?.find((f) => f.name === a.name && /^(data|blob):/.test(f.uri))?.uri;
+  const gallery = list.flatMap((a, i) => {
+    const src = srcOf(a) ?? loaded[i];
+    return src ? [{ i, src, name: a.name }] : [];
+  });
   return (
     <div className={`mb-1.5 flex max-w-[min(560px,80%)] flex-wrap justify-end gap-2 ${pending ? "opacity-60" : ""}`}>
       {list.map((a, i) =>
         viewable(a.mime) || srcOf(a) ? (
-          <Thumb key={`${a.path}:${i}`} a={a} src={srcOf(a)} onOpen={setOpen} />
+          <Thumb
+            key={`${a.path}:${i}`}
+            a={a}
+            src={srcOf(a)}
+            onLoad={(url) =>
+              setLoaded((l) => {
+                const next = { ...l };
+                if (url) next[i] = url;
+                else delete next[i];
+                return next;
+              })
+            }
+            onOpen={() => setOpen(gallery.findIndex((g) => g.i === i))}
+          />
         ) : (
           <button
             key={`${a.path}:${i}`}
@@ -101,13 +120,13 @@ export function MessageAttachments({ attachments, files, pending }: { attachment
           </button>
         ),
       )}
-      <ImageViewer shot={open} onClose={() => setOpen(null)} />
+      <ImageViewer images={gallery} index={open !== null && open >= 0 ? open : null} onClose={() => setOpen(null)} />
     </div>
   );
 }
 
 /** An image from the message itself, or read back from the machine when the model wasn't sent it. */
-function Thumb({ a, src, onOpen }: { a: Attachment; src?: string; onOpen: (s: { src: string; name: string }) => void }) {
+function Thumb({ a, src, onLoad, onOpen }: { a: Attachment; src?: string; onLoad: (url: string | null) => void; onOpen: () => void }) {
   const root = useSessionRoot();
   const client = useChat((s) => s.client);
   const [loaded, setLoaded] = useState<string | null>(null);
@@ -123,13 +142,17 @@ function Thumb({ a, src, onOpen }: { a: Attachment; src?: string; onOpen: (s: { 
         if (!r.bytes) return setGone(true);
         url = URL.createObjectURL(new Blob([r.bytes as BlobPart], { type: a.mime }));
         setLoaded(url);
+        onLoad(url);
       })
       .catch(() => live && setGone(true));
     return () => {
       live = false;
-      if (url) URL.revokeObjectURL(url);
+      if (url) {
+        URL.revokeObjectURL(url);
+        onLoad(null);
+      }
     };
-  }, [src, a.path, a.mime, client, root]);
+  }, [src, a.path, a.mime, client, root]); // eslint-disable-line react-hooks/exhaustive-deps
   const shown = src ?? loaded;
   if (!shown)
     return (
@@ -138,7 +161,7 @@ function Thumb({ a, src, onOpen }: { a: Attachment; src?: string; onOpen: (s: { 
       </div>
     );
   return (
-    <button onClick={() => onOpen({ src: shown, name: a.name })} title={a.name} aria-label={`View ${a.name}`} className="block overflow-hidden rounded-lg hairline transition-opacity hover:opacity-90">
+    <button onClick={onOpen} title={a.name} aria-label={`View ${a.name}`} className="block overflow-hidden rounded-lg hairline transition-opacity hover:opacity-90">
       <img src={shown} alt={a.name} loading="lazy" decoding="async" className="block max-h-[160px] max-w-[240px] object-contain" />
     </button>
   );

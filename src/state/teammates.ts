@@ -3,6 +3,7 @@
  * chat store binds a client, so pickers and the sidebar can show faces
  * without opening settings first.
  */
+import { useCallback } from "react";
 import { create } from "zustand";
 import { readGlobalConfig, updateGlobalConfig, type AgentConfig } from "../lib/opencode/config";
 import { installMemory, removeMemory } from "../lib/memory";
@@ -267,6 +268,13 @@ export function useAgentName(id: string | undefined | null) {
   const info = useChat((s) => (id ? s.agents.find((a) => a.id === id) : undefined));
   if (!id) return "";
   return t?.name ?? info?.name ?? id.charAt(0).toUpperCase() + id.slice(1);
+}
+
+/** `useAgentName` for any number of agents: a function from id to name. */
+export function useAgentNamer(): (id?: string) => string {
+  const roster = useTeammates((s) => s.byId);
+  const agents = useChat((s) => s.agents);
+  return useCallback((id?: string) => (id ? (roster?.[id]?.name ?? agents.find((a) => a.id === id)?.name ?? id.charAt(0).toUpperCase() + id.slice(1)) : "Subagent"), [roster, agents]);
 }
 
 // Follow the connection: a new client means a different machine.

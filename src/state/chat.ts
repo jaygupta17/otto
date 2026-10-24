@@ -713,6 +713,25 @@ export const useChat = create<State>((set, get) => ({
   async interrupt(id) {
     const client = get().client;
     if (!client) return;
+    // Stopping means "not that": a message still waiting to steer or follow the
+    // run goes back in the box instead of starting a new turn on its own.
+    const waiting = inboxOf(get().timelines[id]?.messages);
+    if (waiting.length) {
+      const taken = (await Promise.all(waiting.map((m) => client.cancelInbox(id, m.id).then(() => m, () => null)))).filter((m) => !!m);
+      if (taken.length) {
+        const back = takeBack(get().drafts[id] ?? "", taken);
+        set((st) => {
+          const t = st.timelines[id];
+          const gone = new Set(taken.map((m) => m.id));
+          return {
+            drafts: { ...st.drafts, [id]: back.text },
+            ...(t && { timelines: { ...st.timelines, [id]: { ...t, messages: t.messages.filter((m) => !gone.has(m.id)) } } }),
+          };
+        });
+        if (back.attachments.length) useAttachments.getState().restore(id, back.attachments, back.previews, true);
+        void savePrefs();
+      }
+    }
     try {
       await client.interrupt(id);
     } catch (e) {
@@ -904,6 +923,8 @@ function syncAsks(client: OpenCode) {
 function applyActiveSessions(client: OpenCode, gen: number, ids: string[]) {
   if (gen !== busyGeneration || useChat.getState().client !== client) return;
   useChat.setState({ busy: Object.fromEntries(ids.map((id) => [id, true])) });
+  // A subagent still running after a restart: find the chat it belongs to, so that chat shows as working.
+  learnParents(ids);
 }
 
 /**
@@ -1287,6 +1308,7 @@ function flush() {
           if (status.type === "busy" || status.type === "retry") {
             mut("busy");
             busy[sid] = true;
+            if (!sessions[sid] && !parents[sid]) unknown.push(sid);
           }
         }
         break;
@@ -1476,7 +1498,11 @@ async function inferChildren(parent: string) {
 
 const asked = new Set<string>();
 
-/** Ask the server who owns sessions we only know from an ask (e.g. after a restart mid-subagent). */
+/**
+ * Ask the server who owns sessions we only know from an ask or a run (e.g.
+ * after a restart mid-subagent), up through a subagent's own subagents until
+ * a chat we know.
+ */
 function learnParents(ids: string[]) {
   const { client, sessions, parents } = useChat.getState();
   if (!client) return;
@@ -1486,7 +1512,9 @@ function learnParents(ids: string[]) {
     void client
       .session(id)
       .then((s) => {
-        if (s.parentID) useChat.setState((x) => ({ parents: { ...x.parents, [id]: s.parentID! } }));
+        if (!s.parentID) return;
+        useChat.setState((x) => ({ parents: { ...x.parents, [id]: s.parentID! } }));
+        learnParents([s.parentID]);
       })
       .catch(() => asked.delete(id));
   }
@@ -1526,7 +1554,20 @@ function modelKey(m: { providerID: string; id: string }) {
 
 // Stores hold live connections; a hot swap would orphan them. Reload instead.
 /** A sent message's images by file name, to show again in a box it's put back in. */
-function previewsOf(m: Extract<UIMessage, { kind: "user" }>): Record<string, string> {
+type UserMessage = Extract<UIMessage, { kind: "user" }>;
+
+/** Messages sent during a run that still wait in the session's inbox. */
+export function inboxOf(messages: UIMessage[] | undefined): UserMessage[] {
+  return (messages ?? []).filter((m): m is UserMessage => m.kind === "user" && !!m.pending && !!m.delivery);
+}
+
+/** What goes back in the box when waiting messages are taken back: after what's already typed, in the order sent. */
+export function takeBack(draft: string, messages: UserMessage[]): { text: string; attachments: Attachment[]; previews: Record<string, string> } {
+  const text = [draft.trim() ? draft.replace(/\s+$/, "") : "", ...messages.map((m) => m.text.trim())].filter(Boolean).join("\n\n");
+  return { text, attachments: messages.flatMap((m) => m.attachments ?? []), previews: Object.assign({}, ...messages.map(previewsOf)) };
+}
+
+function previewsOf(m: UserMessage): Record<string, string> {
   return Object.fromEntries((m.files ?? []).filter((f) => f.name && /^(data|blob):/.test(f.uri)).map((f) => [f.name!, f.uri]));
 }
 

@@ -10,14 +10,22 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 - Attach files to a message: + › Upload files, paste a screenshot, or drop files on the reply box. They're saved in the project under `.otto/uploads` (kept out of git), and the agent is told where each one is. Images are also shown to the model when it can see images. Your messages show the images and files you sent, including after you reopen the session, and editing or forking a message brings its files back.
 - On Android, share to Otto from any app (a link, text, photos or files), the way you would to a chat app. Pick an agent to start a session with, or a session you already have, and it lands in that reply box ready to send. Files over 25 MB stay behind.
+- Images open as a pager: swipe (or ←/→) between the images in a message with a "2 of 3" hint, pull down or swipe in from the left edge to close, and Back closes the viewer instead of leaving the app.
+- Step between subagents handed parts in the same turn: their conversation shows "1 of 2" with previous and next, swipe or ←/→ to move, and Back returns to the chat. Their lines in chat are labelled with each one's task, or "Scout A" / "Scout B" when the same teammate went twice.
 
 ### Changed
 
+- No more banners inside Otto when an agent in another session finishes or needs you; the session list and the inbox show it, and system notifications still come while Otto is in the background. The "Banners inside Otto" setting is gone.
 - Active sessions in the desktop sidebar now look like they do on phones: a raised card with the agent's face, the title and what it's doing, held in ice when it's the one open.
+- Stopping a run puts any message still waiting to steer or follow it back in the reply box (after what you'd typed, files included) instead of starting a new turn with it.
+- Agents write like a person messaging you: whole, natural sentences in plain words, no jargon, and lists only for things that really are lists. Your teammates pick this up the next time Otto connects.
+- Memory now remembers you, not just the work: the note every session starts with opens with About you (who you are, how you like replies, what you've asked for or corrected). When you tell an agent how you like things, the lead saves it there straight away.
 
 ### Fixed
 
 - Sending the first message of a new session no longer flickers: your words stay in the box until the session opens, the conversation replaces the new-session screen in one step with your message already in it (on phones too, with no slide out and back in), and the message no longer fades in twice once the server confirms it.
+- Scrolling up while an agent streams now holds: the conversation no longer pulls you back down while you read, and follows again once you scroll back to the bottom.
+- A chat whose subagent was still working when Otto reconnected shows as working in the sidebar again.
 
 ## [0.16.0] - 2026-10-24
 

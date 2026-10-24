@@ -51,7 +51,7 @@ import { duration } from "../../lib/format";
 import { useNow } from "../../hooks/useNow";
 import { useChat } from "../../state/chat";
 import { useShells } from "../../state/shells";
-import { openSubagent } from "../../state/subagent";
+import { openSubagent, useSiblings } from "../../state/subagent";
 import { useMemory } from "../../state/memory";
 import { AgentMark, type FaceState } from "../ui/Bird";
 import { useFace } from "../../state/face";
@@ -538,6 +538,9 @@ const SubagentRow = memo(function SubagentRow({ b }: { b: ToolBlock }) {
   const stopSubagent = useChat((st) => st.stopSubagent);
   const name = useAgentName(s.agent) || "Subagent";
   const [stopping, setStopping] = useState(false);
+  // What tells it apart from the others handed a part in the same turn: its task, or a letter.
+  const sibs = useSiblings(child, sid ?? undefined);
+  const label = (sibs.at >= 0 ? sibs.labels[sibs.at] : s.description?.trim()) || "";
 
   const { phase, output, error, ended } = subagentPhase(b, { childBusy, report, stopped: stopped || stopping });
   const running = phase === "running" || (phase === "background" && childBusy);
@@ -564,7 +567,7 @@ const SubagentRow = memo(function SubagentRow({ b }: { b: ToolBlock }) {
   const line = asking ? (
     <span className="min-w-0 truncate text-info">Needs you</span>
   ) : running ? (
-    <span className="shimmer min-w-0 truncate">{doing || s.description || "Working"}</span>
+    <span className="shimmer min-w-0 truncate">{doing || (label ? "Working" : s.description || "Working")}</span>
   ) : phase === "background" ? (
     <span className="min-w-0 truncate text-muted">In the background</span>
   ) : phase === "error" ? (
@@ -591,6 +594,7 @@ const SubagentRow = memo(function SubagentRow({ b }: { b: ToolBlock }) {
         <button aria-expanded={open} onClick={() => setOpen((v) => !v)} className="group/line flex min-w-0 flex-1 items-center gap-3 py-0.5 text-left outline-none">
           <Avatar agent={s.agent} name={name} state={face} />
           <span className="flex min-w-0 flex-1 items-baseline gap-2 text-[14px]">
+            {label && <span className="min-w-0 max-w-[60%] truncate font-medium text-ink-2">{label}</span>}
             {line}
             {running && took > 1500 && <span className="shrink-0 font-mono text-[12px] text-faint tabular-nums">{duration(took)}</span>}
           </span>
@@ -608,7 +612,7 @@ const SubagentRow = memo(function SubagentRow({ b }: { b: ToolBlock }) {
                 <Square size={10} className="fill-current" />
               </button>
             )}
-            <button aria-label={`Open ${name}'s conversation`} title={`Open ${name}'s conversation`} onClick={() => openSubagent(child, s.agent, s.description)} className={rowAction}>
+            <button aria-label={`Open ${label && label !== name ? `${name}'s conversation: ${label}` : `${name}'s conversation`}`} title={`Open ${name}'s conversation`} onClick={() => openSubagent(child, s.agent, s.description)} className={rowAction}>
               <ArrowUpRight size={14} />
             </button>
           </>
@@ -652,7 +656,10 @@ export const SubagentReport = memo(function SubagentReport({ msg }: { msg: Extra
       <div className="flex min-w-0 items-center gap-0.5 py-1">
         <button aria-expanded={text ? open : undefined} onClick={() => text && setOpen((v) => !v)} className={`group/line flex min-w-0 flex-1 items-center gap-3 py-0.5 text-left outline-none ${text ? "" : "cursor-default"}`}>
           <Avatar agent={msg.agent} name={name} state={failed ? "failed" : stopped ? "stopped" : "done"} />
-          <span className={`min-w-0 flex-1 truncate text-[14px] ${failed ? "text-danger" : stopped ? "text-faint" : "text-muted"}`}>{failed ? "Couldn't finish" : stopped ? "Stopped" : "Finished"}</span>
+          <span className="flex min-w-0 flex-1 items-baseline gap-2 text-[14px]">
+            {msg.description?.trim() && <span className="min-w-0 max-w-[60%] truncate font-medium text-ink-2">{msg.description.trim()}</span>}
+            <span className={`min-w-0 truncate ${failed ? "text-danger" : stopped ? "text-faint" : "text-muted"}`}>{failed ? "Couldn't finish" : stopped ? "Stopped" : "Finished"}</span>
+          </span>
           {text && chevron(open)}
         </button>
         {msg.childID && (

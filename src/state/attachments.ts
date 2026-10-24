@@ -27,7 +27,8 @@ interface AttachmentsState {
   /** Forget a box's files once they're sent (their uploads stay). */
   clear(key: string): void;
   /** Put sent files back in a box (edit and resend, fork), with their images by name. */
-  restore(key: string, atts: Attachment[], previews?: Record<string, string>): void;
+  /** Put files back in a box; `append` keeps what's already there. */
+  restore(key: string, atts: Attachment[], previews?: Record<string, string>, append?: boolean): void;
 }
 
 let seq = 0;
@@ -100,10 +101,10 @@ export const useAttachments = create<AttachmentsState>((set, get) => ({
     });
   },
 
-  restore(key, atts, previews = {}) {
+  restore(key, atts, previews = {}, append = false) {
     if (!atts.length) return;
     const items: Pending[] = atts.map((a) => ({ id: `att_${++seq}`, name: a.name, mime: a.mime, size: a.size, status: "ready", path: a.path, preview: previews[a.name] }));
-    set((s) => ({ byKey: { ...s.byKey, [key]: items } }));
+    set((s) => ({ byKey: { ...s.byKey, [key]: append ? [...(s.byKey[key] ?? []), ...items] : items } }));
   },
 }));
 

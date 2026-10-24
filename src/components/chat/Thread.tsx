@@ -212,6 +212,7 @@ export function Thread({ sessionId, bottomInset = 0 }: { sessionId: string; bott
   // pass through intermediate positions that must not count as "scrolled up".
   const touching = useRef(false);
   const userAt = useRef(0);
+  const lastTop = useRef(0);
   const markUser = () => (userAt.current = performance.now());
 
   // PageUp / PageDown scroll the conversation from anywhere that isn't a text field
@@ -250,8 +251,14 @@ export function Thread({ sessionId, bottomInset = 0 }: { sessionId: string; bott
     const el = scroller.current;
     if (!el) return;
     const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
-    if (dist < 80) pinned.current = true;
-    else if (touching.current || performance.now() - userAt.current < 300) pinned.current = false;
+    const up = el.scrollTop < lastTop.current;
+    lastTop.current = el.scrollTop;
+    // The user's hand decides: any move up lets go of the bottom, even inside
+    // the last 80px, so streaming never drags them back down mid-read; coming
+    // back near the bottom holds on again. Scrolls the thread makes itself
+    // only ever confirm being at the very bottom.
+    if (touching.current || pressing.current || performance.now() - userAt.current < 300) pinned.current = up ? false : pinned.current || dist < 80;
+    else if (dist < 2) pinned.current = true;
     setShowJump(dist > 400);
     if (el.scrollTop < 200 && timeline?.older && !timeline.loading) void loadOlder(sessionId);
   };
