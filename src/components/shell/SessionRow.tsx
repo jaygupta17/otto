@@ -12,6 +12,7 @@ import { useAgentName } from "../../state/teammates";
 import { useFace } from "../../state/face";
 import { useBackgroundLine, useDoing } from "../../state/tiers";
 import { AgentMark } from "../ui/Bird";
+import { Spot, spot } from "../ui/Spot";
 
 /** The one mark a session shows where there's no bird: working, needs you, failed, or a new result. */
 export function SessionPip({ busy, asking, unread, failed }: { busy: boolean; asking: boolean; unread: boolean; failed: boolean }) {
@@ -25,8 +26,8 @@ export function SessionPip({ busy, asking, unread, failed }: { busy: boolean; as
 /**
  * A session in the sidebar. Past ones are a line of text, never a face: faces
  * belong to the agents, so the eye can tell the team from the history without
- * reading. One that wants you (`face`) is a raised row with the agent's face and
- * what it's doing right now.
+ * reading. One that wants you (`face`) is the same raised card as on phones:
+ * the agent's face and what it's doing right now; the open one is held in ice.
  */
 export const SessionRow = memo(function SessionRow({ s, now, face, onNavigate }: { s: SessionInfo; now: number; face?: boolean; onNavigate?: () => void }) {
   const active = useChat((st) => st.activeId === s.id);
@@ -52,6 +53,7 @@ export const SessionRow = memo(function SessionRow({ s, now, face, onNavigate }:
   return (
     <motion.div layout="position" aria-current={active ? "true" : undefined} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.15 }}>
       <div
+        {...(face ? spot : {})}
         role="button"
         tabIndex={0}
         onClick={() => {
@@ -65,11 +67,12 @@ export const SessionRow = memo(function SessionRow({ s, now, face, onNavigate }:
         data-tone={face && asking && !active ? "needs" : undefined}
         className={
           face
-            ? `group relative flex items-center gap-2.5 rounded-[12px] py-2 pr-2.5 pl-1.5 ${active ? "chip" : "bezel"}`
+            ? `bezel group flex items-center gap-3 rounded-[18px] py-2.5 pr-3 pl-2.5 text-left ${active ? "chip" : ""}`
             : `group relative flex items-center rounded-[10px] py-[7px] pr-2.5 pl-3 transition-colors ${active ? "chip" : "hover:bg-hover"}`
         }
       >
-        {face && <AgentMark id={s.agent} size={40} state={away && (mood === "idle" || mood === "done") ? "working" : mood} />}
+        {face && <Spot />}
+        {face && <AgentMark id={s.agent} size={48} state={away && (mood === "idle" || mood === "done") ? "working" : mood} />}
         <span className="min-w-0 flex-1">
           {editing ? (
             <input
@@ -89,12 +92,12 @@ export const SessionRow = memo(function SessionRow({ s, now, face, onNavigate }:
             />
           ) : (
             <span className="flex items-baseline gap-2">
-              <span className={`min-w-0 flex-1 truncate text-[14px] text-ink ${face || active || unread || asking ? "font-semibold" : "font-medium"}`}>{title}</span>
-              <span className="shrink-0 text-[11px] text-muted font-mono tabular-nums group-hover:invisible">{timeAgo(s.time.updated, now)}</span>
+              <span className={`min-w-0 flex-1 truncate text-ink ${face ? "text-[15px] leading-snug font-semibold" : `text-[14px] ${active || unread || asking ? "font-semibold" : "font-medium"}`}`}>{title}</span>
+              <span className={`shrink-0 tabular-nums group-hover:invisible ${face ? "text-[12px] text-faint" : "text-[11px] text-muted font-mono"}`}>{timeAgo(s.time.updated, now)}</span>
             </span>
           )}
           {face ? (
-            <span className="flex items-center gap-2 text-[12.5px]">
+            <span className="mt-0.5 flex items-center gap-2 text-[13px]">
               {asking ? (
                 <span className="text-info">Needs you</span>
               ) : busy ? (

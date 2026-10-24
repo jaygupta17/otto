@@ -195,7 +195,7 @@ function SessionList({ query, onNavigate }: { query: string; onNavigate?: () => 
       {ready && active.length + agents.length + recent.length === 0 && <div className="px-2 py-3 text-[13px] text-muted">{query ? `Nothing matches “${query}”.` : "Sessions you start appear here."}</div>}
       {ready && active.length > 0 && (
         <SessionGroup label="Active">
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             <AnimatePresence initial={false}>
               {active.map((s) => (
                 <SessionRow key={s.id} s={s} now={now} face onNavigate={onNavigate} />
