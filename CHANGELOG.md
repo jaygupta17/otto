@@ -9,6 +9,11 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 ### Added
 
 - Attach files to a message: + › Upload files, paste a screenshot, or drop files on the reply box. They're saved in the project under `.otto/uploads` (kept out of git), and the agent is told where each one is. Images are also shown to the model when it can see images. Your messages show the images and files you sent, including after you reopen the session, and editing or forking a message brings its files back.
+- On Android, share to Otto from any app (a link, text, photos or files), the way you would to a chat app. Pick an agent to start a session with, or a session you already have, and it lands in that reply box ready to send. Files over 25 MB stay behind.
+
+### Changed
+
+- Active sessions in the desktop sidebar now look like they do on phones: a raised card with the agent's face, the title and what it's doing, held in ice when it's the one open.
 
 ### Fixed
 

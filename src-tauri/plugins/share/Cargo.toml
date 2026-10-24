@@ -1,0 +1,14 @@
+[package]
+name = "tauri-plugin-share"
+version = "0.1.0"
+description = "Otto as a share target: what other apps share lands in a new message"
+edition = "2021"
+publish = false
+links = "tauri-plugin-share"
+
+[dependencies]
+tauri = { version = "2" }
+serde = { version = "1", features = ["derive"] }
+
+[build-dependencies]
+tauri-plugin = { version = "2", features = ["build"] }

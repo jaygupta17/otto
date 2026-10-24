@@ -9,7 +9,7 @@ import { Spinner } from "../ui/AgentClock";
 import { ImageViewer } from "./ImageStrip";
 import { useOpenFile, useSessionRoot } from "./ToolParts";
 
-function FileIcon({ mime, name, size = 16 }: { mime: string; name: string; size?: number }) {
+export function FileIcon({ mime, name, size = 16 }: { mime: string; name: string; size?: number }) {
   if (mime.startsWith("image/")) return <FileImage size={size} />;
   if (/zip|tar|gzip|compressed/.test(mime)) return <FileArchive size={size} />;
   if (/csv|spreadsheet|excel/.test(mime) || /\.(csv|xlsx?|tsv)$/i.test(name)) return <FileSpreadsheet size={size} />;

@@ -7,6 +7,7 @@ import { useUI, initUI } from "./state/ui";
 import { useThemes } from "./state/themes";
 import { initNotificationCenter } from "./state/notifications";
 import { initUpdates } from "./state/updates";
+import { initShare } from "./state/share";
 import { initViewport } from "./lib/viewport";
 import { useCompact } from "./hooks/useMedia";
 import { Onboarding } from "./components/onboarding/Onboarding";
@@ -21,6 +22,7 @@ import { CommandPalette, ShortcutsSheet } from "./components/shell/CommandPalett
 import { ScreenFocus } from "./components/panel/ScreenFocus";
 import { AppGlyph } from "./components/ui/Mark";
 import { TooltipLayer } from "./components/ui/Tooltip";
+import { ShareTarget } from "./components/share/ShareTarget";
 
 export default function App() {
   const hydrated = useWorkspaces((s) => s.hydrated);
@@ -34,6 +36,7 @@ export default function App() {
   useEffect(() => {
     initViewport();
     void initUpdates();
+    initShare();
     // A step that fails (say, a full disk) mustn't hold the splash; workspaces gate it on their own.
     void Promise.allSettled([initUI(), useThemes.getState().load(), useWorkspaces.getState().hydrate(), initNotificationCenter()]).then(() => setBooted(true));
   }, []);
@@ -82,6 +85,7 @@ export default function App() {
         </Sheet>
         {workspaces.length > 0 && <SubagentHost compact={compact} />}
         {workspaces.length > 0 && <ScreenFocus />}
+        {workspaces.length > 0 && <ShareTarget compact={compact} />}
         <DialogHost />
         <Toasts />
         <TooltipLayer />

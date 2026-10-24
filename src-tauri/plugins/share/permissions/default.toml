@@ -1,0 +1,3 @@
+[default]
+description = "Take what another app shared into Otto, read its files and hear when more arrives."
+permissions = ["allow-take", "allow-read", "allow-register-listener", "allow-remove-listener"]

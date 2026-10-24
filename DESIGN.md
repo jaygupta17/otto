@@ -205,6 +205,8 @@ Work that outlives its turn (a command the agent left running, a teammate on a p
 - The agent gets a note at the end of the message with every file's path; PNG, JPEG, GIF and WebP also go to the model as images when it takes them. The note is for the agent only: the thread hides it and shows the files above the bubble instead.
 - Sent images come from the message itself (OpenCode keeps the bytes), or from the machine when they weren't sent to the model; other files are chips that open in the editor.
 
+- Sharing into Otto from another app (Android) opens a **Share to** page: what's shared on top (thumbnails, file chips, the text), then your agents for a new session, then active and recent sessions as plain rows. Picking one puts it in that reply box to add to and send; nothing is sent by itself.
+
 ### Apps
 
 - An app always shows its own logo, on a white tile (rounded square in lists, circle in chat), so it reads the same in light and dark.
