@@ -132,6 +132,8 @@ export function contextTemplate(): string {
     "",
     "# Memory",
     "",
+    "## About you",
+    "",
     "## Now",
     "",
     "## Next",

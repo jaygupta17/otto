@@ -157,7 +157,7 @@ describe("path validation", () => {
 describe("context template", () => {
   test("has the headings the prompt relies on and fits the limit", () => {
     const t = contextTemplate();
-    for (const heading of ["## Now", "## Next", "## Blocked", "## Decisions", "## Pointers"]) expect(t).toContain(heading);
+    for (const heading of ["## About you", "## Now", "## Next", "## Blocked", "## Decisions", "## Pointers"]) expect(t).toContain(heading);
     expect(lineCount(t)).toBeLessThanOrEqual(CONTEXT_LINE_LIMIT);
   });
 

@@ -234,7 +234,7 @@ function ContextEditor({ initial }: { initial: string }) {
         spellCheck={false}
         data-own-escape
         aria-label="context.md"
-        placeholder="# Memory&#10;&#10;## Now&#10;…"
+        placeholder="# Memory&#10;&#10;## About you&#10;…"
         className="field scroll-quiet mt-2 block w-full resize-y rounded-lg px-3 py-2 font-mono text-[12px] leading-relaxed outline-none placeholder:text-faint"
       />
       <div className="mt-2 flex items-center gap-2">
