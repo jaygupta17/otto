@@ -4,8 +4,6 @@
  *
  *   DitherOrb   a lit sphere. Spinning, its light circles the rim: the
  *               "an agent is at work" mark (AgentClock renders one).
- *   DitherBar   a 2px track with a band of dots running along it: progress
- *               you can't measure (a live trail).
  *   DitherGauge a still pie of dots filled clockwise to a share (context used).
  *   DitherMeter the same share as a straight bar.
  *   DitherGround a short patch of dots for an empty state's mark to stand on.
@@ -17,7 +15,7 @@
  * a hidden tab, and draws a single still frame under reduced motion.
  */
 import { memo, useEffect, useRef, useState, type CSSProperties } from "react";
-import { dot, fieldTone, gaugeTone, groundTone, meterTone, paint, parseColor, sphere, type Rgb } from "../../lib/dither";
+import { cssColor, dot, fieldTone, gaugeTone, groundTone, meterTone, paint, sphere, type Rgb } from "../../lib/dither";
 
 type Frame = (t: number) => void;
 
@@ -66,7 +64,7 @@ function useDither(ref: React.RefObject<HTMLCanvasElement | null>, w: number, h:
     let readAt = -1;
     const draw = (t: number) => {
       if (t - readAt > 1) {
-        rgb = parseColor(getComputedStyle(canvas).color);
+        rgb = cssColor(getComputedStyle(canvas).color);
         readAt = t;
       }
       paint(img, w, h, (x, y) => fieldRef.current(x, y, t), rgb);
@@ -124,55 +122,6 @@ export const DitherOrb = memo(function DitherOrb({
       aria-hidden={label ? undefined : true}
       className={`dither inline-block shrink-0 ${className}`}
       style={{ width: size, height: size, ...style }}
-    />
-  );
-});
-
-/**
- * A thin track with a band of dots running along it, for work whose end
- * you can't see coming. Fills its box along `vertical ? height : width`; the
- * band runs right (or down) once every `period` seconds. Still, it's just
- * the faint track.
- */
-export const DitherBar = memo(function DitherBar({
-  vertical = false,
-  thickness = 2,
-  period = 1.8,
-  run = true,
-  className = "",
-  style,
-}: {
-  vertical?: boolean;
-  thickness?: number;
-  period?: number;
-  run?: boolean;
-  className?: string;
-  style?: CSSProperties;
-}) {
-  const ref = useRef<HTMLCanvasElement>(null);
-  const [len, setLen] = useState(0);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const ro = new ResizeObserver(([e]) => setLen(Math.round(vertical ? e.contentRect.height : e.contentRect.width)));
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [vertical]);
-  const band = Math.max(24, Math.min(140, len * 0.35));
-  useDither(ref, vertical ? thickness : len, vertical ? len : thickness, run, (x, y, t) => {
-    const p = vertical ? y : x;
-    if (!run) return 0.14;
-    // The band's centre travels from before the start to past the end.
-    const c = ((t / period) % 1) * (len + band * 2) - band;
-    const d = Math.abs(p - c) / (band / 2);
-    return d >= 1 ? 0.14 : 0.14 + 0.86 * (0.5 + 0.5 * Math.cos(Math.PI * d));
-  });
-  return (
-    <canvas
-      ref={ref}
-      aria-hidden
-      className={`dither block ${className}`}
-      style={vertical ? { width: thickness, height: "100%", ...style } : { width: "100%", height: thickness, ...style }}
     />
   );
 });

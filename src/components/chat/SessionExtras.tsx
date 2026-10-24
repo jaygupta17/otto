@@ -15,7 +15,7 @@ import { AgentClock, Spinner } from "../ui/AgentClock";
 import { DitherGauge, DitherMeter } from "../ui/Dither";
 import { Bird } from "../ui/Bird";
 import { useShells, inTree } from "../../state/shells";
-import { useAgentName, useTeammate } from "../../state/teammates";
+import { useAgentName, useMascot } from "../../state/teammates";
 import { openSubagent } from "../../state/subagent";
 import { subagentOf, toolKind } from "../../lib/opencode/tools";
 import { duration } from "../../lib/format";
@@ -36,7 +36,7 @@ export function InboxTray({ sessionId }: { sessionId: string }) {
   return (
     <AnimatePresence initial={false}>
       {items.length > 0 && (
-        <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }} className="surface-float mb-2 overflow-hidden rounded-2xl border border-line bg-raised">
+        <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }} className="surface-float mb-2 overflow-hidden rounded-[20px] border border-line bg-raised">
           {items.map((m) => (
             <div key={m.id} className="flex items-center gap-2 border-b border-line px-3 py-2 last:border-b-0">
               <CornerDownRight size={13} className="shrink-0 text-faint" />
@@ -142,8 +142,8 @@ export function BackgroundStrip({ sessionId }: { sessionId: string }) {
   );
 }
 
-const stripAction =
-  "grid h-6 w-6 shrink-0 place-items-center rounded-md text-faint opacity-0 transition-opacity group-hover/bg:opacity-100 group-focus-within/bg:opacity-100 hover:bg-hover hover:text-ink focus-visible:opacity-100 [@media(hover:none)]:opacity-100";
+/** Stop and open sit at the end of each line, always in reach. */
+const stripAction = "grid h-6 w-6 shrink-0 place-items-center rounded-md text-faint transition-colors hover:bg-hover hover:text-ink";
 
 function CommandLine({ item, root, now }: { item: Extract<Running, { kind: "command" }>; root: string; now: number }) {
   // A teammate's command says whose it is.
@@ -165,7 +165,7 @@ function CommandLine({ item, root, now }: { item: Extract<Running, { kind: "comm
 }
 
 function TeammateLine({ item, root, now }: { item: Extract<Running, { kind: "teammate" }>; root: string; now: number }) {
-  const t = useTeammate(item.agent);
+  const t = useMascot(item.agent);
   const name = useAgentName(item.agent) || "Subagent";
   const [stopping, setStopping] = useState(false);
   return (

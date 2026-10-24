@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowUp, AtSign, FileCode2, Plus, Slash, Square, SquareTerminal } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { ArrowUp, AtSign, FileCode2, ListEnd, Navigation, Plus, Slash, Square, SquareTerminal, X } from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { CommandInfo } from "@opencode/client";
 import { useChat } from "../../state/chat";
 import { useConnection } from "../../state/connection";
@@ -29,8 +29,14 @@ type Suggest = { kind: "command"; items: CommandInfo[]; query: string } | { kind
 /**
  * The prompt box. Enter sends (Shift+Enter newline; on touch devices Enter
  * inserts a newline). "/" opens commands, "@" mentions files.
+ *
+ * After DitherUI's prompt input: the writing card is raised, its tools sit on
+ * their own row under the text (+ and modes on the left, model and send on the
+ * right), and a `tray` (the folder and machine a new session runs on) is a
+ * recessed strip the card sits in. Ice goes to focus and to the one action
+ * that's next: send, or Stop while a run has nothing to steer it with.
  */
-export function Composer({ sessionId, placeholder = "Do anything…", autoFocus = false, compact = false, onSent }: { sessionId: string | null; placeholder?: string; autoFocus?: boolean; compact?: boolean; onSent?: (id: string) => void }) {
+export function Composer({ sessionId, placeholder = "Do anything…", autoFocus = false, compact = false, tray, onSent }: { sessionId: string | null; placeholder?: string; autoFocus?: boolean; compact?: boolean; tray?: ReactNode; onSent?: (id: string) => void }) {
   const draftKey = sessionId ?? "new";
   const draft = useChat((s) => s.drafts[draftKey] ?? "");
   const setDraft = useChat((s) => s.setDraft);
@@ -60,7 +66,6 @@ export function Composer({ sessionId, placeholder = "Do anything…", autoFocus 
   // session. A shell command (`!…`) doesn't need a model, so it stays sendable.
   const ready = connected && (shellMode || catalog === "ready" || models.length > 0);
   const [sending, setSending] = useState(false);
-  const [focused, setFocused] = useState(false);
   const [commands, setCommands] = useState<CommandInfo[] | null>(null);
   const [suggest, setSuggest] = useState<Suggest | null>(null);
   const [sel, setSel] = useState(0);
@@ -77,8 +82,12 @@ export function Composer({ sessionId, placeholder = "Do anything…", autoFocus 
   }, [compact]);
 
   useLayoutEffect(resize, [draft, resize]);
+  // Opening a session puts the cursor here. A frame late, so a menu or the palette that opened it hands focus back first.
+  // Never on touch: the keyboard would cover the conversation you just opened.
   useEffect(() => {
-    if (autoFocus && !touch) ta.current?.focus();
+    if (!autoFocus || touch) return;
+    const f = requestAnimationFrame(() => ta.current?.focus({ preventScroll: true }));
+    return () => cancelAnimationFrame(f);
   }, [autoFocus, sessionId, touch]);
 
   // Global shortcut: "/" or Cmd/Ctrl+L focuses the composer.
@@ -223,7 +232,7 @@ export function Composer({ sessionId, placeholder = "Do anything…", autoFocus 
   // A run is never without its Stop; a draft adds Steer beside it instead of replacing it.
   const showStop = busy;
   const showSend = !busy || !!draft.trim();
-  // In a session the header already says who you're talking to, so the box is one row: + · text · model · send.
+  // In a session the header already says who you're talking to, so the tools skip the agent.
   const inline = !!sessionId;
 
   /** Start the draft with a trigger character and open its suggestions. */
@@ -265,9 +274,8 @@ export function Composer({ sessionId, placeholder = "Do anything…", autoFocus 
         !connected
           ? "Connecting…"
           : busy
-            ? // The phone's one-line box has no room for who; the header says it.
-              delivery === "steer"
-              ? compact ? placeholder : `Steer ${doer}…`
+            ? delivery === "steer"
+              ? compact ? `Steer ${doer}` : `Steer ${doer}…`
               : compact ? "Queue a message" : `Queue a follow-up for ${doer}…`
             : needsAgent
               ? "Add a teammate to start"
@@ -284,66 +292,95 @@ export function Composer({ sessionId, placeholder = "Do anything…", autoFocus 
       onKeyDown={onKeyDown}
       aria-label="Message"
       data-composer
-      onFocus={() => setFocused(true)}
-      onBlur={() => {
-        setFocused(false);
-        setTimeout(() => setSuggest(null), 120);
-      }}
-      className={`scroll-quiet block resize-none bg-transparent leading-[1.5] text-ink outline-none placeholder:text-faint ${shellMode ? "font-mono text-[14px]" : compact ? "text-[16px]" : "text-[15px]"} ${inline ? `${compact ? "min-w-[84px]" : "min-w-[200px]"} flex-1 self-center px-1 py-[7px]` : `w-full px-4 pt-3.5 ${compact ? "pb-1" : "min-h-[56px] pb-1.5"}`}`}
+      onBlur={() => setTimeout(() => setSuggest(null), 120)}
+      // A new session's card is roomier: it's the whole page. Phones type at 16px so iOS doesn't zoom in.
+      className={`scroll-quiet block w-full resize-none bg-transparent leading-[1.5] text-ink outline-none placeholder:text-faint ${shellMode ? "font-mono text-[14px]" : compact ? "text-[16px]" : "text-[15px]"} ${compact ? "px-4 pt-3" : "px-4 pt-3.5"} ${!inline && !compact ? "min-h-[72px]" : ""}`}
       spellCheck
     />
   );
 
+  // Phones get thumb-sized tools; the row has room since it isn't sharing a line with the text.
+  const round = compact ? "h-10 w-10" : "h-8 w-8";
   const tools = (
-    <>
+    <div className={`flex items-center gap-1 ${compact ? "px-2 pt-1.5 pb-2" : "px-2 pt-1 pb-2"}`} onClick={(e) => e.target === e.currentTarget && ta.current?.focus()}>
+      <AddMenu shell={!!sessionId} onPick={insert} size={round} />
+      {shellMode ? (
+        // The mode shows as a pill, the way DitherUI shows its modes; tapping it goes back to a message.
+        <button
+          onClick={() => setDraft(draftKey, draft.replace(/^!\s*/, ""))}
+          title="Runs in the session's folder; the output is shared with the agent. Tap to write a message instead."
+          className={`chip flex shrink-0 items-center gap-1.5 rounded-full pr-2 pl-2.5 text-ink ${compact ? "h-9 text-[14px]" : "h-7 text-[13px]"}`}
+        >
+          <SquareTerminal size={14} className="text-accent-ink" /> Shell
+          <X size={13} className="text-muted" />
+        </button>
+      ) : (
+        !inline && <AgentPicker sessionId={sessionId} compact={compact} />
+      )}
       {/* Steer or queue only matters once there's something to send; until then the placeholder says which. */}
-      {busy && sessionId && draft.trim() && (
+      {busy && sessionId && draft.trim() && !shellMode && (
         <button
           onClick={() => setDeliveryMode(delivery === "steer" ? "queue" : "steer")}
-          title={delivery === "steer" ? "Steer: the agent reads your message after its current step. Click to queue it for after the run instead." : "Queue: the agent reads your message when the run finishes. Click to steer instead."}
-          className="h-7 shrink-0 rounded-md px-2.5 text-[12px] text-ink-2 hairline transition-colors hover:bg-hover hover:text-ink"
+          title={delivery === "steer" ? "Steer: the agent reads your message after its current step. Tap to queue it for after the run instead." : "Queue: the agent reads your message when the run finishes. Tap to steer instead."}
+          className={`flex shrink-0 items-center gap-1.5 rounded-full px-2.5 text-ink-2 hairline transition-colors hover:bg-hover hover:text-ink ${compact ? "h-9 text-[14px]" : "h-7 text-[13px]"}`}
         >
+          {delivery === "steer" ? <Navigation size={13} /> : <ListEnd size={14} />}
           {delivery === "steer" ? "Steer" : "Queue"}
         </button>
       )}
-      {sessionId && <ContextMeter sessionId={sessionId} compact={compact} />}
-      <ModelPicker sessionId={sessionId} compact={compact} />
-      {/* Stop holds its place for the whole run; a draft brings Steer back as the second button. */}
-      <AnimatePresence mode="popLayout" initial={false}>
-        {showStop && (
-          <motion.button
-            key="stop"
-            initial={{ scale: 0.85, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0.85, opacity: 0 }}
-            transition={{ duration: 0.12 }}
-            onClick={() => sessionId && interrupt(sessionId)}
-            className={`grid shrink-0 place-items-center bg-accent text-on-accent hover:brightness-110 ${inline ? "h-9 w-9 rounded-[10px]" : "h-8 w-8 rounded-lg"}`}
-            aria-label="Stop"
-            title="Stop (Esc)"
-          >
-            <Square size={11} fill="currentColor" />
-          </motion.button>
-        )}
-        {showSend && (
-          <motion.button
-            key="send"
-            initial={{ scale: 0.85, opacity: 0 }}
-            // Dimmed ice until there's something to send (motion owns opacity here, so not a CSS variant).
-            animate={{ scale: 1, opacity: canSend ? 1 : 0.35 }}
-            exit={{ scale: 0.85, opacity: 0 }}
-            transition={{ duration: 0.12 }}
-            onClick={() => void submit()}
-            disabled={!canSend}
-            className={`grid shrink-0 place-items-center bg-accent text-on-accent enabled:hover:brightness-110 ${inline ? "h-9 w-9 rounded-[10px]" : "h-8 w-8 rounded-lg"}`}
-            aria-label={busy ? (delivery === "steer" ? "Steer" : "Queue") : "Send"}
-            title={shellMode ? "Run (Enter)" : busy ? (delivery === "steer" ? "Steer (Enter)" : "Queue (Enter)") : "Send (Enter)"}
-          >
-            {sending ? <Spinner size={15} /> : <ArrowUp size={16} strokeWidth={2.2} />}
-          </motion.button>
-        )}
-      </AnimatePresence>
-    </>
+      <div className="ml-auto flex min-w-0 items-center gap-1">
+        {sessionId && <ContextMeter sessionId={sessionId} compact={compact} />}
+        <ModelPicker sessionId={sessionId} compact={compact} />
+        {/* Stop holds its place for the whole run; a draft brings send (as Steer or Queue) back beside it, and takes the ice. */}
+        <AnimatePresence mode="popLayout" initial={false}>
+          {showStop && (
+            <motion.button
+              key="stop"
+              initial={{ scale: 0.85, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.85, opacity: 0 }}
+              transition={{ duration: 0.12 }}
+              onClick={() => sessionId && interrupt(sessionId)}
+              className={`grid shrink-0 place-items-center rounded-full ${round} ${showSend ? "text-ink hairline hover:bg-hover" : "bg-accent text-on-accent hover:brightness-110"}`}
+              aria-label="Stop"
+              title="Stop (Esc)"
+            >
+              <Square size={compact ? 12 : 11} fill="currentColor" />
+            </motion.button>
+          )}
+          {showSend && (
+            <motion.button
+              key="send"
+              initial={{ scale: 0.85, opacity: 0 }}
+              // Dimmed ice until there's something to send (motion owns opacity here, so not a CSS variant).
+              animate={{ scale: 1, opacity: canSend ? 1 : 0.35 }}
+              exit={{ scale: 0.85, opacity: 0 }}
+              transition={{ duration: 0.12 }}
+              onClick={() => void submit()}
+              disabled={!canSend}
+              className={`grid shrink-0 place-items-center rounded-full bg-accent text-on-accent enabled:hover:brightness-110 ${round}`}
+              aria-label={busy ? (delivery === "steer" ? "Steer" : "Queue") : "Send"}
+              title={shellMode ? "Run (Enter)" : busy ? (delivery === "steer" ? "Steer (Enter)" : "Queue (Enter)") : "Send (Enter)"}
+            >
+              {sending ? <Spinner size={15} /> : <ArrowUp size={compact ? 19 : 17} strokeWidth={2.25} />}
+            </motion.button>
+          )}
+        </AnimatePresence>
+      </div>
+    </div>
+  );
+
+  const card = (
+    <div
+      className={`composer surface-float relative bg-raised ${compact ? "rounded-[22px]" : "rounded-[20px]"}`}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) ta.current?.focus();
+      }}
+    >
+      {field}
+      {tools}
+      {status}
+    </div>
   );
 
   return (
@@ -378,58 +415,21 @@ export function Composer({ sessionId, placeholder = "Do anything…", autoFocus 
         )}
       </AnimatePresence>
 
-      <div
-        className={`surface-float relative border bg-raised shadow-float transition-colors duration-150 rounded-2xl ${focused ? "border-line-strong" : "border-line"}`}
-        onClick={(e) => {
-          if (e.target === e.currentTarget) ta.current?.focus();
-        }}
-      >
-        {inline ? (
-          // On one line the field keeps a floor and the tools take what they need; when they can't share
-          // (a phone mid-run: Steer chip + meter + model + Stop + send), the tools wrap to their own line
-          // instead of crushing the textarea or pushing buttons past the card. Desktop has the room and
-          // keeps the single bar. The row stays whole (`shrink-0`) so it wraps rather than spilling over.
-          <div className="flex flex-wrap items-end justify-end gap-1 p-1.5" onClick={(e) => e.target === e.currentTarget && ta.current?.focus()}>
-            <AddMenu shell={!!sessionId} onPick={insert} />
-            {shellMode && (
-              <span className="flex h-9 shrink-0 items-center gap-1.5 pl-1 text-[13px] text-ink-2" title="Runs in the session's folder; the output is shared with the agent">
-                <SquareTerminal size={14} className="text-muted" /> Shell
-              </span>
-            )}
-            {field}
-            <div className="flex h-9 shrink-0 items-center gap-1">{tools}</div>
-          </div>
-        ) : (
-          <>
-            {field}
-            <div className="flex items-center gap-0.5 px-2 pb-2">
-              <button
-                className="grid h-8 w-8 place-items-center rounded-md text-muted transition-colors hover:bg-hover hover:text-ink"
-                aria-label="Mention a file"
-                title="Mention a file (@)"
-                onClick={() => insert("file")}
-              >
-                <AtSign size={17} />
-              </button>
-              {shellMode ? (
-                <span className="flex h-8 items-center gap-1.5 px-2 text-[13px] text-ink-2" title="Runs in the session's folder; the output is shared with the agent">
-                  <SquareTerminal size={14} className="text-muted" /> Shell
-                </span>
-              ) : (
-                <AgentPicker sessionId={sessionId} />
-              )}
-              <div className="ml-auto flex min-w-0 items-center gap-1">{tools}</div>
-            </div>
-          </>
-        )}
-        {status}
-      </div>
+      {tray ? (
+        // The card sits in a recessed tray; the strip under it says where the session will run.
+        <div className={`well p-1 ${compact ? "rounded-[26px]" : "rounded-[24px]"}`}>
+          {card}
+          <div className="flex min-h-9 flex-wrap items-center gap-1 px-1.5 pt-1 text-[13px]">{tray}</div>
+        </div>
+      ) : (
+        card
+      )}
     </div>
   );
 }
 
-/** The + in a session's pill: the things the box can do besides plain text. */
-function AddMenu({ shell, onPick }: { shell: boolean; onPick: (kind: "file" | "command" | "shell") => void }) {
+/** The +: the things the box can do besides plain text. */
+function AddMenu({ shell, size, onPick }: { shell: boolean; size: string; onPick: (kind: "file" | "command" | "shell") => void }) {
   const anchor = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
   const choose = (kind: "file" | "command" | "shell") => {
@@ -438,8 +438,8 @@ function AddMenu({ shell, onPick }: { shell: boolean; onPick: (kind: "file" | "c
   };
   return (
     <>
-      <button ref={anchor} onClick={() => setOpen((v) => !v)} aria-label="Add" aria-haspopup="menu" aria-expanded={open} title="Files, commands, shell" className={`grid h-9 w-9 shrink-0 place-items-center rounded-[10px] text-muted transition-colors hover:bg-hover hover:text-ink ${open ? "bg-hover text-ink" : ""}`}>
-        <Plus size={18} />
+      <button ref={anchor} onClick={() => setOpen((v) => !v)} aria-label="Add" aria-haspopup="menu" aria-expanded={open} title={shell ? "Files, commands, shell" : "Files and commands"} className={`grid shrink-0 place-items-center rounded-full text-ink-2 hairline transition-colors hover:bg-hover hover:text-ink ${size} ${open ? "bg-hover text-ink" : ""}`}>
+        <Plus size={18} className={`transition-transform duration-200 ${open ? "rotate-45" : ""}`} />
       </button>
       <Popover open={open} onClose={() => setOpen(false)} anchor={anchor.current} placement="top-start" width={240} label="Add">
         <div role="menu" className="p-1.5">

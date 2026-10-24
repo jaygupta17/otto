@@ -76,6 +76,9 @@ interface UIState {
   /** Home keeps the prompt centred and drops its header and recent list. */
   homeCompact: boolean;
   setHomeCompact(v: boolean): void;
+  /** Show the model's thinking in chat. Off by default: the bird says it's working. */
+  showThinking: boolean;
+  setShowThinking(v: boolean): void;
   setTheme(t: ThemePref): void;
   toggleSidebar(v?: boolean): void;
   openSettings(tab?: UIState["settingsTab"]): void;
@@ -186,6 +189,11 @@ export const useUI = create<UIState>((set, get) => ({
     set({ homeCompact: v });
     void kv.set("ui.homeCompact", v);
   },
+  showThinking: false,
+  setShowThinking(v) {
+    set({ showThinking: v });
+    void kv.set("ui.showThinking", v);
+  },
 
   setTheme(theme) {
     try {
@@ -238,6 +246,7 @@ export async function initUI() {
   void kv.delete("ui.backdrop");
   void kv.delete("ui.backdrops");
   if ((await kv.get<boolean>("ui.homeCompact")) === false) useUI.setState({ homeCompact: false });
+  if ((await kv.get<boolean>("ui.showThinking")) === true) useUI.setState({ showThinking: true });
   const layout = await kv.get<{ sidebarOpen?: boolean; panel?: PanelSurface | null; lastPanel?: PanelSurface; panelWidths?: UIState["panelWidths"]; treeOpen?: boolean }>("ui.layout");
   if (layout) useUI.setState({ sidebarOpen: layout.sidebarOpen !== false, panel: layout.panel ?? null, lastPanel: layout.panel ?? layout.lastPanel ?? "files", panelWidths: layout.panelWidths ?? {}, treeOpen: layout.treeOpen !== false });
   useUI.subscribe((s, prev) => {

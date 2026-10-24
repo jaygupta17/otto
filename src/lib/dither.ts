@@ -44,6 +44,26 @@ export function parseColor(c: string): Rgb {
   return [n[0] ?? 0, n[1] ?? 0, n[2] ?? 0];
 }
 
+let probe: CanvasRenderingContext2D | null | undefined;
+
+/**
+ * Any CSS colour as sRGB, by painting a pixel of it: themes write tokens as
+ * `color-mix()` and computed styles come back as `oklab()`, which
+ * `parseColor` can't read. Falls back to `parseColor` where there's no canvas.
+ */
+export function cssColor(c: string, fallback = "#000"): Rgb {
+  const v = c.trim() || fallback;
+  if (typeof document === "undefined") return parseColor(v);
+  probe ??= document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+  if (!probe) return parseColor(v);
+  probe.clearRect(0, 0, 1, 1);
+  probe.fillStyle = fallback;
+  probe.fillStyle = v; // a value the canvas can't parse leaves the fallback
+  probe.fillRect(0, 0, 1, 1);
+  const [r, g, b] = probe.getImageData(0, 0, 1, 1).data;
+  return [r, g, b];
+}
+
 /**
  * The tone of a sphere at a point: lambert light from a direction, plus a
  * little ambient so the shaded side still holds a few dots. `nx, ny` run
@@ -188,17 +208,19 @@ function drawFade() {
   const scale = Math.max(1, Math.round(window.devicePixelRatio || 1));
   if (root.dataset.ditherFade === String(scale)) return;
   const url = tile(8, FADE_H, scale, (x, y) => [0, 0, 0, dot(fadeTone(y), x, y) ? 255 : 0]);
-  if (!url) return;
+  const half = tile(8, 8, scale, (x, y) => [0, 0, 0, dot(0.5, x, y) ? 255 : 0]);
+  if (!url || !half) return;
   root.style.setProperty("--dither-fade", `url(${url})`);
+  root.style.setProperty("--dither-half", `url(${half})`);
   root.dataset.ditherFade = String(scale);
 }
 
 function drawShimmer() {
   const root = document.documentElement;
   const cs = getComputedStyle(root);
-  const lit = parseColor(cs.getPropertyValue("--text") || "#000");
-  const base = parseColor(cs.getPropertyValue("--muted") || "#888");
-  const accent = parseColor(cs.getPropertyValue("--accent") || "#7cc4ff");
+  const lit = cssColor(cs.getPropertyValue("--text"), "#000");
+  const base = cssColor(cs.getPropertyValue("--muted"), "#888");
+  const accent = cssColor(cs.getPropertyValue("--accent"), "#7cc4ff");
   const key = `${lit}|${base}|${accent}`;
   if (root.dataset.shimmer === key) return;
   // The halo: the base pulled most of the way to the accent, so it reads as cold light, not a second colour.

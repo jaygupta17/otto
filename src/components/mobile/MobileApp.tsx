@@ -1,8 +1,8 @@
 import { AnimatePresence, motion, useDragControls } from "motion/react";
-import { ChevronDown, FolderTree, MoreHorizontal, Plus, Search, SquarePen, Trash2, Pencil, Cloud, Check, Settings } from "lucide-react";
+import { ChevronDown, FolderTree, MoreHorizontal, Plus, Search, SquarePen, Trash2, Pencil, Check, Settings } from "lucide-react";
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { SessionInfo } from "@opencode/client";
-import { sortedSessions, useChat } from "../../state/chat";
+import { useChat } from "../../state/chat";
 import { useConnection } from "../../state/connection";
 import { useActiveWorkspace, useWorkspaces } from "../../state/workspaces";
 import { useUI, type PanelSurface } from "../../state/ui";
@@ -25,16 +25,18 @@ import { AskDock } from "../chat/Asks";
 import { PanelFade } from "../ui/ChatScrim";
 import { AppGlyph } from "../ui/Mark";
 import { ConnectionBanner } from "../shell/Home";
-import { AgentMark, Bird, PlainMark } from "../ui/Bird";
-import { useTeammate, useTeammates } from "../../state/teammates";
+import { AgentMark, Bird } from "../ui/Bird";
+import { Spot, spot } from "../ui/Spot";
+import { useAgentName, useTeammate, useTeammates, useTeammateState } from "../../state/teammates";
 import { EmptyState } from "../ui/EmptyState";
-import { PageTitle, Sky, TopBar, useBigTitle } from "../ui/Hero";
+import { Sky } from "../ui/Hero";
 import { useFace } from "../../state/face";
 import { Pip, connectionTone } from "../ui/Pip";
 import { FilesPanel } from "../files/FilesPanel";
 import { EditorBody } from "../files/Editor";
 import { SchedulesView } from "../schedules/SchedulesView";
-import { groupOf, statusText } from "../shell/Sidebar";
+import { WorkspaceIcon, statusText } from "../shell/Sidebar";
+import { useDoing, useOfferedAgents, useSessionTiers } from "../../state/tiers";
 import { SessionHistory } from "../chat/SessionHistory";
 import { SettingsScreen, TabBar, TABS, TeamScreen, type Tab } from "./Tabs";
 
@@ -64,6 +66,10 @@ export function MobileApp() {
     if (view === "schedules") setView("chat");
   };
   const newSession = () => setDraftOpen(true);
+  const message = (agent: string) => {
+    void useChat.getState().setAgent(agent, null);
+    newSession();
+  };
   useBack(!!activeId, () => useChat.getState().open(null));
   useBack(draftOpen && !activeId, () => setDraftOpen(false));
   // At another tab's root, back goes to Sessions before it leaves the app.
@@ -80,14 +86,9 @@ export function MobileApp() {
           {TABS.filter((t) => seen.has(t.id)).map((t) => (
             <div key={t.id} data-tab={t.id} className={`absolute inset-0 flex-col ${tab === t.id ? "flex" : "hidden"}`}>
               {t.id === "sessions" ? (
-                <SessionsScreen onNew={newSession} />
+                <SessionsScreen onNew={newSession} onMessage={message} />
               ) : t.id === "team" ? (
-                <TeamScreen
-                  onMessage={(id) => {
-                    void useChat.getState().setAgent(id, null);
-                    newSession();
-                  }}
-                />
+                <TeamScreen onMessage={message} />
               ) : t.id === "schedules" ? (
                 <SchedulesView compact />
               ) : (
@@ -103,26 +104,21 @@ export function MobileApp() {
   );
 }
 
-const GROUPS = ["Today", "Yesterday", "This week", "Earlier"] as const;
-
-/** The Sessions tab: where you are, the team, then every session by when it last moved. */
-function SessionsScreen({ onNew }: { onNew: () => void }) {
-  const sessions = useChat((s) => s.sessions);
-  const busy = useChat((s) => s.busy);
+/**
+ * The Sessions tab, by what wants you: the machine you're on (tap to switch),
+ * sessions waiting on you, working or with a result you haven't seen, then the
+ * team to start something with, then everything else by when it last moved.
+ */
+function SessionsScreen({ onNew, onMessage }: { onNew: () => void; onMessage: (agent: string) => void }) {
   const loaded = useChat((s) => s.sessionsLoaded);
   const [q, setQ] = useState("");
   const [searching, setSearching] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
   const now = useNow(true, 30_000);
-
-  const [active, groups] = useMemo(() => {
-    const term = q.trim().toLowerCase();
-    const list = sortedSessions(sessions).filter((s) => !term || (s.title ?? "").toLowerCase().includes(term));
-    const by = new Map<string, SessionInfo[]>();
-    for (const s of list) if (!busy[s.id]) by.set(groupOf(s.time.updated, now), [...(by.get(groupOf(s.time.updated, now)) ?? []), s]);
-    return [list.filter((s) => busy[s.id]), GROUPS.filter((g) => by.has(g)).map((g) => [g, by.get(g)!] as const)];
-  }, [sessions, busy, q, now]);
-  const empty = active.length + groups.length === 0;
-  const { onScroll, past } = useBigTitle();
+  const { active, recent } = useSessionTiers(q);
+  const empty = active.length + recent.length === 0;
+  // Someone already on an active card isn't offered again under Agents.
+  const activeAgents = useMemo(() => new Set(active.map((s) => s.agent ?? "")), [active]);
 
   const endSearch = () => {
     setSearching(false);
@@ -131,9 +127,10 @@ function SessionsScreen({ onNew }: { onNew: () => void }) {
 
   return (
     <>
-      {searching ? (
-        <header className="safe-top relative z-10 shrink-0 px-2">
-          <div className="flex h-[52px] items-center gap-1 pl-2">
+      {/* Where you are leads the bar: the machine, as the pill its menu opens from. The bar frosts once the list moves under it. */}
+      <header className={`topbar safe-top absolute inset-x-0 top-0 z-10 px-2 ${scrolled || searching ? "topbar-on" : ""}`}>
+        {searching ? (
+          <div className="box-content flex h-[52px] items-center gap-1 pt-4 pb-2 pl-2">
             <label className="field flex h-9 min-w-0 flex-1 items-center gap-2 rounded-[10px] px-2.5">
               <Search size={16} className="shrink-0 text-faint" />
               <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search sessions" aria-label="Search sessions" className="min-w-0 flex-1 bg-transparent text-[16px] outline-none placeholder:text-faint" />
@@ -142,32 +139,43 @@ function SessionsScreen({ onNew }: { onNew: () => void }) {
               Cancel
             </button>
           </div>
-        </header>
-      ) : (
-        <TopBar title="Sessions" show={past}>
-          <TopButton label="Search" onClick={() => setSearching(true)}>
-            <Search size={21} />
-          </TopButton>
-          <InboxButton size={44} buttonClassName="rounded-full! text-ink!" />
-          <TopButton label="New session" onClick={onNew}>
-            <SquarePen size={21} />
-          </TopButton>
-        </TopBar>
-      )}
-
-      <div data-scroll-root onScroll={onScroll} className={`scroll-quiet relative min-h-0 flex-1 overflow-y-auto pb-6 ${searching ? "" : "safe-top"}`}>
-        {!searching && (
-          <PageTitle
-            title="Sessions"
-            // Only the workspace, because it's a switch; what's working has its own group below.
-            status={<WorkspaceSwitcher />}
-          />
+        ) : (
+          <div className="box-content flex h-[52px] items-center pt-4 pb-2 pl-2">
+            <div className="flex min-w-0 flex-1">
+              <WorkspaceSwitcher />
+            </div>
+            <TopButton label="Search" onClick={() => setSearching(true)}>
+              <Search size={21} />
+            </TopButton>
+            <InboxButton size={44} buttonClassName="rounded-full! text-ink!" />
+            <TopButton label="New session" onClick={onNew}>
+              <SquarePen size={21} />
+            </TopButton>
+          </div>
         )}
+      </header>
+
+      <div
+        data-scroll-root
+        onScroll={(e) => setScrolled(e.currentTarget.scrollTop > 4)}
+        className="scroll-quiet relative min-h-0 flex-1 overflow-y-auto pb-6"
+        style={{ paddingTop: "calc(var(--safe-t) + 84px)" }}
+      >
         <div className="px-4">
           <ConnectionBanner />
           <UpdatePill className="mt-2 text-[14px] [&>button]:h-11" />
         </div>
         {!loaded && <div className="mt-10 flex justify-center text-muted"><AgentClock /></div>}
+        {active.length > 0 && (
+          <Section label="Active">
+            <div className="space-y-2.5 px-4">
+              {active.map((s) => (
+                <ActiveCard key={s.id} s={s} now={now} />
+              ))}
+            </div>
+          </Section>
+        )}
+        {!q.trim() && <AgentList busy={activeAgents} onMessage={onMessage} />}
         {loaded && empty && (
           <div className="mt-16 flex flex-col items-center px-10 text-center">
             {q ? (
@@ -177,10 +185,15 @@ function SessionsScreen({ onNew }: { onNew: () => void }) {
             )}
           </div>
         )}
-        {active.length > 0 && <Group label="Working" list={active} now={now} />}
-        {groups.map(([label, list]) => (
-          <Group key={label} label={label} list={list} now={now} />
-        ))}
+        {recent.length > 0 && (
+          <Section label="Recent">
+            <div className="px-2">
+              {recent.map((s, i) => (
+                <RecentRow key={s.id} s={s} now={now} first={i === 0} />
+              ))}
+            </div>
+          </Section>
+        )}
       </div>
     </>
   );
@@ -194,7 +207,7 @@ function TopButton({ label, onClick, children }: { label: string; onClick: () =>
   );
 }
 
-/** Where you are, at the head of the Sessions status line: tap to switch workspaces. */
+/** The machine you're on, as a pill like the menu it opens: its icon, its name, a chevron. A pip shows only when it isn't connected. */
 function WorkspaceSwitcher() {
   const ws = useActiveWorkspace();
   const status = useConnection((s) => s.status);
@@ -208,23 +221,34 @@ function WorkspaceSwitcher() {
   const ready = status === "ready";
   return (
     <>
-      {/* Part of the title's status line, in its pixel type; the hit area reaches past the text so it's still a thumb's width. */}
       <button
         ref={anchor}
         onClick={() => setOpen(true)}
         aria-label={`${ws?.name ?? "Workspace"}, ${statusText(status)}. Switch workspace`}
-        className="relative -my-2 -ml-1 flex min-w-0 items-center gap-1.5 rounded-md py-2 pr-0.5 pl-1 text-ink-2 uppercase transition-colors active:bg-hover"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className="bezel flex h-11 min-w-0 items-center gap-2.5 rounded-full pr-3.5 pl-1.5 text-left transition-transform active:scale-[0.98]"
       >
-        <Pip tone={connectionTone(status)} />
-        <span className="min-w-0 truncate">{ws?.name ?? "No workspace"}</span>
-        {!ready && <span className="shrink-0 text-muted">· {statusText(status)}</span>}
-        <ChevronDown size={13} className="shrink-0 text-muted" />
+        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-hover text-ink-2">
+          <WorkspaceIcon provider={ws?.provider ?? "boat"} size={16} />
+        </span>
+        <span className="min-w-0 truncate text-[17px] leading-tight font-semibold tracking-[-0.01em] text-ink">{ws?.name ?? "No workspace"}</span>
+        {!ready && <Pip tone={connectionTone(status)} label={statusText(status)} />}
+        <ChevronDown size={16} strokeWidth={2.25} className={`shrink-0 text-muted transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
       </button>
       <Popover open={open} onClose={() => setOpen(false)} anchor={anchor.current} placement="bottom-start" width={270}>
         <div role="menu" className="p-1.5">
           <div className="px-2.5 pt-1.5 pb-1 text-[12px] font-medium text-muted">Workspaces</div>
           {workspaces.map((w) => (
-            <MenuItem key={w.id} icon={<Cloud size={15} />} label={w.name} active={w.id === activeId} right={w.id === activeId ? <Check size={15} className="text-muted" /> : undefined} onClick={() => (void setActive(w.id), setOpen(false))} />
+            <MenuItem
+              key={w.id}
+              icon={<WorkspaceIcon provider={w.provider} size={15} />}
+              label={w.name}
+              hint={w.id === activeId && !ready ? statusText(status) : undefined}
+              active={w.id === activeId}
+              right={w.id === activeId ? <Check size={15} className="text-muted" /> : undefined}
+              onClick={() => (void setActive(w.id), setOpen(false))}
+            />
           ))}
           <MenuItem icon={<Plus size={15} />} label="Add workspace" onClick={() => (setOpen(false), addWs(true))} />
           <div className="my-1 h-px bg-line" />
@@ -235,41 +259,109 @@ function WorkspaceSwitcher() {
   );
 }
 
-function Group({ label, list, now }: { label: string; list: SessionInfo[]; now: number }) {
+function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <section className="mt-6 first-of-type:mt-0">
-      <h2 className="px-4 pb-1 text-[11px] font-medium tracking-[0.06em] text-accent-ink uppercase">{label}</h2>
-      {list.map((s) => (
-        <Row key={s.id} s={s} now={now} />
-      ))}
+    <section className="mt-10 first-of-type:mt-1">
+      <h2 className="list-label px-4 pb-2">{label}</h2>
+      {children}
     </section>
   );
 }
 
-/** A session like a conversation: whose face, what it's about, when, and who it's with. */
-const Row = memo(function Row({ s, now }: { s: SessionInfo; now: number }) {
+/**
+ * The three tiers read differently at a glance, so they never compete:
+ * a session that wants you is a raised card with the agent's face; an agent
+ * is a bare face and a name; a past session is a line of text.
+ */
+
+/** A session that wants you, is working or has a result you haven't seen. The face carries the state, the line what it's doing right now; a ring of ice means it needs you. */
+const ActiveCard = memo(function ActiveCard({ s, now }: { s: SessionInfo; now: number }) {
   const busy = useChat((st) => !!st.busy[s.id]);
-  const unread = useChat((st) => !!st.unread[s.id]);
   const asking = useChat((st) => Object.values(st.permissions).some((p) => p.sessionID === s.id) || Object.values(st.forms).some((f) => f.sessionID === s.id));
   const open = useChat((st) => st.open);
-  // A teammate's session wears their face, which carries the state itself.
-  const mate = useTeammate(s.agent);
   const mood = useFace(s.id);
-  const where = [mate?.name, basename(s.location.directory)].filter(Boolean).join(" · ");
+  const who = useAgentName(s.agent);
+  const doing = useDoing(s.id, busy);
+  const failed = s.outcome === "failed";
   return (
-    <motion.button whileTap={{ backgroundColor: "var(--hover)" }} onClick={() => open(s.id)} className="flex w-full items-center gap-3.5 px-4 py-3 text-left">
-      {mate ? <AgentMark id={s.agent} size={56} state={mood} /> : <PlainMark size={56} state={mood} />}
+    <button {...spot} onClick={() => open(s.id)} data-tone={asking ? "needs" : undefined} className="bezel flex w-full items-center gap-3.5 rounded-[20px] py-3 pr-4 pl-3 text-left">
+      <Spot />
+      <AgentMark id={s.agent} size={56} state={mood} />
       <span className="min-w-0 flex-1">
         <span className="flex items-baseline gap-2">
-          <span className={`min-w-0 flex-1 truncate text-[16px] text-ink ${unread || asking ? "font-semibold" : "font-medium"}`}>{s.title || "New session"}</span>
-          <span className="shrink-0 text-[13px] text-faint tabular-nums">{busy && !mate ? "Working" : timeAgo(s.time.updated, now)}</span>
+          <span className="min-w-0 flex-1 truncate text-[17px] leading-snug font-semibold text-ink">{s.title || "New session"}</span>
+          <span className="shrink-0 text-[13px] text-faint tabular-nums">{timeAgo(s.time.updated, now)}</span>
         </span>
-        <span className="mt-0.5 flex items-center gap-2">
-          <span className={`min-w-0 flex-1 truncate text-[14px] ${asking ? "text-info" : s.outcome === "failed" ? "text-danger" : "text-muted"}`}>{asking ? "Needs you" : s.outcome === "failed" ? "Didn't finish" : where}</span>
-          {unread && !busy && !asking && !mate && <Pip tone="new" label="New result" />}
+        <span className="mt-1 flex items-center gap-2 text-[14px]">
+          {asking ? (
+            <span className="text-info">Needs you</span>
+          ) : busy ? (
+            <span className="shimmer min-w-0 truncate">{doing || (who ? `${who} is working` : "Working")}</span>
+          ) : (
+            <>
+              <Pip tone={failed ? "error" : "new"} label={failed ? "Didn't finish" : "New result"} />
+              <span className="min-w-0 truncate text-ink-2">{failed ? "Didn't finish" : "New result"}{who && <span className="text-muted"> · {who}</span>}</span>
+            </>
+          )}
         </span>
       </span>
-    </motion.button>
+    </button>
+  );
+});
+
+/**
+ * Everyone you can start a session with, down the page: their face (asleep
+ * until there's work), their name and job, no card. Tap one to start. Anyone
+ * already on an active card is left out.
+ */
+function AgentList({ busy, onMessage }: { busy: Set<string>; onMessage: (agent: string) => void }) {
+  const offered = useOfferedAgents();
+  const people = useMemo(() => offered.filter((a) => !busy.has(a.id)), [offered, busy]);
+  if (!people.length) return null;
+  return (
+    <Section label="Agents">
+      <div className="space-y-0.5 px-2">
+        {people.map((p) => (
+          <AgentItem key={p.id} {...p} onClick={() => onMessage(p.id)} />
+        ))}
+      </div>
+    </Section>
+  );
+}
+
+function AgentItem({ id, name, job, onClick }: { id: string; name: string; job: string; onClick: () => void }) {
+  const state = useTeammateState(id);
+  return (
+    <button {...spot} onClick={onClick} aria-label={`New session with ${name}`} className="relative isolate flex w-full items-center gap-4 rounded-[18px] px-2 py-2.5 text-left">
+      <Spot />
+      <AgentMark id={id} size={60} state={state} />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[17px] leading-snug font-semibold text-ink">{name}</span>
+        {job && <span className="mt-0.5 block truncate text-[15px] text-muted">{job}</span>}
+      </span>
+      <SquarePen size={19} className="shrink-0 text-faint" />
+    </button>
+  );
+}
+
+/** A past session, as a line of text: what it was about, who and where, when. No face: faces are for agents. */
+const RecentRow = memo(function RecentRow({ s, now, first }: { s: SessionInfo; now: number; first: boolean }) {
+  const open = useChat((st) => st.open);
+  const who = useAgentName(s.agent);
+  const where = [who, basename(s.location.directory)].filter(Boolean).join(" · ");
+  return (
+    <button {...spot} onClick={() => open(s.id)} className="relative isolate block w-full rounded-[14px] px-2 py-3 text-left">
+      <Spot />
+      {!first && <span aria-hidden className="absolute inset-x-2 -top-px h-px bg-line" />}
+      <span className="flex items-baseline gap-2">
+        <span className="min-w-0 flex-1 truncate text-[16px] leading-snug text-ink">{s.title || "New session"}</span>
+        <span className="shrink-0 text-[13px] text-faint tabular-nums">{timeAgo(s.time.updated, now)}</span>
+      </span>
+      <span className="mt-0.5 block truncate text-[14px] text-muted">
+        {s.outcome === "failed" && <span className="text-danger">Didn't finish · </span>}
+        {where}
+      </span>
+    </button>
   );
 });
 
@@ -386,7 +478,7 @@ function SessionScreen({ sessionId }: { sessionId: string }) {
           <AskDock sessionId={sessionId} />
           <BackgroundStrip sessionId={sessionId} />
           <InboxTray sessionId={sessionId} />
-          <Composer sessionId={sessionId} compact placeholder="Message" />
+          <Composer sessionId={sessionId} compact autoFocus placeholder="Message" />
         </div>
       </div>
 
@@ -478,15 +570,14 @@ function DraftScreen() {
           <Composer
             sessionId={null}
             compact
+            autoFocus
             placeholder={mate ? `Ask ${mate.name}, or hand over a task` : "Describe the task"}
+            tray={<ProjectPicker />}
             onSent={(id) => {
               setDraftOpen(false);
               open(id);
             }}
           />
-          <div className="mt-2 flex items-center px-1">
-            <ProjectPicker />
-          </div>
         </div>
       </div>
     </motion.div>

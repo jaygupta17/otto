@@ -7,7 +7,7 @@ import { useNow } from "../../hooks/useNow";
 import { revertIndex, useChat } from "../../state/chat";
 import { useUI } from "../../state/ui";
 import { Bird } from "../ui/Bird";
-import { useTeammate } from "../../state/teammates";
+import { useMascot } from "../../state/teammates";
 import { Markdown } from "./Markdown";
 import { ActivityGroup, SubagentReport } from "./Activity";
 import { ScreenCard } from "./ScreenCard";
@@ -443,7 +443,7 @@ function RevertBar({ sessionId, count, files }: { sessionId: string; count: numb
 
 type Segment = { kind: "text"; key: string; text: string; streaming: boolean } | { kind: "activity"; key: string; blocks: Block[] } | { kind: "error"; key: string; text: string } | { kind: "shell"; key: string; msg: Extract<UIMessage, { kind: "shell" }> } | { kind: "subagent"; key: string; msg: Extract<UIMessage, { kind: "subagent" }> };
 
-function segmentsOf(msgs: UIMessage[]): Segment[] {
+function segmentsOf(msgs: UIMessage[], thinking: boolean): Segment[] {
   const segs: Segment[] = [];
   let run: Block[] = [];
   const flushRun = () => {
@@ -480,7 +480,7 @@ function segmentsOf(msgs: UIMessage[]): Segment[] {
         if (!b.text.trim()) continue;
         flushRun();
         segs.push({ kind: "text", key: `${m.id}-${b.key}`, text: b.text, streaming: b.streaming });
-      } else {
+      } else if (b.kind !== "reasoning" || thinking) {
         run.push({ ...b, key: `${m.id}:${b.key}` });
       }
     }
@@ -497,14 +497,16 @@ function segmentsOf(msgs: UIMessage[]): Segment[] {
 type TurnProps = { msgs: UIMessage[]; live: boolean; screen: boolean; start: number; retry?: { attempt: number; message: string; next: number }; sessionId: string; forkBefore: string | null };
 
 const Turn = memo(function Turn({ msgs, live, screen, start, retry, sessionId, forkBefore }: TurnProps) {
-  const segs = useMemo(() => segmentsOf(msgs), [msgs]);
+  const thinking = useUI((s) => s.showThinking);
+  const segs = useMemo(() => segmentsOf(msgs, thinking), [msgs, thinking]);
   const assistants = msgs.filter((m): m is Assistant => m.kind === "assistant");
   const end = assistants.reduce((acc, m) => Math.max(acc, m.completed ?? 0), 0);
   const text = segs.filter((s) => s.kind === "text").map((s) => (s as { text: string }).text).join("\n\n");
   const model = assistants.find((m) => m.model)?.model;
   const blocks = useMemo(() => msgs.flatMap((m) => (m.kind === "assistant" ? m.blocks : [])), [msgs]);
   // Something above is already moving (streaming words, a running tool, a teammate on it): that says it's working.
-  const moving = live && (segs.some((s) => s.kind === "text" && s.streaming) || blocks.some((b) => (b.kind === "tool" && (b.status === "running" || b.status === "streaming")) || (b.kind === "reasoning" && b.streaming)));
+  // Hidden thinking doesn't count: the bird stands in for it.
+  const moving = live && (segs.some((s) => s.kind === "text" && s.streaming) || blocks.some((b) => (b.kind === "tool" && (b.status === "running" || b.status === "streaming")) || (thinking && b.kind === "reasoning" && b.streaming)));
 
   return (
     <div className="group/turn mb-4 last:mb-0">
@@ -552,12 +554,12 @@ function sameTurn(a: TurnProps, b: TurnProps) {
 function Working({ sessionId, retry }: { sessionId: string; retry?: { attempt: number; message: string; next: number } }) {
   const now = useNow(!!retry);
   // A lead's part runs in a child session the sidebar doesn't list; it knows who's on it.
-  const mate = useTeammate(useChat((s) => s.sessions[sessionId]?.agent ?? s.delegated[sessionId]));
+  const mate = useMascot(useChat((s) => s.sessions[sessionId]?.agent ?? s.delegated[sessionId]));
   return (
     // No live region here: `TurnStatus` speaks the turn's state once, so the
     // indicator can't repeat it. The mark still names itself for anyone reading through the thread.
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-3 flex h-6 items-center gap-2 text-[13px]">
-      {mate ? <Bird bird={mate.bird} seed={mate.face} size={22} state={retry ? "retrying" : "working"} label="Working" /> : <AgentClock />}
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-3 flex min-h-11 items-center gap-3 text-[13px]">
+      {mate ? <Bird bird={mate.bird} seed={mate.face} size={44} state={retry ? "retrying" : "working"} label="Working" /> : <AgentClock size={20} />}
       {retry && (
         <span className="text-ink-2">
           Retrying{retry.attempt > 1 ? ` (attempt ${retry.attempt})` : ""}

@@ -211,6 +211,21 @@ export function isOfferedAgent(id: string) {
 }
 
 /**
+ * The two built-ins that keep working for the team: teammates hand them
+ * searches (explore) and side jobs (general). They aren't offered as someone
+ * to talk to, but they do show up, in chat and in Agents, so they get a face.
+ */
+export const HELPER_BIRDS: Readonly<Record<string, { bird: BirdId; face: number }>> = {
+  explore: { bird: "talon", face: 0x5c0a7 },
+  general: { bird: "cinder", face: 0x9e7e2a },
+};
+
+/** Shown in Agents: everything offered, plus the helpers above. */
+export function isListedAgent(id: string) {
+  return isOfferedAgent(id) || id in HELPER_BIRDS;
+}
+
+/**
  * The agent a new session starts with: the picked one while it still exists
  * and is offered, else the oldest teammate, else the first offered agent.
  * `null` means there's nothing to talk to yet.

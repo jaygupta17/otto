@@ -6,6 +6,30 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 ## [Unreleased]
 
+### Changed
+
+- A new reply box: the text sits on a raised card that lights up in ice when you type, and its tools get their own row underneath: + on the left with the agent you're talking to, the model and a round send on the right. While a run is going, a Steer or Queue pill says what your message will do, and stop goes quiet once there's something to send. Shell mode shows as a pill you can tap to leave.
+- Starting a session puts the reply box in a tray, with the project and the machine it runs on along the bottom.
+- On phones, Sessions drops its title: the machine you're on is a pill at the top, like the menu it opens to switch workspaces. Sessions that need you, are working or have a result you haven't seen come first, each on its own card, and a working one shows what it's doing right now ("Edit Thread.tsx", "Thinking"); once you've opened one it moves down to Recent. Then your agents, one big row each (tap one to start a session; anyone already busy above is left out), then recent sessions as plain text. Rows light up with dots where you press them.
+- The desktop sidebar is laid out the same way: Active sessions raised with the agent's face and what it's doing, then your agents (click one to start a session), then Pinned and Recent as plain text. No more date groups.
+- Section labels in session lists are a quiet grey instead of blue.
+- The model's thinking is hidden in chat by default; turn on Settings › Appearance › Show thinking to see it. The bird that works between steps is bigger.
+- Opening a session puts the cursor in the reply box (not on touch screens, so the keyboard doesn't cover the chat).
+- The bird in the chat header stays awake, and a teammate's handoff line no longer has a moving strip beside it.
+- Explore and General show their birds everywhere a teammate would: handoff lines, the running strip above the reply box, their conversation and its working bird, and questions they ask.
+- Stop and "open their conversation" on handoff lines and the running strip are always shown instead of waiting for hover.
+- Recent sessions no longer show a bird, on phones or in the sidebar: birds are for agents, so it's clear at a glance what's history.
+- Sleeping birds are easier to spot: a deeper breath and sway, a snore bubble, and bigger ice z's drifting up.
+- Explore and General have birds of their own (a falcon and a phoenix) and show up in Agents as subagents.
+- Your open session, drafts and model picks come back after a reload.
+- Free and paid versions of the same model are told apart in menus, and models without thinking levels no longer offer one.
+- Pinch-zoom works on phones again, and text fields no longer zoom the page when you tap them.
+
+### Fixed
+
+- Schedules around a daylight-saving change run at the right time.
+- Live text no longer shimmers red in themes whose colours are mixes (like Tokyo Night Day).
+
 ## [0.15.0] - 2026-10-23
 
 ### Changed

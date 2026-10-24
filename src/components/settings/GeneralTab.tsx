@@ -247,6 +247,8 @@ function AppearanceSection() {
   const setTheme = useUI((s) => s.setTheme);
   const homeCompact = useUI((s) => s.homeCompact);
   const setHomeCompact = useUI((s) => s.setHomeCompact);
+  const showThinking = useUI((s) => s.showThinking);
+  const setShowThinking = useUI((s) => s.setShowThinking);
   return (
     <Section title="Appearance">
       <Rows>
@@ -266,6 +268,9 @@ function AppearanceSection() {
         <ThemePicker />
         <Row label="Compact home" hint="Just the prompt, without recent sessions">
           <Toggle on={homeCompact} onChange={setHomeCompact} label="Compact home" />
+        </Row>
+        <Row label="Show thinking" hint="The model's reasoning, in chat as it works">
+          <Toggle on={showThinking} onChange={setShowThinking} label="Show thinking" />
         </Row>
       </Rows>
     </Section>

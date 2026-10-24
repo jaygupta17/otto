@@ -35,6 +35,7 @@ import { buildBird, type Mood } from "../../lib/flock/build";
 import { BIRD } from "../../lib/flock/birds";
 import { reaction } from "../../state/face";
 import { useTeammate } from "../../state/teammates";
+import { HELPER_BIRDS } from "../../lib/teammates";
 import { DitherOrb } from "./Dither";
 
 export type FaceState = "idle" | "working" | "writing" | "needs" | "done" | "failed" | "stopped" | "retrying";
@@ -62,6 +63,7 @@ export const Bird = memo(function Bird({
   attentive = false,
   interactive = false,
   greet = size >= 40,
+  doze = true,
   pulse,
   label,
   className = "",
@@ -82,6 +84,8 @@ export const Bird = memo(function Bird({
   follow?: boolean;
   /** Paying attention to what you're writing: eyes down toward it. */
   attentive?: boolean;
+  /** Naps when there's nothing to do, as list birds do. Off where you're already with it (the chat you have open). */
+  doze?: boolean;
   /** The bird itself is the thing to touch: hover it, poke it. */
   interactive?: boolean;
   greet?: boolean;
@@ -97,7 +101,7 @@ export const Bird = memo(function Bird({
   const small = size < 28;
   const quiet = state === "idle" && !mood;
   // A bird in a list with nothing to do naps until you come by. Heroes wait on you awake.
-  const dozing = quiet && !attentive && !interactive && !follow && !small && size < 64 && !awake;
+  const dozing = doze && quiet && !attentive && !interactive && !follow && !small && size < 64 && !awake;
   const base = mood ?? (attentive && state === "idle" ? "type" : dozing ? "sleep" : STATE_MOOD[state]);
   const shown = act ?? base;
   const t = (seed >>> 0) % 9973;
@@ -335,9 +339,11 @@ function useBirdLife(
 }
 
 /** How an agent shows up in lists and menus: a teammate's bird, or the orb for a plain agent. */
-export function AgentMark({ id, size = 18, state }: { id: string | undefined; color?: unknown; size?: number; state?: FaceState }) {
+export function AgentMark({ id, size = 18, state, doze }: { id: string | undefined; color?: unknown; size?: number; state?: FaceState; doze?: boolean }) {
   const t = useTeammate(id);
-  if (t) return <Bird bird={t.bird} seed={t.face} size={size} state={state} />;
+  if (t) return <Bird bird={t.bird} seed={t.face} size={size} state={state} doze={doze} />;
+  const helper = id ? HELPER_BIRDS[id] : undefined;
+  if (helper) return <Bird bird={helper.bird} seed={helper.face} size={size} state={state} doze={doze} />;
   return <PlainMark size={size} state={state} />;
 }
 

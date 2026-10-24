@@ -1,99 +1,62 @@
 import { SquarePen } from "lucide-react";
 import { memo } from "react";
-import type { SessionInfo } from "@opencode/client";
-import { asksFor, useChat } from "../../state/chat";
-import { mateFace } from "../../state/face";
-import { timeAgo } from "../../lib/format";
+import { useChat } from "../../state/chat";
+import { useAgentName, useTeammateState } from "../../state/teammates";
+import { useDoing, type OfferedAgent } from "../../state/tiers";
 import { AgentMark } from "../ui/Bird";
-import { useAgentName, useTeammate } from "../../state/teammates";
-import { AgentClock } from "../ui/AgentClock";
-import { Pip } from "../ui/Pip";
 
-export interface AgentGroup {
-  id: string;
-  name: string;
-  /** Teammates have a job; plain agents don't. */
-  job?: string;
-  /** Newest first. Pinned sessions are listed under Pinned instead. */
-  sessions: SessionInfo[];
-}
-
-/** One row per teammate, like a conversation list: who, what they last did, when. Older sessions live in the chat's history. */
-export function AgentRows({ groups, now, onNavigate }: { groups: AgentGroup[]; now: number; onNavigate?: () => void }) {
+/**
+ * Everyone you can start a session with: a face, a name and a job, no card.
+ * Click one to start. Anyone already on an active row above is left out.
+ */
+export function AgentRows({ agents, onNavigate }: { agents: OfferedAgent[]; onNavigate?: () => void }) {
   return (
-    <div className="space-y-1">
-      {groups.map((g) => (
-        <AgentRow key={g.id} group={g} now={now} onNavigate={onNavigate} />
+    <div className="space-y-0.5">
+      {agents.map((a) => (
+        <AgentRow key={a.id} agent={a} onNavigate={onNavigate} />
       ))}
     </div>
   );
 }
 
-const AgentRow = memo(function AgentRow({ group: g, now, onNavigate }: { group: AgentGroup; now: number; onNavigate?: () => void }) {
-  const busyCount = useChat((s) => g.sessions.reduce((n, x) => n + (s.busy[x.id] ? 1 : 0), 0));
-  const asking = useChat((s) => g.sessions.some((x) => Object.values(s.permissions).some((p) => asksFor(s.parents, p.sessionID, x.id)) || Object.values(s.forms).some((f) => asksFor(s.parents, f.sessionID, x.id))));
-  const unread = useChat((s) => g.sessions.some((x) => !!s.unread[x.id]));
+const AgentRow = memo(function AgentRow({ agent: a, onNavigate }: { agent: OfferedAgent; onNavigate?: () => void }) {
+  const state = useTeammateState(a.id);
   // Work handed over by a lead runs in the lead's thread, but it's still this teammate doing it.
-  const helping = useChat((s) => Object.keys(s.delegated).filter((c) => s.delegated[c] === g.id && s.busy[c]).length);
-  const helpAsks = useChat((s) => Object.values(s.permissions).some((p) => s.delegated[p.sessionID] === g.id) || Object.values(s.forms).some((f) => s.delegated[f.sessionID] === g.id));
-  const lead = useChat((s) => {
-    const c = Object.keys(s.delegated).find((k) => s.delegated[k] === g.id && s.busy[k]);
-    return c ? s.sessions[s.parents[c]]?.agent : undefined;
-  });
+  const task = useChat((s) => Object.keys(s.delegated).find((c) => s.delegated[c] === a.id && s.busy[c]));
+  const lead = useChat((s) => (task ? s.sessions[s.parents[task]]?.agent : undefined));
   const leadName = useAgentName(lead);
-  // A teammate's face carries its state itself; plain agents keep the clock.
-  const face = !!useTeammate(g.id);
-  const working = busyCount + helping;
-  const needs = asking || helpAsks;
-  const state = useChat((s) => mateFace(s, g.id, g.sessions.map((x) => x.id)));
-  const onActive = useChat((s) => g.sessions.some((x) => x.id === s.activeId));
-  // A fresh draft with this teammate picked counts as being on its row too.
-  const drafting = useChat((s) => s.activeId === null && s.pickedAgent === g.id);
-  const active = onActive || drafting;
+  const needs = useChat((s) => Object.values(s.permissions).some((p) => s.delegated[p.sessionID] === a.id) || Object.values(s.forms).some((f) => s.delegated[f.sessionID] === a.id));
+  const doing = useDoing(task, !!task);
+  // A fresh draft with them picked is their row being open.
+  const drafting = useChat((s) => s.activeId === null && s.pickedAgent === a.id);
 
-  const latest = g.sessions[0];
-  const preview = needs ? "Needs you" : helping && !busyCount && leadName ? `On a task for ${leadName}` : latest ? latest.title || "New session" : g.job || "Start a session";
-
-  // New work starts in the agent's current session; with none yet, a fresh draft.
-  function openAgent() {
+  function start() {
     const st = useChat.getState();
-    if (latest) st.open(latest.id);
-    else startNew();
-    onNavigate?.();
-  }
-
-  function startNew() {
-    const st = useChat.getState();
-    void st.setAgent(g.id, null);
+    void st.setAgent(a.id, null);
     st.open(null);
     onNavigate?.();
   }
 
   return (
-    <div className={`group relative flex items-center rounded-[10px] transition-colors ${active ? "chip" : "hover:bg-hover"}`}>
-      <button type="button" onClick={openAgent} aria-current={active ? "true" : undefined} className="flex min-w-0 flex-1 items-center gap-3 py-2 pr-2.5 pl-2 text-left">
-        <AgentMark id={g.id} size={44} state={state} />
-        <span className="min-w-0 flex-1">
-          <span className="flex items-baseline gap-2">
-            <span className={`min-w-0 flex-1 truncate text-[14px] ${active || unread || needs ? "font-semibold text-ink" : "font-medium text-ink"}`}>{g.name}</span>
-            <span className="shrink-0 font-mono text-[11px] text-muted tabular-nums group-hover:invisible">{working > 0 && !face ? <AgentClock size={11} /> : latest ? timeAgo(latest.time.updated, now) : ""}</span>
-          </span>
-          <span className="flex items-center gap-2">
-            <span className={`min-w-0 flex-1 truncate text-[12.5px] ${needs ? "text-info" : "text-muted"}`}>{preview}</span>
-            {!needs && unread && !working && !face && <Pip tone="new" label="New result" />}
-            {working > 1 && <span className="shrink-0 text-[11px] text-muted font-mono tabular-nums">{working}</span>}
-          </span>
-        </span>
-      </button>
-      <button
-        type="button"
-        onClick={startNew}
-        aria-label={`New session with ${g.name}`}
-        title={`New session with ${g.name}`}
-        className="absolute top-2 right-2 hidden h-6 w-6 place-items-center rounded-md text-muted hover:bg-active hover:text-ink group-hover:grid"
-      >
-        <SquarePen size={13} />
-      </button>
-    </div>
+    <button
+      type="button"
+      onClick={start}
+      aria-current={drafting ? "true" : undefined}
+      aria-label={`New session with ${a.name}`}
+      className={`group flex w-full items-center gap-3 rounded-[12px] py-1.5 pr-2.5 pl-1.5 text-left transition-colors ${drafting ? "chip" : "hover:bg-hover"}`}
+    >
+      <AgentMark id={a.id} size={42} state={state} />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[14px] font-semibold text-ink">{a.name}</span>
+        {needs ? (
+          <span className="block truncate text-[12.5px] text-info">Needs you</span>
+        ) : task ? (
+          <span className="shimmer block truncate text-[12.5px]">{doing || (leadName ? `On a task for ${leadName}` : "Working")}</span>
+        ) : (
+          a.job && <span className="block truncate text-[12.5px] text-muted">{a.job}</span>
+        )}
+      </span>
+      <SquarePen size={14} className="shrink-0 text-faint opacity-0 transition-opacity group-hover:opacity-100" />
+    </button>
   );
 });

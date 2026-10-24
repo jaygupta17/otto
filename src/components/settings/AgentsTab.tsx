@@ -15,8 +15,8 @@ import { ModelSelect, type ModelValue } from "./ModelSelect";
 import { TeammateEditor } from "./TeammateEditor";
 import { useTeammates, useTeammateState } from "../../state/teammates";
 import { Sheet } from "../ui/Sheet";
-import { Bird, PlainMark } from "../ui/Bird";
-import { CATALOG, hash, isOfferedAgent, listNames, STARTER_TEAM, type Teammate } from "../../lib/teammates";
+import { AgentMark, Bird } from "../ui/Bird";
+import { CATALOG, hash, HELPER_BIRDS, isListedAgent, listNames, STARTER_TEAM, type Teammate } from "../../lib/teammates";
 import { HireGallery } from "./HireGallery";
 import { COMPOSIO_SERVER } from "../../lib/composio";
 import { appEffect, KINDS, sample } from "../../lib/appPermissions";
@@ -93,7 +93,7 @@ export function AgentsTab({ compact, onMessage }: { compact: boolean; onMessage?
       .sort((a, b) => Number(b.leads) - Number(a.leads) || a.created - b.created || a.name.localeCompare(b.name));
   }, [roster, q]);
   const list = useMemo(() => {
-    const ids = new Set([...agents.map((a) => a.id), ...Object.keys(cfgAgents)].filter((id) => !roster?.[id] && isOfferedAgent(id)));
+    const ids = new Set([...agents.map((a) => a.id), ...Object.keys(cfgAgents)].filter((id) => !roster?.[id] && isListedAgent(id)));
     const t = q.trim().toLowerCase();
     return [...ids]
       .map((id) => ({ id, info: agents.find((a) => a.id === id), cfg: cfgAgents[id] }))
@@ -223,7 +223,7 @@ export function AgentsTab({ compact, onMessage }: { compact: boolean; onMessage?
               const off = a.cfg?.disabled;
               return (
                 <button key={a.id} onClick={() => show({ selected: a.id })} className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors active:bg-hover">
-                  <PlainMark size={44} />
+                  <AgentMark id={a.id} size={44} />
                   <span className="min-w-0 flex-1">
                     <span className={`block truncate text-[16px] font-medium ${off ? "text-faint line-through" : "text-ink"}`}>{a.info?.name ?? a.id}</span>
                     <span className="mt-0.5 block truncate text-[14px] text-muted">{modeLabel(a.info?.mode ?? a.cfg?.mode)}</span>
@@ -394,8 +394,9 @@ function TeammateRow({ t, active, disabled, onClick }: { t: Teammate; active: bo
 function AgentRow({ id, info, cfg, active, onClick }: { id: string; info?: AgentInfo; cfg?: AgentConfig; active: boolean; onClick: () => void }) {
   const disabled = cfg?.disabled;
   return (
-    <button onClick={onClick} className={`flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left transition-colors ${active ? "chip" : "hover:bg-hover"}`}>
-      <PlainMark size={20} />
+    // A helper wears its bird, so it gets a teammate's row height.
+    <button onClick={onClick} className={`flex w-full items-center gap-2.5 rounded-xl text-left transition-colors ${id in HELPER_BIRDS ? "px-1.5 py-1" : "px-2.5 py-2"} ${active ? "chip" : "hover:bg-hover"}`}>
+      <AgentMark id={id} size={id in HELPER_BIRDS ? 34 : 20} />
       <span className={`min-w-0 flex-1 truncate text-[13px] ${disabled ? "text-faint line-through" : "text-ink"}`}>{info?.name ?? id}</span>
       {(info?.mode ?? cfg?.mode) !== "primary" && <span className="shrink-0 text-[12px] text-faint">{modeLabel(info?.mode ?? cfg?.mode)}</span>}
     </button>
@@ -484,7 +485,7 @@ function AgentEditor({ id, info, cfg, origin, onDone, actions }: { id: string; i
     <div className="relative pb-20">
       {/* The same profile shape as a teammate's: who it is first, settings below. */}
       <div className="mb-7 flex items-center gap-5 max-sm:flex-col max-sm:gap-3 max-sm:text-center">
-        <PlainMark size={72} />
+        <AgentMark id={id} size={72} />
         <div className="min-w-0 flex-1 max-sm:w-full">
           <div className="flex items-center gap-2 max-sm:justify-center">
             <h3 className="truncate text-[22px] font-semibold tracking-[-0.01em]">{info?.name ?? id}</h3>

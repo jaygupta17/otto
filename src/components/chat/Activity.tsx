@@ -54,10 +54,10 @@ import { useShells } from "../../state/shells";
 import { openSubagent } from "../../state/subagent";
 import { useMemory } from "../../state/memory";
 import { AgentClock } from "../ui/AgentClock";
-import { DitherBar } from "../ui/Dither";
 import { Bird, PlainMark, type FaceState } from "../ui/Bird";
 import { useFace } from "../../state/face";
-import { useAgentName, useTeammate } from "../../state/teammates";
+import { useAgentName, useMascot } from "../../state/teammates";
+import { useDoing } from "../../state/tiers";
 import { ErrorBlock, ProseBox, ToolBody } from "./ToolBody";
 import { ImageStrip } from "./ImageStrip";
 import { browserSteps, type BrowserStep } from "../../lib/browserSteps";
@@ -142,8 +142,6 @@ const ToolRun = memo(function ToolRun({ blocks, live }: { blocks: Block[]; live:
         {open && (
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.24, ease }} className="overflow-hidden">
             <div className="relative ml-[7px] border-l border-line py-1 pl-4">
-              {/* While the run is live, dots flow down the trail. */}
-              {running && <DitherBar vertical className="absolute top-0 bottom-0 -left-[1.5px] text-accent" />}
               {blocks.map((b) => (b.kind === "tool" ? <ToolRow key={b.key} b={b} step={stepOf.get(b.key)} /> : b.kind === "reasoning" ? <ThoughtRow key={b.key} b={b} /> : null))}
             </div>
           </motion.div>
@@ -455,7 +453,7 @@ function BackgroundNote({ phase, error }: { phase: string; error?: string }) {
  * phone a tap on the bird says who it is instead of opening the row.
  */
 function Avatar({ agent, name, state = "idle" }: { agent?: string; name: string; state?: FaceState }) {
-  const t = useTeammate(agent);
+  const t = useMascot(agent);
   const touch = useRef(false);
   return (
     <span
@@ -479,26 +477,13 @@ const chevron = (open: boolean) => (
 /** A handoff is a line on the chat itself: no box, no fill. */
 const runCard = "group/agent relative my-1";
 
-/** Small icon actions that wait at the end of a row until you reach for it (always shown on touch). */
-const rowAction =
-  "grid h-6 w-6 shrink-0 place-items-center rounded-md text-faint opacity-0 transition-opacity group-hover/agent:opacity-100 group-focus-within/agent:opacity-100 hover:bg-hover hover:text-ink focus-visible:opacity-100 [@media(hover:none)]:opacity-100";
+/** Small icon actions at the end of a handoff line: Stop and their conversation are always in reach. */
+const rowAction = "grid h-6 w-6 shrink-0 place-items-center rounded-md text-faint transition-colors hover:bg-hover hover:text-ink";
 
 /** Is `sid` the child or a descendant of it (a subagent's own subagents ask through it)? */
 function within(parents: Record<string, string>, sid: string, child: string) {
   for (let s: string | undefined = sid, i = 0; s && i < 8; s = parents[s], i++) if (s === child) return true;
   return false;
-}
-
-/** The child's latest step, when its conversation is loaded: "Edit · Thread.tsx". */
-function useLatestStep(child: string | undefined): { b: ToolBlock; steps: number } | null {
-  const msgs = useChat((st) => (child ? st.timelines[child]?.messages : undefined));
-  return useMemo(() => {
-    if (!msgs) return null;
-    let steps = 0;
-    let last: ToolBlock | null = null;
-    for (const m of msgs) if (m.kind === "assistant") for (const b of m.blocks) if (b.kind === "tool") (steps++, (last = b));
-    return last ? { b: last, steps } : null;
-  }, [msgs]);
 }
 
 /**
@@ -538,15 +523,8 @@ const SubagentRow = memo(function SubagentRow({ b }: { b: ToolBlock }) {
   const now = useNow(running);
   const took = (ended ?? (running ? now : b.ended ?? b.started)) - b.started;
 
-  // A running child's conversation, so the line can say what it's doing now.
-  useEffect(() => {
-    if (!child || !running) return;
-    const t = useChat.getState().timelines[child];
-    if (!t || (!t.loaded && !t.loading)) void useChat.getState().loadTimeline(child);
-  }, [child, running]);
-  const latest = useLatestStep(child);
-  const step = latest?.b ? toolLabel(latest.b) : null;
-  const doing = step ? [step.verb, step.path ? step.path.split("/").pop() : step.target].filter(Boolean).join(" ") : "";
+  // What the child is doing now, from its conversation (loaded while it runs).
+  const doing = useDoing(child, running);
 
   const face: FaceState = asking
     ? "needs"

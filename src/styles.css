@@ -472,7 +472,12 @@ html[data-touch] #root {
 .fk-e-sad .fk-rig { animation: fk-droop 5s ease-in-out infinite }
 @keyframes fk-droop { 0%, 100% { transform: translateY(1px) scale(1.01, 0.975) } 50% { transform: translateY(2px) scale(1.015, 0.962) } }
 .fk-e-sleep .fk-rig { animation: fk-doze 4.8s ease-in-out infinite }
-@keyframes fk-doze { 0%, 100% { transform: rotate(0) scale(1, 1) } 50% { transform: rotate(calc(var(--t) * 2.5deg)) scale(1.02, 0.975) } }
+@keyframes fk-doze { 0%, 100% { transform: rotate(0) scale(1, 1) } 50% { transform: rotate(calc(var(--t) * 5deg)) scale(1.04, 0.95) } }
+/* An owl's head nods off, then catches itself. */
+.fk-e-sleep.fk-sep .fk-head { animation: fk-nodoff 4.8s ease-in-out infinite }
+@keyframes fk-nodoff { 0%, 100% { transform: rotate(0) } 50% { transform: rotate(7deg) } }
+.fk-snore { animation: fk-snore 4.8s ease-in-out infinite }
+@keyframes fk-snore { 0%, 100% { transform: scale(0.25); opacity: 0.6 } 50% { transform: scale(1); opacity: 1 } }
 .fk-e-wink .fk-rig { animation: fk-wink 2.8s ease-in-out infinite }
 @keyframes fk-wink { 0%, 100% { transform: rotate(0) } 15%, 60% { transform: rotate(calc(var(--t) * 4deg)) } }
 .fk-e-cool .fk-rig { animation: fk-nod 1.1s ease-in-out infinite }
@@ -511,8 +516,8 @@ html[data-touch] #root {
 @keyframes fk-drop { 0% { transform: translateY(-34px); opacity: 0 } 40% { opacity: 1 } 100% { transform: translateY(0); opacity: 1 } }
 .fk-flick { animation: fk-flick 3.2s ease-in-out infinite }
 @keyframes fk-flick { 0%, 55%, 100% { transform: translateX(0); opacity: 0 } 65% { opacity: 1 } 85% { transform: translateX(7px); opacity: 0 } }
-.fk-zzz { animation: fk-zzz 3.6s ease-out infinite }
-@keyframes fk-zzz { 0% { transform: translate(-6px, 8px) scale(0.3); opacity: 0 } 20% { opacity: 1 } 100% { transform: translate(8px, -14px) scale(1.1); opacity: 0 } }
+.fk-zzz { animation: fk-zzz 3.9s ease-out infinite }
+@keyframes fk-zzz { 0% { transform: translate(0, 0) scale(0.35) rotate(-10deg); opacity: 0 } 15% { opacity: 1 } 65% { opacity: 0.95 } 100% { transform: translate(var(--zx), var(--zy)) scale(1.15) rotate(8deg); opacity: 0 } }
 .fk-snow { animation: fk-snow 4s linear infinite }
 @keyframes fk-snow { 0% { transform: translate(0, -30px) rotate(0); opacity: 0 } 15%, 85% { opacity: 1 } 100% { transform: translate(var(--dx, 6px), 36px) rotate(120deg); opacity: 0 } }
 .fk-shv { animation: fk-shv 0.5s steps(2) infinite }
@@ -564,6 +569,15 @@ html[data-touch] #root {
   to {
     background-position: 0 0;
   }
+}
+
+/* A list's section label (Active, Agents, Recent): quieter than a title, louder than a hint, never coloured. */
+.list-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: color-mix(in oklab, var(--text-2), var(--muted));
 }
 
 /* The accent's version, for "3 working" and other live counts. */
@@ -825,6 +839,21 @@ html[data-touch] #root {
     inset 0 1px 0 color-mix(in oklab, var(--lit) 9%, transparent),
     var(--shadow-pop);
 }
+/* The prompt card: a hairline ring instead of a border, so focus can take it to ice. */
+.surface-float.composer {
+  box-shadow:
+    inset 0 0 0 1px var(--border),
+    inset 0 1px 0 color-mix(in oklab, var(--lit) 9%, transparent),
+    var(--shadow-float);
+  transition: box-shadow 0.15s;
+}
+.surface-float.composer:focus-within {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in oklab, var(--accent) 50%, transparent),
+    0 0 0 3px color-mix(in oklab, var(--accent) 14%, transparent),
+    inset 0 1px 0 color-mix(in oklab, var(--lit) 9%, transparent),
+    var(--shadow-float);
+}
 [data-phone-page] .bezel,
 [data-tab] .bezel {
   --bezel-bg: var(--bg-panel);
@@ -869,6 +898,46 @@ html[data-touch] #root {
   background: color-mix(in oklab, var(--accent) 22%, var(--bg-panel)) linear-gradient(to bottom, color-mix(in oklab, var(--lit) 7%, transparent), transparent);
 }
 
+/* A session card that needs you wears a ring of ice. */
+.bezel[data-tone="needs"] {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in oklab, var(--accent) 45%, transparent),
+    inset 0 1px 0 color-mix(in oklab, var(--lit) 12%, transparent),
+    0 0 0 3px color-mix(in oklab, var(--accent) 10%, transparent);
+}
+
+/* DitherUI's dither spot: press a row and ice dots grow out from your finger,
+   then fade when you let go (ui/Spot.tsx). Lives under the row's content. */
+@property --spot-r {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
+.spot {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  background: var(--accent);
+  opacity: 0;
+  --spot-r: 0px;
+  -webkit-mask: var(--dither-half) 0 0 / 8px 8px, radial-gradient(circle at var(--sx, 50%) var(--sy, 50%), #000 var(--spot-r), transparent calc(var(--spot-r) + 1px));
+  -webkit-mask-composite: source-in;
+  mask: var(--dither-half) 0 0 / 8px 8px, radial-gradient(circle at var(--sx, 50%) var(--sy, 50%), #000 var(--spot-r), transparent calc(var(--spot-r) + 1px));
+  mask-composite: intersect;
+  transition:
+    --spot-r 0.4s ease-out,
+    opacity 0.35s ease-out;
+}
+[data-press] > .spot {
+  --spot-r: 420px;
+  opacity: 0.3;
+  transition:
+    --spot-r 0.55s cubic-bezier(0.2, 0.8, 0.3, 1),
+    opacity 0.08s;
+}
+
 .surface-thin {
   transition: background-color 0.15s;
 }
@@ -895,6 +964,17 @@ html[data-touch] #root {
   -webkit-backdrop-filter: blur(18px) saturate(1.3);
   backdrop-filter: blur(18px) saturate(1.3);
   border-bottom-color: var(--border);
+}
+
+/* Pinch-zoom stays on (accessibility), so iOS would also zoom into any field
+   typed at under 16px. On touch screens every text field types at 16px.
+   Unlayered, so it beats the size utilities without !important. */
+@media (pointer: coarse) {
+  input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"]),
+  textarea,
+  select {
+    font-size: 16px;
+  }
 }
 
 /* ------------------------------------------------------------------ */

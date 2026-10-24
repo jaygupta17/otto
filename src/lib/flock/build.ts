@@ -110,8 +110,20 @@ function hat(b: BirdDef, sw: number) {
   const pt = (u: number, t: number) => `${f(u * W * (1 - t))},${f(-H * t)}`;
   return `<g transform="translate(${x} ${y}) rotate(${b.view === "left" ? 12 : -12})"><g class="fk-drop"><path d="M${f(-W)},0 L0,${f(-H)} L${f(W)},0 Q0,${f(4 * s)} ${f(-W)},0 Z" fill="${BG}"/><path d="M${pt(-1, 0.3)} L${pt(1, 0.48)} M${pt(-1, 0.62)} L${pt(1, 0.76)}" stroke-width="${f(sw * 0.7)}"/><circle cy="${f(-H - 3 * s)}" r="${f(3.6 * s)}" fill="${INK}"/></g></g>`;
 }
-function faceFx(b: BirdDef, mood: Mood, sw: number, lod: number) {
+/** Screen pixels to drawing units for a bird drawn `px` wide over a box `vw` units across. */
+const toUnits = (px: number, vw: number) => vw / px;
+
+function faceFx(b: BirdDef, mood: Mood, sw: number, lod: number, px: number, vw: number, scene: boolean) {
   let o = "";
+  if (mood === "sleep" && scene) {
+    // A snore bubble off the beak, filling and emptying with each breath. Sized in screen
+    // pixels so it still reads on a 44px bird; front-facing birds blow it off to one side.
+    const u = toUnits(px, vw), r = Math.min(7, Math.max(2.8, px * 0.065)) * u;
+    const [bx, by] = b.beak, sd = b.fxSide || 1;
+    const [dx, dy] = b.beakDir[0] === 0 ? [sd * 0.8, 0.6] : b.beakDir;
+    const n = Math.hypot(dx, dy) || 1, ux = dx / n, uy = dy / n;
+    o += `<g transform="translate(${f(bx + ux * 1.5 * u)} ${f(by + uy * 1.5 * u)})"><g class="fk-snore"><circle cx="${f(ux * r)}" cy="${f(uy * r)}" r="${f(r)}" style="fill:var(--bird-paper)" stroke-width="${f(sw * 0.7)}"/><path d="M${f(ux * r - r * 0.45)},${f(uy * r - r * 0.1)} A${f(r * 0.5)},${f(r * 0.5)} 0 0 1 ${f(ux * r - r * 0.05)},${f(uy * r - r * 0.5)}" stroke-width="${f(sw * 0.55)}"/></g></g>`;
+  }
   if ((mood === "happy" || mood === "love" || mood === "wink") && !b.noBlush && lod < 2) {
     const d = b.eyes.map(([x, y, r]) => { const by = y + r + 5; return `M${f(x - r * 0.75)},${f(by + 1.6)} l2.4,-3.4 M${f(x + 0.2)},${f(by + 1.6)} l2.4,-3.4`; }).join(" ");
     o += `<path d="${d}" stroke-width="${f(sw * 0.62)}" opacity=".85"/>`;
@@ -131,7 +143,7 @@ const BUBBLE = "M-10,-10 H10 A7,7 0 0 1 17,-3 V3 A7,7 0 0 1 10,10 H-10 A7,7 0 0 
 const BULB = "M-5,7 C-5,3 -9,1 -9,-5 A9,9 0 1 1 9,-5 C9,1 5,3 5,7 Z";
 const star5 = (R: number, r: number) => { let d = ""; for (let k = 0; k < 10; k++) { const a = -Math.PI / 2 + (k * Math.PI) / 5, q = k % 2 ? r : R; d += (k ? "L" : "M") + f(Math.cos(a) * q) + "," + f(Math.sin(a) * q); } return d + "Z"; };
 const flakeD = (s: number) => `M0,${f(-s)} V${f(s)} M${f(-s * 0.87)},${f(-s * 0.5)} L${f(s * 0.87)},${f(s * 0.5)} M${f(-s * 0.87)},${f(s * 0.5)} L${f(s * 0.87)},${f(-s * 0.5)}`;
-function sceneFx(b: BirdDef, mood: Mood, vb: number[], sw: number) {
+function sceneFx(b: BirdDef, mood: Mood, vb: number[], sw: number, px: number) {
   const [vx, vy, vw, vh] = vb, fx = b.fx;
   const cl = ([x, y]: Pt, mx = 14, my = 14): Pt => [Math.min(Math.max(x, vx + mx), vx + vw - mx), Math.min(Math.max(y, vy + my), vy + vh - my)];
   const at = ([x, y]: Pt, inner: string, cls = "", st = "") => `<g transform="translate(${f(x)} ${f(y)})"><g${cls ? ` class="${cls}"` : ""}${st ? ` style="${st}"` : ""}>${inner}</g></g>`;
@@ -177,11 +189,12 @@ function sceneFx(b: BirdDef, mood: Mood, vb: number[], sw: number) {
       o += at(cl(fx.vein, 12, 12), P("M-7.5,-2.5 Q-2.5,-2.5 -2.5,-7.5 M2.5,-7.5 Q2.5,-2.5 7.5,-2.5 M7.5,2.5 Q2.5,2.5 2.5,7.5 M-2.5,7.5 Q-2.5,2.5 -7.5,2.5", 1.1), "fk-beat");
       break;
     case "sleep": {
-      // Drawn small the z's would vanish, so they grow as the bird shrinks (sw is thicker then).
-      const zk = Math.min(1.9, Math.max(1, sw / 2.6));
-      const z = (s: number) => `M${-s},${-s} H${s} L${-s},${s} H${s}`, sd = b.fxSide || 1;
-      [[0, 0, 3.2, 0], [10, -10, 4.2, -1.2], [22, -22, 5.4, -2.4]].forEach(([dx, dy, s, d]) => {
-        o += at(cl([fx.zz[0] + dx * sd * zk, fx.zz[1] + dy * zk], 12 * zk, 10 * zk), P(z(s * zk), 0.65), "fk-zzz", `animation-delay:${d}s`);
+      // Z's in screen pixels, in ice, so a dozing list bird reads at a glance: they rise off
+      // its head and drift up out of its box (the svg doesn't clip), growing as they go.
+      const u = toUnits(px, vw), zs = Math.min(7, Math.max(3.4, px * 0.07)) * u, sd = b.fxSide || 1;
+      const z = `M${f(-zs)},${f(-zs)} H${f(zs)} L${f(-zs)},${f(zs)} H${f(zs)}`;
+      [0, -1.3, -2.6].forEach((d) => {
+        o += at(fx.zz, `<path d="${z}" style="stroke:var(--bird-shine)" stroke-width="${f(Math.max(sw * 0.95, 1.3 * u))}"/>`, "fk-zzz", `animation-delay:${d}s;--zx:${f(sd * 7 * u)}px;--zy:${f(-17 * u)}px`);
       });
       break;
     }
@@ -305,12 +318,12 @@ export function buildBird(o: BuildOpts): string {
   }).join("");
   const lp = b.sep && b.headPivot ? b.headPivot : [b.eyes.reduce((s, e) => s + e[0], 0) / b.eyes.length, b.eyes.reduce((s, e) => s + e[1], 0) / b.eyes.length];
   const lr = b.lookRot || 2;
-  const head = `<g class="fk-head" style="transform-origin:${f(lp[0])}px ${f(lp[1])}px"><g class="fk-look" style="transform-origin:${f(lp[0])}px ${f(lp[1])}px;--lr:${lr}">${b.head.map(part).join("")}${eyes}${faceFx(b, mood, sw, lod)}</g></g>`;
+  const head = `<g class="fk-head" style="transform-origin:${f(lp[0])}px ${f(lp[1])}px"><g class="fk-look" style="transform-origin:${f(lp[0])}px ${f(lp[1])}px;--lr:${lr}">${b.head.map(part).join("")}${eyes}${faceFx(b, mood, sw, lod, px, vw, o.fx !== false)}</g></g>`;
   const showPerch = !!b.perch && crop === "full" && lod < 2 && !!o.perch;
   const perch = showPerch ? `<path d="${b.perch}" stroke-width="${f(sw * 0.85)}"/>${b.perchF && lod < 1 ? `<path d="${b.perchF}" stroke-width="${f(sw * 0.6)}"/>` : ""}` : "";
   const [gx, gy] = b.ground;
   const cls = ["fk", "fk-e-" + mood, b.sep && "fk-sep", b.hover && "fk-hov", b.id === "cinder" && "fk-glide", !E.gaze && "fk-wander", bust && "fk-bust"].filter(Boolean).join(" ");
-  const svg = `<svg class="${cls}" viewBox="${vb.join(" ")}" width="100%" height="100%" style="--t:${b.sep ? 1 : 0.5}" aria-hidden="true">${shine(vb, mood)}<g fill="none" stroke="url(#§g)" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round">${perch}<g class="fk-rig" style="transform-origin:${gx}px ${gy}px"><g class="fk-breath" style="transform-origin:${gx}px ${gy}px">${b.layers.map(layer).join("")}${head}</g></g>${o.fx === false ? "" : `<g class="fk-fx">${sceneFx(b, mood, vb, sw)}</g>`}</g></svg>`;
+  const svg = `<svg class="${cls}" viewBox="${vb.join(" ")}" width="100%" height="100%" style="--t:${b.sep ? 1 : 0.5}" aria-hidden="true">${shine(vb, mood)}<g fill="none" stroke="url(#§g)" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round">${perch}<g class="fk-rig" style="transform-origin:${gx}px ${gy}px"><g class="fk-breath" style="transform-origin:${gx}px ${gy}px">${b.layers.map(layer).join("")}${head}</g></g>${o.fx === false ? "" : `<g class="fk-fx">${sceneFx(b, mood, vb, sw, px)}</g>`}</g></svg>`;
   const out = svg.replace(/(fill|stroke)="§p"/g, 'style="$1:var(--bird-paper)"');
   cache.set(key, out);
   return out;

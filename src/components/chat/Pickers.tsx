@@ -66,10 +66,9 @@ export function ModelPicker({ sessionId, compact = false }: { sessionId: string 
         onClick={() => setOpen((v) => !v)}
         aria-label={`Model: ${label}${variant ? `, ${levelName(variant)} thinking` : ""}`}
         data-tip={compact && variant ? `${levelName(variant)} thinking` : undefined}
-        className={`flex h-8 items-center gap-1.5 rounded-md px-2 text-[13px] text-ink-2 transition-colors hover:bg-hover hover:text-ink ${compact ? "shrink-0" : "min-w-0"}`}
+        className={`flex min-w-0 items-center gap-1.5 rounded-full text-ink-2 transition-colors hover:bg-hover hover:text-ink ${compact ? "h-10 pr-2 pl-3 text-[14px]" : "h-8 pr-2 pl-2.5 text-[13px]"} ${open ? "bg-hover text-ink" : ""}`}
       >
-        {/* On a phone the name keeps its width ("Deep…" says nothing) and drops the chevron to leave the message field room. */}
-        <span className={`truncate ${compact ? "max-w-[104px]" : "max-w-[220px]"}`}>{label}</span>
+        <span className={`truncate ${compact ? "max-w-[132px]" : "max-w-[220px]"}`}>{label}</span>
         {/* Thinking stays in sight when it's on; where room is short, the brain alone (its level in the tooltip). */}
         {variant && (
           <span className="flex shrink-0 items-center gap-1 text-muted">
@@ -77,7 +76,7 @@ export function ModelPicker({ sessionId, compact = false }: { sessionId: string 
             {!compact && levelName(variant)}
           </span>
         )}
-        {!compact && <ChevronDown size={13} className="-ml-0.5 shrink-0 text-faint" />}
+        <ChevronDown size={13} className={`-ml-0.5 shrink-0 text-faint transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
       </button>
       <Popover open={open} onClose={() => setOpen(false)} anchor={anchor.current} placement="top-end" width={Math.min(320, window.innerWidth - 16)} label="Model">
         <ModelMenu sessionId={sessionId} touch={touch} onDone={() => setOpen(false)} />
@@ -344,7 +343,7 @@ function LevelPage({ m, current, onBack, onPick }: { m: ModelInfo; current: stri
 }
 
 /** Who you're talking to. A small chip in the composer, or in a session's header the face and name over `subtitle`. Either opens the switcher. */
-export function AgentPicker({ sessionId, header = false, subtitle }: { sessionId: string | null; header?: boolean; subtitle?: ReactNode }) {
+export function AgentPicker({ sessionId, header = false, compact = false, subtitle }: { sessionId: string | null; header?: boolean; compact?: boolean; subtitle?: ReactNode }) {
   const anchor = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
   const agents = useChat((s) => s.agents);
@@ -382,12 +381,12 @@ export function AgentPicker({ sessionId, header = false, subtitle }: { sessionId
         className={
           header
             ? "no-drag flex min-w-0 items-center gap-2.5 rounded-lg py-1 pr-2 pl-1 text-left transition-colors hover:bg-hover"
-            : `flex h-8 items-center gap-1 rounded-md px-1.5 text-[13px] hover:bg-hover hover:text-ink ${empty ? "text-ink" : "text-ink-2"}`
+            : `flex min-w-0 items-center gap-1.5 rounded-full transition-colors hover:bg-hover hover:text-ink ${compact ? "h-10 pr-2.5 pl-1.5 text-[14px]" : "h-8 pr-2 pl-1 text-[13px]"} ${empty ? "text-ink" : "text-ink-2"} ${open ? "bg-hover text-ink" : ""}`
         }
       >
         {header ? (
           <>
-            <AgentMark id={current} color={info?.color} size={30} state={state} />
+            <AgentMark id={current} color={info?.color} size={30} state={state} doze={false} />
             <span className="min-w-0">
               <span className="flex items-center gap-1 text-[14px] leading-tight font-semibold text-ink">
                 <span className="truncate">{empty ? "Add a teammate" : name || "Agent"}</span>
@@ -398,9 +397,10 @@ export function AgentPicker({ sessionId, header = false, subtitle }: { sessionId
           </>
         ) : (
           <>
-            <AgentMark id={current} color={info?.color} size={18} state={state} />
-            {empty && "Add a teammate"}
-            <ChevronDown size={13} className="text-faint" />
+            {/* Who'll take it: their face and name, like DitherUI's mode pills. A phone's draft shows the name big above, so the pill keeps the face. */}
+            <AgentMark id={current} color={info?.color} size={compact ? 26 : 22} state={state} />
+            {(!compact || empty) && <span className="truncate">{empty ? "Add a teammate" : name || "Agent"}</span>}
+            <ChevronDown size={13} className={`shrink-0 text-faint transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
           </>
         )}
       </button>

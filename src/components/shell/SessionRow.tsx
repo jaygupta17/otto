@@ -8,9 +8,10 @@ import { deleteSession } from "../../lib/actions";
 import { Popover, MenuItem } from "../ui/Popover";
 import { AgentClock } from "../ui/AgentClock";
 import { Pip } from "../ui/Pip";
+import { useAgentName } from "../../state/teammates";
 import { useFace } from "../../state/face";
-import { AgentMark, PlainMark } from "../ui/Bird";
-import { useAgentName, useTeammate } from "../../state/teammates";
+import { useDoing } from "../../state/tiers";
+import { AgentMark } from "../ui/Bird";
 
 /** The one mark a session shows where there's no bird: working, needs you, failed, or a new result. */
 export function SessionPip({ busy, asking, unread, failed }: { busy: boolean; asking: boolean; unread: boolean; failed: boolean }) {
@@ -21,7 +22,13 @@ export function SessionPip({ busy, asking, unread, failed }: { busy: boolean; as
   return null;
 }
 
-export const SessionRow = memo(function SessionRow({ s, now, onNavigate }: { s: SessionInfo; now: number; onNavigate?: () => void }) {
+/**
+ * A session in the sidebar. Past ones are a line of text, never a face: faces
+ * belong to the agents, so the eye can tell the team from the history without
+ * reading. One that wants you (`face`) is a raised row with the agent's face and
+ * what it's doing right now.
+ */
+export const SessionRow = memo(function SessionRow({ s, now, face, onNavigate }: { s: SessionInfo; now: number; face?: boolean; onNavigate?: () => void }) {
   const active = useChat((st) => st.activeId === s.id);
   const busy = useChat((st) => !!st.busy[s.id]);
   const unread = useChat((st) => !!st.unread[s.id]);
@@ -36,9 +43,9 @@ export const SessionRow = memo(function SessionRow({ s, now, onNavigate }: { s: 
   const title = s.title || "New session";
   const failed = s.outcome === "failed";
   const agentName = useAgentName(s.agent);
-  // Teammates show their face; plain agents the agent orb, so the column of marks stays even.
-  const face = !!useTeammate(s.agent);
+  const where = [agentName, basename(s.location.directory)].filter(Boolean).join(" · ");
   const mood = useFace(s.id);
+  const doing = useDoing(s.id, !!face && busy);
 
   return (
     <motion.div layout="position" aria-current={active ? "true" : undefined} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.15 }}>
@@ -53,9 +60,14 @@ export const SessionRow = memo(function SessionRow({ s, now, onNavigate }: { s: 
           e.preventDefault();
           setMenu(true);
         }}
-        className={`group relative flex items-center gap-3 rounded-[10px] py-2 pr-2.5 pl-2 transition-colors ${active ? "chip" : "hover:bg-hover"}`}
+        data-tone={face && asking && !active ? "needs" : undefined}
+        className={
+          face
+            ? `group relative flex items-center gap-2.5 rounded-[12px] py-2 pr-2.5 pl-1.5 ${active ? "chip" : "bezel"}`
+            : `group relative flex items-center rounded-[10px] py-[7px] pr-2.5 pl-3 transition-colors ${active ? "chip" : "hover:bg-hover"}`
+        }
       >
-        {face ? <AgentMark id={s.agent} size={44} state={mood} /> : <PlainMark size={44} state={mood} />}
+        {face && <AgentMark id={s.agent} size={40} state={mood} />}
         <span className="min-w-0 flex-1">
           {editing ? (
             <input
@@ -75,14 +87,34 @@ export const SessionRow = memo(function SessionRow({ s, now, onNavigate }: { s: 
             />
           ) : (
             <span className="flex items-baseline gap-2">
-              <span className={`min-w-0 flex-1 truncate text-[14px] text-ink ${active || unread || asking ? "font-semibold" : "font-medium"}`}>{title}</span>
-              <span className="shrink-0 text-[11px] text-muted font-mono tabular-nums group-hover:invisible">{busy && !face ? <AgentClock size={11} /> : timeAgo(s.time.updated, now)}</span>
+              <span className={`min-w-0 flex-1 truncate text-[14px] text-ink ${face || active || unread || asking ? "font-semibold" : "font-medium"}`}>{title}</span>
+              <span className="shrink-0 text-[11px] text-muted font-mono tabular-nums group-hover:invisible">{timeAgo(s.time.updated, now)}</span>
             </span>
           )}
-          <span className="flex items-center gap-2">
-            <span className={`min-w-0 flex-1 truncate text-[12.5px] ${asking ? "text-info" : failed ? "text-danger" : "text-muted"}`}>{asking ? "Needs you" : failed ? "Didn't finish" : agentName || basename(s.location.directory)}</span>
-            {!asking && unread && !busy && !face && <Pip tone="new" label="New result" />}
-          </span>
+          {face ? (
+            <span className="flex items-center gap-2 text-[12.5px]">
+              {asking ? (
+                <span className="text-info">Needs you</span>
+              ) : busy ? (
+                <span className="shimmer min-w-0 truncate">{doing || (agentName ? `${agentName} is working` : "Working")}</span>
+              ) : unread ? (
+                <>
+                  <Pip tone={failed ? "error" : "new"} label={failed ? "Didn't finish" : "New result"} />
+                  <span className="min-w-0 truncate text-ink-2">
+                    {failed ? "Didn't finish" : "New result"}
+                    {agentName && <span className="text-muted"> · {agentName}</span>}
+                  </span>
+                </>
+              ) : (
+                <span className="min-w-0 truncate text-muted">{where}</span>
+              )}
+            </span>
+          ) : (
+            <span className="flex items-center gap-2">
+              <span className={`min-w-0 flex-1 truncate text-[12.5px] ${asking ? "text-info" : failed ? "text-danger" : "text-muted"}`}>{asking ? "Needs you" : failed ? "Didn't finish" : where}</span>
+              <SessionPip busy={busy} asking={asking} unread={unread} failed={false} />
+            </span>
+          )}
         </span>
         <button
           ref={more}

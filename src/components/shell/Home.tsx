@@ -65,17 +65,23 @@ export function Home({ compact = false }: { compact?: boolean }) {
 
           <ConnectionBanner />
 
-          <Composer sessionId={null} autoFocus compact={compact} placeholder={mate ? "Ask anything, or hand over a task" : "Describe a task, ask a question, or paste an error"} />
-
-          <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-[13px]">
-            <span className="surface-thin inline-flex rounded-full">
-              <ProjectPicker />
-            </span>
-            <span className="surface-thin inline-flex h-7 items-center gap-1.5 rounded-full px-2.5 text-muted">
-              <WorkspaceIcon provider={ws?.provider ?? "boat"} size={13} />
-              {ws?.name}
-            </span>
-          </div>
+          <Composer
+            sessionId={null}
+            autoFocus
+            // Phone-sized tools are for phones; a narrow window still has a pointer.
+            placeholder={mate ? "Ask anything, or hand over a task" : "Describe a task, ask a question, or paste an error"}
+            tray={
+              <>
+                <span className="surface-thin inline-flex rounded-full">
+                  <ProjectPicker />
+                </span>
+                <span className="ml-auto inline-flex h-7 min-w-0 items-center gap-1.5 px-2.5 text-muted">
+                  <WorkspaceIcon provider={ws?.provider ?? "boat"} size={13} />
+                  <span className="truncate">{ws?.name}</span>
+                </span>
+              </>
+            }
+          />
 
           {recent.length > 0 && !compact && (
             <section className="mt-12">

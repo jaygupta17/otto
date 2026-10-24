@@ -3,10 +3,10 @@ import { Check, ChevronsUpDown, PanelLeft, Plus, Search, Settings, SquarePen, Cl
 import { UpdatePill } from "./UpdateControls";
 import { useMemo, useRef, useState } from "react";
 import type { SessionInfo } from "@opencode/client";
-import { sortedSessions, useChat } from "../../state/chat";
+import { useChat } from "../../state/chat";
 import { useTeammates } from "../../state/teammates";
-import { isOfferedAgent } from "../../lib/teammates";
-import { AgentRows, type AgentGroup } from "./AgentRows";
+import { useOfferedAgents, useSessionTiers } from "../../state/tiers";
+import { AgentRows } from "./AgentRows";
 import { SessionRow } from "./SessionRow";
 import { useConnection } from "../../state/connection";
 import { useActiveWorkspace, useWorkspaces } from "../../state/workspaces";
@@ -154,68 +154,28 @@ export function statusText(status: string) {
   }
 }
 
-export function groupOf(ts: number, now: number) {
-  const d = new Date(ts);
-  const today = new Date(now);
-  today.setHours(0, 0, 0, 0);
-  if (d >= today) return "Today";
-  const y = new Date(today);
-  y.setDate(y.getDate() - 1);
-  if (d >= y) return "Yesterday";
-  const w = new Date(today);
-  w.setDate(w.getDate() - 7);
-  if (d >= w) return "This week";
-  return "Earlier";
-}
-
+/**
+ * The list in tiers, like the phone's: sessions that want you (raised, with
+ * the agent's face and what it's doing), the agents to start something with
+ * (a face and a name), then pinned and past sessions as lines of text.
+ */
 function SessionList({ query, onNavigate }: { query: string; onNavigate?: () => void }) {
-  const sessions = useChat((s) => s.sessions);
   const loaded = useChat((s) => s.sessionsLoaded);
-  const busy = useChat((s) => s.busy);
   const pinned = useChat((s) => s.pinned);
-  const catalog = useChat((s) => s.agents);
   const roster = useTeammates((s) => s.byId);
   const status = useConnection((s) => s.status);
   const now = useNow(true, 30_000);
-  // Sessions split by teammate, so wait for the roster too: otherwise every session lands under a date first and then jumps.
+  // Agents carry teammates' names and faces, so wait for the roster too: otherwise the list draws twice.
   const ready = loaded && roster !== null;
+  const { active, recent } = useSessionTiers(query);
+  const offered = useOfferedAgents();
 
-  const { pins, rows, groups } = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const list = sortedSessions(sessions).filter((s) => !q || (s.title ?? "").toLowerCase().includes(q) || s.location.directory.toLowerCase().includes(q));
-    const pins = pinned.map((id) => list.find((s) => s.id === id)).filter((s): s is SessionInfo => !!s);
-    const loose = list.filter((s) => !pinned.includes(s.id));
-
-    // Searching is a flat list. Otherwise each agent gets a row: teammates in the order they joined, then other agents that have sessions.
-    const teammates = Object.values(roster ?? {}).sort((a, b) => Number(b.leads) - Number(a.leads) || a.created - b.created || a.name.localeCompare(b.name));
-    const teamIds = new Set(teammates.map((t) => t.id));
-    const byAgent = new Map<string, SessionInfo[]>();
-    const rest: SessionInfo[] = [];
-    for (const s of loose) {
-      const a = s.agent ?? "";
-      const offered = teamIds.has(a) || (!!a && isOfferedAgent(a) && catalog.some((c) => c.id === a));
-      if (!q && offered) byAgent.set(a, [...(byAgent.get(a) ?? []), s]);
-      else rest.push(s);
-    }
-    const rows: AgentGroup[] = q
-      ? []
-      : [
-          ...teammates.map((t) => ({ id: t.id, name: t.name, job: t.job, sessions: byAgent.get(t.id) ?? [] })),
-          ...[...byAgent.keys()].filter((id) => !teamIds.has(id)).map((id) => ({ id, name: catalog.find((c) => c.id === id)?.name ?? id, sessions: byAgent.get(id) ?? [] })),
-        ];
-
-    const working = rest.filter((s) => busy[s.id]);
-    const idle = rest.filter((s) => !busy[s.id]);
-    const out: [string, SessionInfo[]][] = [];
-    if (working.length) out.push(["Working", working]);
-    for (const s of idle) {
-      const g = groupOf(s.time.updated, now);
-      const last = out[out.length - 1];
-      if (last && last[0] === g) last[1].push(s);
-      else out.push([g, [s]]);
-    }
-    return { pins, rows, groups: out };
-  }, [sessions, busy, query, now, pinned, roster, catalog]);
+  const { pins, rest, agents } = useMemo(() => {
+    const pins = pinned.map((id) => recent.find((s) => s.id === id)).filter((s): s is SessionInfo => !!s);
+    // Someone already on an active row isn't offered again under Agents.
+    const on = new Set(active.map((s) => s.agent ?? ""));
+    return { pins, rest: recent.filter((s) => !pinned.includes(s.id)), agents: query.trim() ? [] : offered.filter((a) => !on.has(a.id)) };
+  }, [active, recent, pinned, offered, query]);
 
   return (
     <div className="scroll-quiet mt-3 min-h-0 flex-1 overflow-y-auto px-2 pb-3">
@@ -223,7 +183,7 @@ function SessionList({ query, onNavigate }: { query: string; onNavigate?: () => 
         <div className="space-y-1" aria-hidden>
           {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="flex animate-pulse items-center gap-3 py-2 pr-2.5 pl-2" style={{ opacity: 1 - i * 0.13 }}>
-              <div className="h-11 w-11 shrink-0 rounded-full bg-hover" />
+              <div className="h-10 w-10 shrink-0 rounded-full bg-hover" />
               <div className="flex-1 space-y-1.5">
                 <div className="h-2.5 w-20 rounded-full bg-hover" />
                 <div className="h-2.5 w-32 rounded-full bg-hover" />
@@ -232,35 +192,43 @@ function SessionList({ query, onNavigate }: { query: string; onNavigate?: () => 
           ))}
         </div>
       )}
-      {ready && pins.length === 0 && rows.length === 0 && groups.length === 0 && <div className="px-2 py-3 text-[13px] text-muted">{query ? `Nothing matches “${query}”.` : "Sessions you start appear here."}</div>}
-      {ready && pins.length > 0 && <SessionGroup label="Pinned" list={pins} now={now} onNavigate={onNavigate} />}
-      {ready && rows.length > 0 && (
-        <div className="mt-1">
-          <AgentRows groups={rows} now={now} onNavigate={onNavigate} />
-        </div>
+      {ready && active.length + agents.length + recent.length === 0 && <div className="px-2 py-3 text-[13px] text-muted">{query ? `Nothing matches “${query}”.` : "Sessions you start appear here."}</div>}
+      {ready && active.length > 0 && (
+        <SessionGroup label="Active">
+          <div className="space-y-1.5">
+            <AnimatePresence initial={false}>
+              {active.map((s) => (
+                <SessionRow key={s.id} s={s} now={now} face onNavigate={onNavigate} />
+              ))}
+            </AnimatePresence>
+          </div>
+        </SessionGroup>
       )}
-      {ready && groups.map(([label, list]) => (
-        <SessionGroup key={label} label={label} list={list} now={now} onNavigate={onNavigate} />
-      ))}
+      {ready && agents.length > 0 && (
+        <SessionGroup label="Agents">
+          <AgentRows agents={agents} onNavigate={onNavigate} />
+        </SessionGroup>
+      )}
+      {ready && pins.length > 0 && <SessionGroup label="Pinned" list={pins} now={now} onNavigate={onNavigate} />}
+      {ready && rest.length > 0 && <SessionGroup label="Recent" list={rest} now={now} onNavigate={onNavigate} />}
     </div>
   );
 }
 
-function SessionGroup({ label, list, now, onNavigate }: { label: string; list: SessionInfo[]; now: number; onNavigate?: () => void }) {
+function SessionGroup({ label, list, now, onNavigate, children }: { label: string; list?: SessionInfo[]; now?: number; onNavigate?: () => void; children?: React.ReactNode }) {
   return (
-    <div className="mt-5 first:mt-1">
-      <div className="flex items-center gap-1.5 px-2 pb-1.5 text-[11px] font-medium tracking-[0.06em] text-accent-ink uppercase">
-        {label}
-        {label === "Working" && <span className="tabular-nums">{list.length}</span>}
-      </div>
-      <div className="space-y-1">
-        <AnimatePresence initial={false}>
-          {list.map((s) => (
-            <SessionRow key={s.id} s={s} now={now} onNavigate={onNavigate} />
-          ))}
-        </AnimatePresence>
-      </div>
-    </div>
+    <section className="mt-7 first:mt-1">
+      <h2 className="list-label px-2 pb-2">{label}</h2>
+      {children ?? (
+        <div className="space-y-0.5">
+          <AnimatePresence initial={false}>
+            {list?.map((s) => (
+              <SessionRow key={s.id} s={s} now={now ?? Date.now()} onNavigate={onNavigate} />
+            ))}
+          </AnimatePresence>
+        </div>
+      )}
+    </section>
   );
 }
 
