@@ -18,30 +18,10 @@ import { basename, prettyPath } from "../../lib/format";
 import type { ModelRef } from "../../lib/opencode/client";
 import { toast, useUI } from "../../state/ui";
 import { FolderBrowser } from "./FolderBrowser";
+import { cleanName, isFree, keyOf, modelLabel, modelLabels, providerName } from "../../lib/modelLabel";
 
-const PROVIDER_NAMES: Record<string, string> = {
-  opencode: "OpenCode Zen",
-  "opencode-go": "OpenCode Go",
-  anthropic: "Anthropic",
-  openai: "OpenAI",
-  openrouter: "OpenRouter",
-  google: "Google",
-  deepseek: "DeepSeek",
-  "github-copilot": "GitHub Copilot",
-  "cloudflare-workers-ai": "Cloudflare",
-  "zai-coding-plan": "Z.AI",
-  xai: "xAI",
-  mistral: "Mistral",
-  groq: "Groq",
-};
-
-export function providerName(id: string) {
-  return PROVIDER_NAMES[id] ?? id.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
-function isFree(m: ModelInfo) {
-  return m.id.endsWith("-free") || m.id.endsWith(":free") || (m.cost?.[0]?.input === 0 && m.cost?.[0]?.output === 0);
-}
+// Settings imports the provider naming from here; the rest lives with the label helper.
+export { providerName };
 
 function useCurrentModel(sessionId: string | null): { ref: ModelRef | null; info: ModelInfo | null } {
   const sessionModel = useChat((s) => (sessionId ? s.sessions[sessionId]?.model : undefined));
@@ -53,13 +33,7 @@ function useCurrentModel(sessionId: string | null): { ref: ModelRef | null; info
   return { ref, info };
 }
 
-/** "Exo Free", "Big Pickle (free)", "foo-free" → the name without the free tag. */
-function cleanName(m: ModelInfo) {
-  return m.name.replace(/\s*[·(\-–:]?\s*free\)?$/i, "").trim() || m.name;
-}
-
 const RECENT_KEY = "models.recent";
-const keyOf = (m: { providerID: string; id: string }) => `${m.providerID}/${m.id}`;
 
 /** Thinking levels by their variant ids, in plain words. */
 const LEVELS: Record<string, string> = { default: "Default", none: "Off", minimal: "Minimal", low: "Low", medium: "Medium", high: "High", xhigh: "Extra high", max: "Max" };
@@ -79,7 +53,9 @@ export function ModelPicker({ sessionId, compact = false }: { sessionId: string 
   const anchor = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
   const { ref, info } = useCurrentModel(sessionId);
-  const label = info ? cleanName(info) : (ref?.id ?? "Choose model");
+  const models = useChat((s) => s.models);
+  // A free twin can share this name; the chip says which one is in use.
+  const label = info ? modelLabel(models, info) : (ref?.id ?? "Choose model");
   const variant = ref?.variant && ref.variant !== "default" ? ref.variant : null;
   const touch = useTouch();
 
@@ -132,6 +108,8 @@ function ModelMenu({ sessionId, touch = false, onDone }: { sessionId: string | n
   useEffect(() => () => window.clearTimeout(hover.current), []);
 
   const usable = useMemo(() => models.filter((m) => m.status !== "deprecated" && m.enabled !== false && !broken.includes(keyOf(m))), [models, broken]);
+  // Names a free and a paid model share are tagged, so no two rows read alike.
+  const labels = useMemo(() => modelLabels(usable), [usable]);
   const term = q.trim().toLowerCase();
 
   const groups = useMemo(() => {
@@ -171,6 +149,8 @@ function ModelMenu({ sessionId, touch = false, onDone }: { sessionId: string | n
     const levels = m.variants?.length > 0;
     const open = sub?.m === m;
     const level = active && ref?.variant && ref.variant !== "default" ? levelName(ref.variant) : null;
+    // Tagged when a twin shares this name, so a free and a paid model never read alike.
+    const text = labels.get(keyOf(m)) ?? cleanName(m);
     return (
       <button
         key={keyOf(m)}
@@ -190,8 +170,8 @@ function ModelMenu({ sessionId, touch = false, onDone }: { sessionId: string | n
       >
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-1.5">
-            <span className={`truncate ${touch ? "text-[16px]" : "text-[13px]"} text-ink ${active ? "font-medium" : ""}`}>{cleanName(m)}</span>
-            {freeTag && isFree(m) && <span className="shrink-0 text-[12px] text-ok">Free</span>}
+            <span className={`truncate ${touch ? "text-[16px]" : "text-[13px]"} text-ink ${active ? "font-medium" : ""}`}>{text}</span>
+            {freeTag && isFree(m) && !text.endsWith("Free") && <span className="shrink-0 text-[12px] text-ok">Free</span>}
           </span>
           {showProvider && <span className="block truncate text-[12px] text-muted">{providerName(m.providerID)}</span>}
         </span>

@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
-import type { SessionMessageInfo, SessionMessagesResponse } from "@opencode/client";
+import type { SessionInfo, SessionMessageInfo, SessionMessagesResponse } from "@opencode/client";
+import { kv } from "../lib/kv";
 import type { OpenCode } from "../lib/opencode/client";
-import { TIMELINE_PAGE, TIMELINE_TAIL, useChat } from "./chat";
+import { PREFS_DEBOUNCE_MS, TIMELINE_PAGE, TIMELINE_TAIL, pruneDrafts, useChat } from "./chat";
+import { useWorkspaces } from "./workspaces";
 
 const user = (id: string, text = id, created = 1): SessionMessageInfo => ({ id, type: "user", text, time: { created } }) as unknown as SessionMessageInfo;
 const assistant = (id: string, created = 2): SessionMessageInfo =>
@@ -143,5 +145,137 @@ describe("loadTail", () => {
     answer(page([assistant("a2")]));
     await pending;
     expect(timeline()).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Reload persistence: the open session and unsent drafts survive a reload.
+// ---------------------------------------------------------------------------
+
+const sess = (id: string): SessionInfo => ({ id, title: id, cost: 0, tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } }, time: { created: 1, updated: 2 } }) as unknown as SessionInfo;
+
+/** A client with just enough surface for `bootstrap` (and the restore's timeline load). */
+function bootClient(sessions: SessionInfo[]) {
+  return {
+    sessions: async () => ({ data: sessions, cursor: {} }),
+    location: async () => ({ directory: "/home/dev" }),
+    agents: async () => [],
+    models: async () => [],
+    defaultModel: async () => null,
+    activeSessions: async () => [],
+    pendingPermissions: async () => [],
+    pendingForms: async () => [],
+    request: async () => ({}),
+    messages: async () => ({ data: [], cursor: {} }),
+    inbox: async () => [],
+  } as unknown as OpenCode;
+}
+
+/** kv backed by a map, recording writes. The test env has no localStorage. */
+function fakeKv(preset: Record<string, unknown> = {}) {
+  const store: Record<string, unknown> = { ...preset };
+  const writes: Array<[string, unknown]> = [];
+  const gets = spyOn(kv, "get").mockImplementation(async (key: string) => store[key]);
+  const sets = spyOn(kv, "set").mockImplementation(async (key: string, value: unknown) => {
+    writes.push([key, value]);
+    store[key] = value;
+  });
+  return { store, writes, restore: () => (gets.mockRestore(), sets.mockRestore()) };
+}
+
+describe("reload persistence", () => {
+  test("pruneDrafts drops cleared drafts and keeps typed ones", () => {
+    expect(pruneDrafts({ ses1: "hello", ses2: "", new: "draft" })).toEqual({ ses1: "hello", new: "draft" });
+    expect(pruneDrafts({})).toEqual({});
+  });
+
+  test("reopens the session the user was in, once the list confirms it exists", async () => {
+    const kvFake = fakeKv({ "chat.prefs.none": { activeId: "ses2", drafts: { ses1: "unsent" } } });
+    try {
+      useChat.setState({ client: bootClient([sess("ses1"), sess("ses2")]) });
+      await useChat.getState().bootstrap(useChat.getState().client!);
+      expect(useChat.getState().activeId).toBe("ses2");
+      // The draft came back with it, and the restore wrote the same activeId back.
+      expect(useChat.getState().drafts).toEqual({ ses1: "unsent" });
+      expect(kvFake.writes.some(([k, v]) => k === "chat.prefs.none" && (v as { activeId?: string }).activeId === "ses2")).toBe(true);
+    } finally {
+      kvFake.restore();
+    }
+  });
+
+  test("falls back to the agent home when the saved session is gone", async () => {
+    const kvFake = fakeKv({ "chat.prefs.none": { activeId: "ses_deleted" } });
+    try {
+      useChat.setState({ client: bootClient([sess("ses1")]) });
+      await useChat.getState().bootstrap(useChat.getState().client!);
+      expect(useChat.getState().activeId).toBeNull();
+    } finally {
+      kvFake.restore();
+    }
+  });
+
+  test("does not yank the user back after they navigate away", async () => {
+    const kvFake = fakeKv({ "chat.prefs.none": { activeId: "ses2" } });
+    try {
+      useChat.setState({ client: bootClient([sess("ses1"), sess("ses2")]) });
+      await useChat.getState().bootstrap(useChat.getState().client!);
+      expect(useChat.getState().activeId).toBe("ses2");
+      useChat.getState().open("ses1"); // the user picks another session
+      await useChat.getState().resync(); // a later resync must not reopen ses2
+      expect(useChat.getState().activeId).toBe("ses1");
+    } finally {
+      kvFake.restore();
+    }
+  });
+
+  test("typing debounces to one write per pause; clearing writes immediately", async () => {
+    const kvFake = fakeKv({ "chat.prefs.none": {} });
+    try {
+      useChat.setState({ client: bootClient([]) });
+      await useChat.getState().bootstrap(useChat.getState().client!);
+      kvFake.writes.length = 0;
+      useChat.getState().setDraft("ses1", "h");
+      useChat.getState().setDraft("ses1", "hi");
+      expect(kvFake.writes).toHaveLength(0); // still typing: nothing on disk yet
+      await new Promise((r) => setTimeout(r, PREFS_DEBOUNCE_MS + 80));
+      expect(kvFake.writes).toHaveLength(1);
+      expect((kvFake.writes[0][1] as { drafts: Record<string, string> }).drafts).toEqual({ ses1: "hi" });
+      useChat.getState().setDraft("ses1", ""); // a send clears it
+      expect(kvFake.writes).toHaveLength(2);
+      expect((kvFake.writes[1][1] as { drafts: Record<string, string> }).drafts).toEqual({});
+    } finally {
+      kvFake.restore();
+    }
+  });
+
+  test("a draft typed while the workspace was switching stays under the old workspace's key", async () => {
+    const kvFake = fakeKv({ "chat.prefs.wsA": {} });
+    const prevWs = useWorkspaces.getState().activeId;
+    try {
+      useWorkspaces.setState({ activeId: "wsA" });
+      useChat.setState({ client: bootClient([]) });
+      await useChat.getState().bootstrap(useChat.getState().client!);
+      kvFake.writes.length = 0;
+      useChat.getState().setDraft("ses1", "for wsA");
+      useWorkspaces.setState({ activeId: "wsB" }); // switch before the debounce fires
+      await new Promise((r) => setTimeout(r, PREFS_DEBOUNCE_MS + 80));
+      expect(kvFake.writes).toHaveLength(1);
+      expect(kvFake.writes[0][0]).toBe("chat.prefs.wsA");
+      expect((kvFake.writes[0][1] as { drafts: Record<string, string> }).drafts).toEqual({ ses1: "for wsA" });
+    } finally {
+      useWorkspaces.setState({ activeId: prevWs });
+      kvFake.restore();
+    }
+  });
+
+  test("drafts typed while connecting are kept and merged over the saved ones", async () => {
+    const kvFake = fakeKv({ "chat.prefs.none": { drafts: { ses1: "saved" } } });
+    try {
+      useChat.setState({ client: bootClient([]), drafts: { new: "typed early" } });
+      await useChat.getState().bootstrap(useChat.getState().client!);
+      expect(useChat.getState().drafts).toEqual({ ses1: "saved", new: "typed early" });
+    } finally {
+      kvFake.restore();
+    }
   });
 });

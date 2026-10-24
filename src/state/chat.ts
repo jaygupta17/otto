@@ -142,6 +142,20 @@ let sessionGeneration = 0;
 let busyGeneration = 0;
 /** Bumped on reset; a timeline read still in flight must not land in a new workspace's store. */
 let timelineGeneration = 0;
+/** The open session saved for this workspace (in `chat.prefs`); restored once the session list can confirm it exists. */
+let savedActiveId: string | null = null;
+/** Set once this connection has tried to restore the saved session; a resync must not reopen it under the user. */
+let restoreTried = false;
+/** The workspace that owns the live store. Prefs writes target it, never the workspace the user clicks next. */
+let prefsWsId: string | null = null;
+/** Set once this connection has applied its saved prefs; until then a write would clobber what bootstrap is about to read. */
+let prefsHydrated = false;
+/** Debounced prefs write (typing path): one write per pause, not one per keystroke. */
+let prefsTimer: ReturnType<typeof setTimeout> | undefined;
+/** Queued write, with the workspace and snapshot captured when it was scheduled. */
+let pendingPrefs: { wsId: string | null; prefs: ChatPrefs } | null = null;
+/** How long a keystroke waits before the prefs (drafts included) hit disk. */
+export const PREFS_DEBOUNCE_MS = 400;
 
 export const useChat = create<State>((set, get) => ({
   client: null,
@@ -221,6 +235,7 @@ export const useChat = create<State>((set, get) => ({
     try {
       const r = await client.revertStage(id, target.id);
       set((st) => ({ sessions: st.sessions[id] ? { ...st.sessions, [id]: { ...st.sessions[id], revert: r.data } } : st.sessions, drafts: { ...st.drafts, [id]: target.text } }));
+      void savePrefs();
     } catch (e) {
       toast({ tone: "error", title: "Couldn't undo", body: (e as Error).message });
     }
@@ -241,6 +256,7 @@ export const useChat = create<State>((set, get) => ({
         await client.revertClear(id);
         set((st) => ({ sessions: { ...st.sessions, [id]: { ...st.sessions[id], revert: undefined } }, drafts: { ...st.drafts, [id]: "" } }));
       }
+      void savePrefs();
     } catch (e) {
       toast({ tone: "error", title: "Couldn't redo", body: (e as Error).message });
     }
@@ -293,7 +309,16 @@ export const useChat = create<State>((set, get) => ({
     sessionGeneration++;
     busyGeneration++;
     timelineGeneration++;
-    set({ client: null, sessions: {}, sessionsLoaded: false, sessionsError: undefined, busy: {}, retrying: {}, unread: {}, timelines: {}, permissions: {}, forms: {}, parents: {}, delegated: {}, agents: [], models: [], catalogError: undefined, defaultModel: null, homeDir: null, activeId: null, pickedModel: null, pickedAgent: null, projectDir: null });
+    // Persistence is handed to the next connection's bootstrap; until it has
+    // read this workspace's prefs, a write would clobber them with defaults.
+    savedActiveId = null;
+    restoreTried = false;
+    prefsWsId = null;
+    prefsHydrated = false;
+    // Whatever was typed here was captured with this workspace's key: land it
+    // now, before the store is cleared and rehydrated for another machine.
+    flushPrefs();
+    set({ client: null, sessions: {}, sessionsLoaded: false, sessionsError: undefined, busy: {}, retrying: {}, unread: {}, timelines: {}, permissions: {}, forms: {}, parents: {}, delegated: {}, agents: [], models: [], catalogError: undefined, defaultModel: null, homeDir: null, activeId: null, pickedModel: null, pickedAgent: null, projectDir: null, drafts: {} });
   },
 
   async bootstrap(client) {
@@ -304,11 +329,25 @@ export const useChat = create<State>((set, get) => ({
     // bootstrap still in flight when the workspace changed must not put its
     // prefs, catalog or asks into the new one.
     const live = () => get().client === client;
-    const prefs = await kv.get<{ model?: ModelRef; agent?: string; projectDir?: string | null }>(wsKey("chat.prefs"));
+    // One workspace snapshot for the whole hydrate: read and later writes must agree,
+    // even if the user clicks another workspace while this bootstrap is running.
+    const wsId = useWorkspaces.getState().activeId ?? null;
+    const prefs = await kv.get<ChatPrefs>(wsKey("chat.prefs", wsId));
     if (!live()) return;
+    // From here on, prefs writes belong to this workspace.
+    prefsWsId = wsId;
+    prefsHydrated = true;
+    // Remembered after a reload/restart; applied once the session list can
+    // confirm it still exists (see maybeRestoreActive). The restore window was
+    // opened by `reset` — not here: a navigation made while these prefs were
+    // still reading (a Cmd+N during connect) must keep its veto.
+    savedActiveId = prefs?.activeId ?? null;
     // Always set all three: a workspace with no saved choices must not inherit the last one's (a local path on a cloud machine).
-    set({ pickedModel: prefs?.model ?? null, pickedAgent: prefs?.agent && isOfferedAgent(prefs.agent) ? prefs.agent : null, projectDir: prefs?.projectDir ?? null });
-    const [brokenModels, pinned, agentRowsOpen, delivery] = await Promise.all([kv.get<string[]>(wsKey("chat.brokenModels")), kv.get<string[]>(wsKey("chat.pinned")), kv.get<string[]>(wsKey("chat.agentRowsOpen")), kv.get<Delivery>("chat.delivery")]);
+    const typedWhileConnecting = get().drafts;
+    set({ pickedModel: prefs?.model ?? null, pickedAgent: prefs?.agent && isOfferedAgent(prefs.agent) ? prefs.agent : null, projectDir: prefs?.projectDir ?? null, drafts: { ...(prefs?.drafts ?? {}), ...typedWhileConnecting } });
+    // Anything typed before the saved prefs landed still needs a write of its own.
+    if (Object.keys(typedWhileConnecting).length) schedulePrefsSave();
+    const [brokenModels, pinned, agentRowsOpen, delivery] = await Promise.all([kv.get<string[]>(wsKey("chat.brokenModels", wsId)), kv.get<string[]>(wsKey("chat.pinned", wsId)), kv.get<string[]>(wsKey("chat.agentRowsOpen", wsId)), kv.get<Delivery>("chat.delivery")]);
     if (!live()) return;
     set({ brokenModels: brokenModels ?? [], pinned: pinned ?? [], agentRowsOpen: agentRowsOpen ?? [], delivery: delivery ?? "steer" });
 
@@ -317,7 +356,9 @@ export const useChat = create<State>((set, get) => ({
     // only view of a project's pending approval or question.
     const busyGen = busyGeneration;
     const sessionsLoad = get().loadSessions().then(() => {
-      if (live()) void syncAsks(client);
+      if (!live()) return;
+      void syncAsks(client);
+      maybeRestoreActive();
     });
     const results = await Promise.allSettled([
       sessionsLoad,
@@ -399,6 +440,8 @@ export const useChat = create<State>((set, get) => ({
     const busyGen = busyGeneration;
     await get().loadSessions();
     if (get().client !== client) return;
+    // The first load at bootstrap may have failed (or the saved session landed late).
+    maybeRestoreActive();
     // The config may have changed while the stream was down (an agent or
     // teammate removed elsewhere); the generation guard keeps this ordered.
     void get().refreshCatalog();
@@ -472,7 +515,11 @@ export const useChat = create<State>((set, get) => ({
   },
 
   open(id) {
+    // Any explicit navigation (including "new chat") ends the restore window:
+    // once the user has chosen, a late session list must not yank them back.
+    restoreTried = true;
     set((s) => ({ activeId: id, unread: id ? { ...s.unread, [id]: false } : s.unread }));
+    void savePrefs();
     if (useUI.getState().view !== "chat") useUI.getState().setView("chat");
     if (id) {
       const t = get().timelines[id];
@@ -588,6 +635,7 @@ export const useChat = create<State>((set, get) => ({
         const s = await client.createSession({ directory: dir, model, agent: get().pickedAgent || undefined });
         sid = s.id;
         set((st) => ({ sessions: { ...st.sessions, [s.id]: s }, timelines: { ...st.timelines, [s.id]: { messages: [], loaded: true, loading: false, older: null } }, activeId: s.id }));
+        void savePrefs();
       }
       const id = sid;
       await commitRevert(id);
@@ -666,11 +714,14 @@ export const useChat = create<State>((set, get) => ({
     const client = get().client;
     if (!client) return;
     const prev = get().sessions[id];
+    const wasActive = get().activeId === id;
     set((s) => {
       const sessions = { ...s.sessions };
       delete sessions[id];
       return { sessions, activeId: s.activeId === id ? null : s.activeId };
     });
+    // Deleting the open session lands on home; a reload should land there too.
+    if (wasActive) void savePrefs();
     try {
       await client.deleteSession(id);
     } catch (e) {
@@ -734,6 +785,10 @@ export const useChat = create<State>((set, get) => ({
 
   setDraft(key, text) {
     set((s) => ({ drafts: { ...s.drafts, [key]: text } }));
+    // Typing debounces to one write per pause; a send-clear lands immediately
+    // so a reload can't resurrect a draft that already went out.
+    if (text) schedulePrefsSave();
+    else void savePrefs();
   },
 
   async replyPermission(req, reply) {
@@ -874,14 +929,85 @@ function mergeAsks<T extends { id: string; sessionID: string }>(
 /**
  * Per-workspace on-device key. Model lists, agents and folders differ per
  * server, so a choice made on one workspace must not leak into another.
+ * Pass `wsId` to target the workspace captured earlier (a write queued before
+ * a switch must land under the workspace that owns it).
  */
-export function wsKey(base: string) {
-  return `${base}.${useWorkspaces.getState().activeId ?? "none"}`;
+export function wsKey(base: string, wsId = useWorkspaces.getState().activeId) {
+  return `${base}.${wsId ?? "none"}`;
+}
+
+/** What a workspace remembers about how the user left it. Drafts ride along, keyed by session id (or "new" for the home composer). */
+export interface ChatPrefs {
+  model?: ModelRef | null;
+  agent?: string | null;
+  projectDir?: string | null;
+  /** The session a reload should reopen; null = the agent home. */
+  activeId?: string | null;
+  drafts?: Record<string, string>;
+}
+
+/** Empty drafts are dropped: nothing to restore, and a cleared draft must not resurrect. */
+export function pruneDrafts(drafts: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(drafts)) if (v) out[k] = v;
+  return out;
+}
+
+function prefsSnapshot(): ChatPrefs {
+  const s = useChat.getState();
+  return { model: s.pickedModel, agent: s.pickedAgent, projectDir: s.projectDir, activeId: s.activeId, drafts: pruneDrafts(s.drafts) };
 }
 
 async function savePrefs() {
-  const s = useChat.getState();
-  await kv.set(wsKey("chat.prefs"), { model: s.pickedModel, agent: s.pickedAgent, projectDir: s.projectDir });
+  // A write before this connection has read the saved prefs would replace them with defaults.
+  if (!prefsHydrated) return;
+  // Land anything queued first — it carries its own workspace's key — then write this snapshot.
+  flushPrefs();
+  // Prefs are convenience state (a remembered session, a draft): a failed write
+  // must never surface as an error; the next change retries it.
+  await kv.set(wsKey("chat.prefs", prefsWsId), prefsSnapshot()).catch(() => {});
+}
+
+/**
+ * The typing path: one write per pause instead of one per keystroke. The
+ * workspace and snapshot are captured now, so a switch (which resets the
+ * store) can't file this workspace's drafts under the next one's key.
+ */
+function schedulePrefsSave() {
+  if (!prefsHydrated) return;
+  pendingPrefs = { wsId: prefsWsId, prefs: prefsSnapshot() };
+  if (prefsTimer) clearTimeout(prefsTimer);
+  prefsTimer = setTimeout(flushPrefs, PREFS_DEBOUNCE_MS);
+}
+
+/** Land a queued debounced write now (a switch, a reload, an explicit save). */
+function flushPrefs() {
+  if (prefsTimer) clearTimeout(prefsTimer);
+  prefsTimer = undefined;
+  const p = pendingPrefs;
+  pendingPrefs = null;
+  if (p) void kv.set(wsKey("chat.prefs", p.wsId), p.prefs).catch(() => {});
+}
+
+/**
+ * Reopen the session the user last had in this workspace, once the session
+ * list can confirm it still exists; a session that's gone falls back to the
+ * agent home. Runs at most once per connection, and never over a session the
+ * user opened in the meantime — after they've navigated, a resync must not
+ * pull them back.
+ */
+function maybeRestoreActive() {
+  const st = useChat.getState();
+  if (restoreTried || !savedActiveId) return;
+  // The user already opened something (or went home on purpose): their choice wins.
+  if (st.activeId) {
+    restoreTried = true;
+    return;
+  }
+  // The list didn't land (an error): a later resync retries the restore.
+  if (st.sessionsError) return;
+  restoreTried = true;
+  if (st.sessions[savedActiveId]) st.open(savedActiveId);
 }
 
 function markBroken(model: { providerID: string; id: string }) {
@@ -1364,4 +1490,7 @@ function modelKey(m: { providerID: string; id: string }) {
 
 // Stores hold live connections; a hot swap would orphan them. Reload instead.
 if (import.meta.hot) import.meta.hot.accept(() => window.location.reload());
+
+// A reload inside the debounce window must not eat the last keystrokes: land the queued write while the page is still here.
+if (typeof window !== "undefined") window.addEventListener("pagehide", () => flushPrefs());
 

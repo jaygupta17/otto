@@ -15,6 +15,7 @@ import { ChangedFiles } from "./ChangedFiles";
 import { usesScreen } from "../../lib/browserSteps";
 import { isStopError } from "../../lib/opencode/tools";
 import { ThreadSession } from "./ToolParts";
+import { TurnStatus, type RunError } from "./TurnStatus";
 import { AgentClock, Spinner } from "../ui/AgentClock";
 import { Button } from "../ui/Button";
 import { layerOpen } from "../../lib/layers";
@@ -80,6 +81,23 @@ export function Thread({ sessionId, bottomInset = 0 }: { sessionId: string; bott
   const cut = useMemo(() => revertIndex(timeline?.messages ?? [], revert), [timeline?.messages, revert]);
   const items = useMemo(() => buildItems((timeline?.messages ?? []).slice(0, cut)), [timeline?.messages, cut]);
   const hidden = (timeline?.messages.length ?? 0) - cut;
+
+  // What the alert region says out loud: the failure in the turn the user is on,
+  // or a timeline that wouldn't load. Older turns are history and stay quiet.
+  const runError = useMemo<RunError | null>(() => {
+    if (timeline?.error && !timeline.loaded) return { key: `load:${sessionId}`, text: timeline.error };
+    for (let i = items.length - 1; i >= 0; i--) {
+      const it = items[i];
+      if (it.type !== "turn") continue;
+      for (let j = it.msgs.length - 1; j >= 0; j--) {
+        const m = it.msgs[j];
+        if (m.kind === "notice" && m.tone === "error") return { key: `notice:${m.id}`, text: m.text };
+        if (m.kind === "assistant" && m.error && !isStopError(m.error)) return { key: `error:${m.id}`, text: m.error };
+      }
+      return null;
+    }
+    return null;
+  }, [items, timeline?.error, timeline?.loaded, sessionId]);
 
   const scroller = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
@@ -325,6 +343,8 @@ export function Thread({ sessionId, bottomInset = 0 }: { sessionId: string; bott
           {awaitingFirst && <Working sessionId={sessionId} />}
         </div>
       </div>
+      {/* The run's two voices: polite for where it is, assertive for one that failed. Keyed so a new session starts from what's on screen, not what the last one said. */}
+      <TurnStatus key={sessionId} busy={busy} retry={retry} error={runError} />
       <AnimatePresence>
         {showJump && (
           <motion.button
@@ -534,8 +554,10 @@ function Working({ sessionId, retry }: { sessionId: string; retry?: { attempt: n
   // A lead's part runs in a child session the sidebar doesn't list; it knows who's on it.
   const mate = useTeammate(useChat((s) => s.sessions[sessionId]?.agent ?? s.delegated[sessionId]));
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-3 flex h-6 items-center gap-2 text-[13px]" role="status" aria-label="Working">
-      {mate ? <Bird bird={mate.bird} seed={mate.face} size={22} state={retry ? "retrying" : "working"} /> : <AgentClock />}
+    // No live region here: `TurnStatus` speaks the turn's state once, so the
+    // indicator can't repeat it. The mark still names itself for anyone reading through the thread.
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-3 flex h-6 items-center gap-2 text-[13px]">
+      {mate ? <Bird bird={mate.bird} seed={mate.face} size={22} state={retry ? "retrying" : "working"} label="Working" /> : <AgentClock />}
       {retry && (
         <span className="text-ink-2">
           Retrying{retry.attempt > 1 ? ` (attempt ${retry.attempt})` : ""}

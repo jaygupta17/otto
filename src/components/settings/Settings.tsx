@@ -76,7 +76,7 @@ export function Settings({ compact }: { compact: boolean }) {
     );
 
   return (
-    <Sheet open={open} onClose={close} compact={false} wide>
+    <Sheet open={open} onClose={close} compact={false} wide label="Settings">
       <div className="flex h-[min(760px,86vh)]">
         <nav className="scroll-quiet w-[208px] shrink-0 overflow-y-auto border-r border-line p-3">
           <div className="flex items-center justify-between pt-0.5 pb-3 pl-2.5">

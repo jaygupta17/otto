@@ -220,7 +220,9 @@ export function Composer({ sessionId, placeholder = "Do anything…", autoFocus 
   }
 
   const canSend = !!draft.trim() && ready && !sending && !needsAgent;
-  const showStop = busy && !draft.trim();
+  // A run is never without its Stop; a draft adds Steer beside it instead of replacing it.
+  const showStop = busy;
+  const showSend = !busy || !!draft.trim();
   // In a session the header already says who you're talking to, so the box is one row: + · text · model · send.
   const inline = !!sessionId;
 
@@ -287,7 +289,7 @@ export function Composer({ sessionId, placeholder = "Do anything…", autoFocus 
         setFocused(false);
         setTimeout(() => setSuggest(null), 120);
       }}
-      className={`scroll-quiet block resize-none bg-transparent leading-[1.5] text-ink outline-none placeholder:text-faint ${shellMode ? "font-mono text-[14px]" : compact ? "text-[16px]" : "text-[15px]"} ${inline ? `${compact ? "min-w-[84px]" : "min-w-[120px]"} flex-1 self-center px-1 py-[7px]` : `w-full px-4 pt-3.5 ${compact ? "pb-1" : "min-h-[56px] pb-1.5"}`}`}
+      className={`scroll-quiet block resize-none bg-transparent leading-[1.5] text-ink outline-none placeholder:text-faint ${shellMode ? "font-mono text-[14px]" : compact ? "text-[16px]" : "text-[15px]"} ${inline ? `${compact ? "min-w-[84px]" : "min-w-[200px]"} flex-1 self-center px-1 py-[7px]` : `w-full px-4 pt-3.5 ${compact ? "pb-1" : "min-h-[56px] pb-1.5"}`}`}
       spellCheck
     />
   );
@@ -306,8 +308,9 @@ export function Composer({ sessionId, placeholder = "Do anything…", autoFocus 
       )}
       {sessionId && <ContextMeter sessionId={sessionId} compact={compact} />}
       <ModelPicker sessionId={sessionId} compact={compact} />
-      <AnimatePresence mode="wait" initial={false}>
-        {showStop ? (
+      {/* Stop holds its place for the whole run; a draft brings Steer back as the second button. */}
+      <AnimatePresence mode="popLayout" initial={false}>
+        {showStop && (
           <motion.button
             key="stop"
             initial={{ scale: 0.85, opacity: 0 }}
@@ -321,7 +324,8 @@ export function Composer({ sessionId, placeholder = "Do anything…", autoFocus 
           >
             <Square size={11} fill="currentColor" />
           </motion.button>
-        ) : (
+        )}
+        {showSend && (
           <motion.button
             key="send"
             initial={{ scale: 0.85, opacity: 0 }}
@@ -381,7 +385,11 @@ export function Composer({ sessionId, placeholder = "Do anything…", autoFocus 
         }}
       >
         {inline ? (
-          <div className="flex items-end gap-1 p-1.5" onClick={(e) => e.target === e.currentTarget && ta.current?.focus()}>
+          // On one line the field keeps a floor and the tools take what they need; when they can't share
+          // (a phone mid-run: Steer chip + meter + model + Stop + send), the tools wrap to their own line
+          // instead of crushing the textarea or pushing buttons past the card. Desktop has the room and
+          // keeps the single bar. The row stays whole (`shrink-0`) so it wraps rather than spilling over.
+          <div className="flex flex-wrap items-end justify-end gap-1 p-1.5" onClick={(e) => e.target === e.currentTarget && ta.current?.focus()}>
             <AddMenu shell={!!sessionId} onPick={insert} />
             {shellMode && (
               <span className="flex h-9 shrink-0 items-center gap-1.5 pl-1 text-[13px] text-ink-2" title="Runs in the session's folder; the output is shared with the agent">
@@ -389,7 +397,7 @@ export function Composer({ sessionId, placeholder = "Do anything…", autoFocus 
               </span>
             )}
             {field}
-            <div className="flex h-9 min-w-0 items-center gap-1">{tools}</div>
+            <div className="flex h-9 shrink-0 items-center gap-1">{tools}</div>
           </div>
         ) : (
           <>

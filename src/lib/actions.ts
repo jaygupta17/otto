@@ -73,13 +73,25 @@ export function cycleAgent(dir: 1 | -1 = 1) {
   void st.setAgent(next.id, st.activeId);
 }
 
+type ChatState = ReturnType<typeof useChat.getState>;
+
+/**
+ * The thinking-effort variants of the model in use (this session's, else the
+ * picked one, else the default). Empty when the model can't think harder —
+ * callers hide cycling entirely rather than offer a no-op.
+ */
+export function effortVariants(st: ChatState = useChat.getState()): string[] {
+  const ref = (st.activeId ? st.sessions[st.activeId]?.model : undefined) ?? st.pickedModel ?? st.defaultModel;
+  if (!ref) return [];
+  return st.models.find((m) => m.providerID === ref.providerID && m.id === ref.id)?.variants?.map((v) => v.id) ?? [];
+}
+
 /** Step through the current model's thinking-effort variants. */
 export function cycleEffort() {
   const st = useChat.getState();
   const ref = (st.activeId ? st.sessions[st.activeId]?.model : undefined) ?? st.pickedModel ?? st.defaultModel;
   if (!ref) return;
-  const info = st.models.find((m) => m.providerID === ref.providerID && m.id === ref.id);
-  const variants = info?.variants?.map((v) => v.id) ?? [];
+  const variants = effortVariants(st);
   if (!variants.length) {
     toast({ tone: "info", title: "This model has one effort level" });
     return;

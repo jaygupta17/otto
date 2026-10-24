@@ -3,8 +3,10 @@
  * the agent-facing schedule tool: frequency types, cron conversion in server
  * time, a tiny cron evaluator for "next run" and validation.
  *
- * No I/O happens here. The only implicit inputs are the current local timezone
- * and clock, which `toCron` reads through `Date`.
+ * No I/O happens here. The only implicit inputs are the local timezone and
+ * clock, which `toCron` reads through `Date` — specifically the zone offset
+ * that will hold at each schedule's *next* occurrence, so a run that lands
+ * after a DST change is converted with the offset it will actually fire under.
  */
 
 export type Frequency =
@@ -77,6 +79,54 @@ export interface ServerEnv {
 
 const DAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+/** Minutes east of UTC in the host zone at instant `t`. */
+const localOffsetAt = (t: number) => -new Date(t).getTimezoneOffset();
+
+/** The local calendar fields of `t`, packed as an epoch-ms-shaped UTC value. */
+const wallOf = (t: number) => {
+  const d = new Date(t);
+  return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes());
+};
+
+/**
+ * The UTC instant whose local wall clock is `wall` (an epoch-ms-shaped value
+ * of local calendar fields), preferring the earliest one. A fall-back makes
+ * some wall times occur twice (earliest wins); a spring-forward makes some
+ * not occur at all (those fire just past the gap).
+ */
+function instantForWall(wall: number): number {
+  // The offsets a day either side bracket any real zone transition, and the
+  // round-trip check keeps candidates honest in both edge cases.
+  const a = wall - localOffsetAt(wall - 86400000) * 60000;
+  const b = wall - localOffsetAt(wall + 86400000) * 60000;
+  for (const t of a <= b ? [a, b] : [b, a]) if (wallOf(t) === wall) return t;
+  return Math.max(a, b);
+}
+
+/**
+ * Epoch ms of the first local wall-clock occurrence of `f` at or after `from`,
+ * in the host zone. This is what a person means by "weekdays at 10:00": the
+ * next 10:00, whatever offset the zone happens to have by then.
+ */
+function nextLocalOccurrence(f: Frequency, from: number): number {
+  if (f.kind === "custom") return from;
+  const now = new Date(from);
+  if (f.kind === "hourly") return from + ((f.minute - now.getMinutes() + 60) % 60) * 60000;
+  // Narrowed to daily | weekdays | weekly; capture before the closure below.
+  const { hour, minute } = f;
+  const days = f.kind === "weekly" ? (f.days.length ? f.days : [1]) : null;
+  const wall = (y: number, mo: number, d: number) => instantForWall(Date.UTC(y, mo, d, hour, minute));
+  const matches = (dow: number) => (f.kind === "daily" ? true : f.kind === "weekdays" ? dow >= 1 && dow <= 5 : days!.includes(dow));
+  if (matches(now.getDay()) && now.getHours() * 60 + now.getMinutes() < hour * 60 + minute) {
+    return wall(now.getFullYear(), now.getMonth(), now.getDate());
+  }
+  for (let i = 1; i <= 7; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
+    if (matches(d.getDay())) return wall(d.getFullYear(), d.getMonth(), d.getDate());
+  }
+  return from;
+}
+
 export function describe(f: Frequency): string {
   const t = (h: number, m: number) => new Date(2000, 0, 1, h, m).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   switch (f.kind) {
@@ -94,8 +144,11 @@ export function describe(f: Frequency): string {
 }
 
 /** Local-time frequency → cron line in server time. */
-export function toCron(f: Frequency, serverOffset: number): string {
-  const localOffset = -new Date().getTimezoneOffset();
+export function toCron(f: Frequency, serverOffset: number, from = Date.now()): string {
+  // Convert with the local offset that will hold at the schedule's NEXT
+  // occurrence, not the offset right now: when the next run lands after a DST
+  // change, today's offset would fire it an hour off the chosen wall time.
+  const localOffset = localOffsetAt(nextLocalOccurrence(f, from));
   const shift = serverOffset - localOffset; // minutes to add to local time to get server time
   const conv = (hour: number, minute: number) => {
     let total = hour * 60 + minute + shift;

@@ -27,6 +27,7 @@ export function Sheet({
   onClose,
   children,
   title,
+  label,
   wide = false,
   narrow = false,
   bare = false,
@@ -37,6 +38,8 @@ export function Sheet({
   onClose: () => void;
   children: ReactNode;
   title?: ReactNode;
+  /** The dialog's name when it has no `title` to take one from. */
+  label?: string;
   wide?: boolean;
   /** A small dialog (confirmations, one-field prompts). */
   narrow?: boolean;
@@ -56,7 +59,9 @@ export function Sheet({
     ref: panel,
     role: "dialog",
     "aria-modal": true,
+    // A dialog has to be named: its own visible title, or the caller's label.
     "aria-labelledby": title ? titleId : undefined,
+    "aria-label": title ? undefined : label,
     tabIndex: -1,
   } as const;
 

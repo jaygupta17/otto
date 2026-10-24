@@ -93,12 +93,11 @@ suite("toCron — cron conversion in server time", () => {
   });
 });
 
-suite("toCron — DST-style offset changes (current behavior)", () => {
-  // Current behavior to be aware of: `toCron` converts with the local offset
-  // *at conversion time* and stores a fixed UTC cron line. Nothing rewrites the
-  // line when the local or server zone changes, so a schedule saved in summer
-  // fires an hour off after the clocks change. This test documents that drift
-  // rather than asserting DST correctness.
+suite("toCron — DST-style offset changes", () => {
+  // `toCron` converts with the local offset that will hold at the schedule's
+  // next occurrence, so the stored cron line stays correct through the next
+  // DST change. Nothing re-converts an already-stored line when a later
+  // change comes around, though — that stays off until the next install.
   test("the same local frequency converts differently in summer and winter", () => {
     process.env.TZ = "America/New_York";
 
@@ -112,6 +111,71 @@ suite("toCron — DST-style offset changes (current behavior)", () => {
   test("a cron line stored in summer is not re-converted for winter", () => {
     // The summer line ("0 13 * * *" UTC) fires at 08:00 EST in January.
     expect(nextRun("0 13 * * *", 0, at("2026-01-15T00:00:00"))).toBe(at("2026-01-15T13:00:00"));
+  });
+});
+
+suite("toCron — DST boundary: offset at the next occurrence", () => {
+  // Europe/Paris 2026: CEST (+2) until Sun 2026-10-25 03:00 local, then CET
+  // (+1); back to CEST on Sun 2026-03-29 02:00 local. All conversions run
+  // against a UTC server (offset 0), so the cron line is UTC wall time.
+  test("weekdays 10:00 picked before the fall-back fires at 10:00 after it (the reported bug)", () => {
+    process.env.TZ = "Europe/Paris";
+    const from = at("2026-10-24T12:00:00"); // Sat, 14:00 CEST
+    // Next weekday 10:00 local is Mon 2026-10-26, already CET (+1) → 09:00 UTC.
+    expect(toCron(weekdays(10, 0), 0, from)).toBe("0 9 * * 1,2,3,4,5");
+    const next = nextRun(toCron(weekdays(10, 0), 0, from), 0, from);
+    expect(next).toBe(at("2026-10-26T09:00:00"));
+    expect(new Date(next!).getHours()).toBe(10); // 10:00 local in Paris
+  });
+
+  test("weekdays 9:00 picked before the fall-back fires at 9:00 after it", () => {
+    process.env.TZ = "Europe/Paris";
+    const from = at("2026-10-24T12:00:00");
+    expect(toCron(weekdays(9, 0), 0, from)).toBe("0 8 * * 1,2,3,4,5");
+    expect(nextRun("0 8 * * 1,2,3,4,5", 0, from)).toBe(at("2026-10-26T08:00:00"));
+    expect(new Date(at("2026-10-26T08:00:00")).getHours()).toBe(9);
+  });
+
+  test("a run still ahead of the fall-back keeps the summer offset", () => {
+    process.env.TZ = "Europe/Paris";
+    const from = at("2026-10-24T06:00:00"); // Sat, 08:00 CEST; today's 10:00 is before the change
+    expect(toCron(daily(10, 0), 0, from)).toBe("0 8 * * *");
+  });
+
+  test("daily 10:00 lands on the spring-forward day and picks the summer offset", () => {
+    process.env.TZ = "Europe/Paris";
+    const from = at("2026-03-28T12:00:00"); // Sat, 13:00 CET
+    // Next daily 10:00 is Sun 2026-03-29, when Paris is already CEST (+2) → 08:00 UTC.
+    expect(toCron(daily(10, 0), 0, from)).toBe("0 8 * * *");
+  });
+
+  test("a run scheduled on the transition day uses the offset at that instant", () => {
+    process.env.TZ = "Europe/Paris";
+    const from = at("2026-10-25T00:30:00"); // 02:30 CEST; clocks fall back at 01:00 UTC
+    expect(toCron(daily(15, 0), 0, from)).toBe("0 14 * * *"); // 15:00 CET = 14:00 UTC
+  });
+
+  test("an ambiguous wall time on the fall-back day converts with its earliest occurrence", () => {
+    process.env.TZ = "Europe/Paris";
+    const from = at("2026-10-24T12:00:00");
+    // 02:30 local happens twice on Sun 2026-10-25 (00:30 UTC CEST, 01:30 UTC
+    // CET); the earliest still uses the summer offset (+2) → 00:30 UTC.
+    expect(toCron(daily(2, 30), 0, from)).toBe("30 0 * * *");
+  });
+
+  test("normal dates in Paris convert with the offset in force, summer and winter", () => {
+    process.env.TZ = "Europe/Paris";
+    // Summer: next weekday 10:00 (Mon 2026-06-16) is CEST → 08:00 UTC.
+    expect(toCron(weekdays(10, 0), 0, at("2026-06-15T12:00:00"))).toBe("0 8 * * 1,2,3,4,5");
+    // Winter: next weekday 10:00 (Fri 2026-01-16) is CET → 09:00 UTC.
+    expect(toCron(weekdays(10, 0), 0, at("2026-01-15T12:00:00"))).toBe("0 9 * * 1,2,3,4,5");
+  });
+
+  test("weekly crosses the fall-back with the right day list and time", () => {
+    process.env.TZ = "Europe/Paris";
+    const from = at("2026-10-24T12:00:00");
+    // Mondays at 10:00 local: next is Mon 2026-10-26 CET → 09:00 UTC.
+    expect(toCron(weekly([1], 10, 0), 0, from)).toBe("0 9 * * 1");
   });
 });
 

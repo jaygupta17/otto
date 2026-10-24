@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { sortedSessions, useChat } from "../../state/chat";
 import { useUI, type SettingsTab } from "../../state/ui";
 import { useWorkspaces } from "../../state/workspaces";
-import { currentDir, cycleEffort, freshThread, primaryAgents } from "../../lib/actions";
+import { currentDir, cycleEffort, effortVariants, freshThread, primaryAgents } from "../../lib/actions";
 import { useTerminals } from "../../state/terminals";
 import { AgentMark } from "../ui/Bird";
 import { useTeammates } from "../../state/teammates";
@@ -55,6 +55,8 @@ export function CommandPalette() {
   const setOpen = useUI((s) => s.setPalette);
   const sessions = useChat((s) => s.sessions);
   const busyId = useChat((s) => (s.activeId && s.busy[s.activeId] ? s.activeId : null));
+  // Offered only while the model in use has thinking levels to cycle through.
+  const canEffort = useChat((s) => effortVariants(s).length > 0);
   const workspaces = useWorkspaces((s) => s.workspaces);
   const activeWs = useWorkspaces((s) => s.activeId);
   const [q, setQ] = useState("");
@@ -88,7 +90,8 @@ export function CommandPalette() {
       { id: "p-context", group: "Panels", label: "Context and changes", keys: "⌘⇧I", icon: <Gauge size={15} />, run: close(() => ui.togglePanel("context")) },
       { id: "p-project", group: "Panels", label: "Project instructions", keys: "⌘⇧J", icon: <BookOpen size={15} />, run: close(() => ui.togglePanel("project")) },
       { id: "p-memory", group: "Panels", label: "Memory", keys: "⌘⇧M", icon: <Bookmark size={15} />, run: close(() => ui.togglePanel("memory")) },
-      { id: "effort", group: "Actions", label: "Cycle thinking effort", keys: "⌃T", icon: <Gauge size={15} />, run: close(cycleEffort) },
+      // A model with one effort level has nothing to cycle: the command would only toast.
+      ...(canEffort ? [{ id: "effort", group: "Actions" as const, label: "Cycle thinking effort", keys: "⌃T", icon: <Gauge size={15} />, run: close(cycleEffort) }] : []),
       { id: "shortcuts", group: "Actions", label: "Keyboard shortcuts", keys: "⌘/", icon: <Keyboard size={15} />, run: close(() => ui.setShortcuts(true)) },
       { id: "theme-light", group: "Actions", label: "Theme: Light", icon: <Sun size={15} />, run: close(() => ui.setTheme("light")) },
       { id: "theme-dark", group: "Actions", label: "Theme: Dark", icon: <Moon size={15} />, run: close(() => ui.setTheme("dark")) },
@@ -122,7 +125,7 @@ export function CommandPalette() {
       out.push({ id: `s-${s.id}`, group: "Sessions", label: s.title || "New session", hint: `${basename(s.location.directory)} · ${timeAgo(s.time.updated)}`, icon: <MessageSquare size={15} />, run: close(() => chat.open(s.id)) });
     }
     return out;
-  }, [sessions, workspaces, activeWs, busyId, setOpen]);
+  }, [sessions, workspaces, activeWs, busyId, canEffort, setOpen]);
 
   const results = useMemo(() => {
     const t = q.trim();
