@@ -199,6 +199,12 @@ Work that outlives its turn (a command the agent left running, a teammate on a p
 - Agents are told to prefer the background (`teammatePrompt`): anything slow goes to the background, they carry on with work that doesn't overlap, and with nothing left they say what's running and end the reply, then pick up from the result. A lead hands parts off in the background and reports when they're in. A teammate on a lead's brief stays in the foreground, since its last reply is the report.
 - Stopping posts a note telling the agent it was you before anything is killed, so the agent doesn't retry what you stopped. The row keeps what the command printed up to then.
 
+### Attachments
+
+- Picked, pasted or dropped files upload at once into `<session folder>/.otto/uploads/<day>/`; the reply box shows a thumbnail or chip for each, with its upload state and a ×. Send waits for uploads.
+- The agent gets a note at the end of the message with every file's path; PNG, JPEG, GIF and WebP also go to the model as images when it takes them. The note is for the agent only: the thread hides it and shows the files above the bubble instead.
+- Sent images come from the message itself (OpenCode keeps the bytes), or from the machine when they weren't sent to the model; other files are chips that open in the editor.
+
 ### Apps
 
 - An app always shows its own logo, on a white tile (rounded square in lists, circle in chat), so it reads the same in light and dark.

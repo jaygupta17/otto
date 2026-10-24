@@ -6,6 +6,10 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 ## [Unreleased]
 
+### Added
+
+- Attach files to a message: + › Upload files, paste a screenshot, or drop files on the reply box. They're saved in the project under `.otto/uploads` (kept out of git), and the agent is told where each one is. Images are also shown to the model when it can see images. Your messages show the images and files you sent, including after you reopen the session, and editing or forking a message brings its files back.
+
 ## [0.16.0] - 2026-10-24
 
 ### Changed

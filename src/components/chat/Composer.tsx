@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowUp, AtSign, FileCode2, ListEnd, Navigation, Plus, Slash, Square, SquareTerminal, X } from "lucide-react";
+import { ArrowUp, AtSign, FileCode2, ListEnd, Navigation, Paperclip, Plus, Slash, Square, SquareTerminal, X } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { CommandInfo } from "@opencode/client";
 import { useChat } from "../../state/chat";
@@ -18,6 +18,8 @@ import type { FsEntry } from "../../lib/opencode/client";
 import { isMod } from "../../hooks/useShortcuts";
 import { layerOpen } from "../../lib/layers";
 import { Popover, MenuItem } from "../ui/Popover";
+import { readyAttachments, useAttachments } from "../../state/attachments";
+import { AttachmentTray } from "./Attachments";
 
 /** App-level commands, handled here rather than by the server. */
 const BUILTIN: { name: string; description: string; needsSession: boolean }[] = [
@@ -58,6 +60,14 @@ export function Composer({ sessionId, placeholder = "Do anything…", autoFocus 
   const interrupt = useChat((s) => s.interrupt);
   const client = useChat((s) => s.client);
   const projectDir = useChat((s) => s.projectDir);
+  // Uploads land in the folder the session works in (a new one: the folder it'll start in).
+  const root = useChat((s) => (sessionId ? s.sessions[sessionId]?.location.directory : null) || s.projectDir || s.homeDir || "");
+  const pending = useAttachments((s) => s.byKey[draftKey]);
+  const addFiles = useAttachments((s) => s.add);
+  const picker = useRef<HTMLInputElement>(null);
+  const [dragging, setDragging] = useState(false);
+  const attached = pending?.filter((a) => a.status === "ready").length ?? 0;
+  const uploading = pending?.some((a) => a.status === "uploading") ?? false;
   const connected = useConnection((s) => s.status === "ready");
   const catalog = useConnection((s) => s.catalog);
   const catalogError = useConnection((s) => s.catalogError);
@@ -154,7 +164,7 @@ export function Composer({ sessionId, placeholder = "Do anything…", autoFocus 
     // Refuse before touching the draft: a cleared box with nothing sent reads
     // as a lost message. The connection/catalog state is the reason, and the
     // inline state below the box says so.
-    if (!text || sending || !ready || needsAgent || !client) return;
+    if ((!text && !attached) || uploading || sending || !ready || needsAgent || !client) return;
     const cmd = /^\/(\S+)\s*([\s\S]*)$/.exec(text);
     setSending(true);
     setDraft(draftKey, "");
@@ -168,8 +178,17 @@ export function Composer({ sessionId, placeholder = "Do anything…", autoFocus 
       } else if (cmd && commands?.some((c) => c.name === cmd[1]) && sessionId && client) {
         await client.command(sessionId, cmd[1], cmd[2]);
       } else {
-        const id = await send(text, { sessionId });
-        if (id) onSent?.(id);
+        const list = useAttachments.getState().byKey[draftKey] ?? [];
+        const attachments = readyAttachments(list);
+        const previews = Object.fromEntries(list.filter((a) => a.path && a.preview).map((a) => [a.path!, a.preview!]));
+        useAttachments.getState().clear(draftKey);
+        try {
+          const id = await send(text, { sessionId, attachments, previews });
+          if (id) onSent?.(id);
+        } catch (e) {
+          useAttachments.getState().restore(draftKey, attachments, Object.fromEntries(list.filter((a) => a.preview).map((a) => [a.name, a.preview!])));
+          throw e;
+        }
       }
     } catch (e) {
       setDraft(draftKey, text);
@@ -232,15 +251,16 @@ export function Composer({ sessionId, placeholder = "Do anything…", autoFocus 
     }
   }
 
-  const canSend = !!draft.trim() && ready && !sending && !needsAgent;
+  const canSend = (!!draft.trim() || (attached > 0 && !shellMode)) && !uploading && ready && !sending && !needsAgent;
   // A run is never without its Stop; a draft adds Steer beside it instead of replacing it.
   const showStop = busy;
-  const showSend = !busy || !!draft.trim();
+  const showSend = !busy || !!draft.trim() || attached > 0;
   // In a session the header says who you're talking to (and their bird perches on the box), so the tools skip the agent.
   const inline = !!sessionId;
 
   /** Start the draft with a trigger character and open its suggestions. */
-  function insert(kind: "file" | "command" | "shell") {
+  function insert(kind: "file" | "command" | "shell" | "upload") {
+    if (kind === "upload") return picker.current?.click();
     const next = kind === "file" ? draft + (draft && !draft.endsWith(" ") ? " @" : "@") : kind === "command" ? "/" + draft.replace(/^\//, "") : "!" + draft.replace(/^!/, "");
     setDraft(draftKey, next);
     requestAnimationFrame(() => {
@@ -294,6 +314,13 @@ export function Composer({ sessionId, placeholder = "Do anything…", autoFocus 
         void updateSuggest(e.target.value, e.target.selectionStart);
       }}
       onKeyDown={onKeyDown}
+      onPaste={(e) => {
+        // A pasted screenshot (or copied files) is an upload; pasted text stays text.
+        const files = Array.from(e.clipboardData.files);
+        if (!files.length) return;
+        e.preventDefault();
+        addFiles(draftKey, files, root);
+      }}
       aria-label="Message"
       data-composer
       onBlur={() => setTimeout(() => setSuggest(null), 120)}
@@ -376,13 +403,41 @@ export function Composer({ sessionId, placeholder = "Do anything…", autoFocus 
 
   const card = (
     <div
-      className={`composer surface-float relative bg-raised ${compact ? "rounded-[22px]" : "rounded-[20px]"}`}
+      className={`composer surface-float relative bg-raised ${compact ? "rounded-[22px]" : "rounded-[20px]"} ${dragging ? "ring-2 ring-accent" : ""}`}
       onClick={(e) => {
         if (e.target === e.currentTarget) ta.current?.focus();
       }}
+      // Files dropped on the box are uploaded like picked ones.
+      onDragOver={(e) => {
+        if (!e.dataTransfer.types.includes("Files")) return;
+        e.preventDefault();
+        setDragging(true);
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false);
+      }}
+      onDrop={(e) => {
+        if (!e.dataTransfer.files.length) return;
+        e.preventDefault();
+        setDragging(false);
+        addFiles(draftKey, Array.from(e.dataTransfer.files), root);
+      }}
     >
+      <AttachmentTray boxKey={draftKey} />
       {field}
       {tools}
+      <input
+        ref={picker}
+        type="file"
+        multiple
+        hidden
+        onChange={(e) => {
+          const files = Array.from(e.target.files ?? []);
+          e.target.value = "";
+          addFiles(draftKey, files, root);
+          ta.current?.focus();
+        }}
+      />
       {status}
     </div>
   );
@@ -468,20 +523,21 @@ export function Perch({ sessionId, size }: { sessionId: string; size: number }) 
 }
 
 /** The +: the things the box can do besides plain text. */
-function AddMenu({ shell, size, onPick }: { shell: boolean; size: string; onPick: (kind: "file" | "command" | "shell") => void }) {
+function AddMenu({ shell, size, onPick }: { shell: boolean; size: string; onPick: (kind: "file" | "command" | "shell" | "upload") => void }) {
   const anchor = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
-  const choose = (kind: "file" | "command" | "shell") => {
+  const choose = (kind: "file" | "command" | "shell" | "upload") => {
     setOpen(false);
     onPick(kind);
   };
   return (
     <>
-      <button ref={anchor} onClick={() => setOpen((v) => !v)} aria-label="Add" aria-haspopup="menu" aria-expanded={open} title={shell ? "Files, commands, shell" : "Files and commands"} className={`grid shrink-0 place-items-center rounded-full text-ink-2 hairline transition-colors hover:bg-hover hover:text-ink ${size} ${open ? "bg-hover text-ink" : ""}`}>
+      <button ref={anchor} onClick={() => setOpen((v) => !v)} aria-label="Add" aria-haspopup="menu" aria-expanded={open} title={shell ? "Upload, files, commands, shell" : "Upload, files and commands"} className={`grid shrink-0 place-items-center rounded-full text-ink-2 hairline transition-colors hover:bg-hover hover:text-ink ${size} ${open ? "bg-hover text-ink" : ""}`}>
         <Plus size={18} className={`transition-transform duration-200 ${open ? "rotate-45" : ""}`} />
       </button>
       <Popover open={open} onClose={() => setOpen(false)} anchor={anchor.current} placement="top-start" width={240} label="Add">
         <div role="menu" className="p-1.5">
+          <MenuItem icon={<Paperclip size={15} />} label="Upload files" onClick={() => choose("upload")} />
           <MenuItem icon={<AtSign size={15} />} label="Mention a file" right={<kbd className="text-[12px] text-faint">@</kbd>} onClick={() => choose("file")} />
           <MenuItem icon={<Slash size={15} />} label="Run a command" right={<kbd className="text-[12px] text-faint">/</kbd>} onClick={() => choose("command")} />
           {shell && <MenuItem icon={<SquareTerminal size={15} />} label="Run in the shell" right={<kbd className="text-[12px] text-faint">!</kbd>} onClick={() => choose("shell")} />}

@@ -16,6 +16,8 @@ import { isOfferedAgent } from "../lib/teammates";
 import { dispatchAlerts } from "./notifications";
 import { permissionLine } from "../lib/asks";
 import { subagentOf, subagentStopNote, toolKind, type ToolBlock } from "../lib/opencode/tools";
+import { composeMessage, viewable, type Attachment } from "../lib/attachments";
+import { useAttachments } from "./attachments";
 
 export interface Timeline {
   messages: UIMessage[];
@@ -83,7 +85,8 @@ interface State {
   /** Refresh the last few messages in place, without a skeleton. */
   loadTail(id: string): Promise<void>;
   loadOlder(id: string): Promise<void>;
-  send(text: string, opts?: { sessionId?: string | null }): Promise<string | null>;
+  /** `attachments` are already uploaded; `previews` maps their paths to local URLs to show until the server echoes them. */
+  send(text: string, opts?: { sessionId?: string | null; attachments?: Attachment[]; previews?: Record<string, string> }): Promise<string | null>;
   interrupt(id: string): Promise<void>;
   /** Move what the session is waiting on (a long command, a subagent) to the background; the turn goes on. */
   background(id: string): Promise<void>;
@@ -101,7 +104,8 @@ interface State {
   /** How messages sent during a run are delivered: right after the current step, or after the run. */
   delivery: Delivery;
   setDeliveryMode(d: Delivery): void;
-  fork(id: string, before?: string | null, draft?: string): Promise<string | null>;
+  /** `from` is the message forked at, whose attachments go back in the new box. */
+  fork(id: string, before?: string | null, draft?: string, from?: Extract<UIMessage, { kind: "user" }>): Promise<string | null>;
   /** Undo the last exchange (or back to `messageID`), restoring files; its prompt returns to the composer. */
   undo(id: string, messageID?: string): Promise<void>;
   redo(id: string): Promise<void>;
@@ -201,12 +205,13 @@ export const useChat = create<State>((set, get) => ({
     void kv.set("chat.delivery", d);
   },
 
-  async fork(id, before, draft) {
+  async fork(id, before, draft, from) {
     const client = get().client;
     if (!client) return null;
     try {
       const s = await client.fork(id, before ?? null);
       set((st) => ({ sessions: { ...st.sessions, [s.id]: s }, drafts: draft ? { ...st.drafts, [s.id]: draft } : st.drafts }));
+      if (from?.attachments) useAttachments.getState().restore(s.id, from.attachments, previewsOf(from));
       get().open(s.id);
       toast({ tone: "ok", title: "Forked", body: s.title });
       return s.id;
@@ -235,6 +240,7 @@ export const useChat = create<State>((set, get) => ({
     try {
       const r = await client.revertStage(id, target.id);
       set((st) => ({ sessions: st.sessions[id] ? { ...st.sessions, [id]: { ...st.sessions[id], revert: r.data } } : st.sessions, drafts: { ...st.drafts, [id]: target.text } }));
+      if (target.attachments) useAttachments.getState().restore(id, target.attachments, previewsOf(target));
       void savePrefs();
     } catch (e) {
       toast({ tone: "error", title: "Couldn't undo", body: (e as Error).message });
@@ -625,7 +631,8 @@ export const useChat = create<State>((set, get) => ({
 
   async send(text, opts) {
     const client = get().client;
-    if (!client || !text.trim()) return null;
+    const atts = opts?.attachments ?? [];
+    if (!client || (!text.trim() && !atts.length)) return null;
     let sid = opts?.sessionId ?? null;
     const localId = uid("local_");
     try {
@@ -639,20 +646,34 @@ export const useChat = create<State>((set, get) => ({
       }
       const id = sid;
       await commitRevert(id);
+      const st0 = get();
+      const ref = (st0.sessions[id]?.model as ModelRef | undefined) ?? st0.pickedModel ?? st0.defaultModel;
+      const info = ref ? st0.models.find((m) => m.providerID === ref.providerID && m.id === ref.id) : undefined;
+      // Unknown models get the images too: the server drops what a model can't take.
+      const vision = info ? (info.capabilities?.input ?? []).includes("image") : true;
+      const out = composeMessage(text, atts, st0.sessions[id]?.location.directory ?? st0.projectDir ?? st0.homeDir ?? "", vision);
+      const prompt = { text: out.text, files: out.files, metadata: out.metadata };
       if (get().busy[id]) {
         // Mid-run: the server holds it in the inbox (shown above the composer) until the agent reads it.
-        await client.prompt(id, { text, delivery: get().delivery });
+        await client.prompt(id, { ...prompt, delivery: get().delivery });
         return id;
       }
+      const shown = atts.length
+        ? {
+            attachments: atts,
+            note: out.metadata?.otto.note,
+            files: atts.filter((a) => viewable(a.mime) && opts?.previews?.[a.path]).map((a) => ({ uri: opts!.previews![a.path], name: a.name, mime: a.mime })),
+          }
+        : {};
       busyGeneration++;
       set((st) => {
         const t = st.timelines[id] ?? { ...empty(), loaded: true };
         return {
           busy: { ...st.busy, [id]: true },
-          timelines: { ...st.timelines, [id]: { ...t, messages: [...t.messages, { kind: "user", id: localId, text, time: Date.now(), pending: true }] } },
+          timelines: { ...st.timelines, [id]: { ...t, messages: [...t.messages, { kind: "user", id: localId, text, time: Date.now(), pending: true, ...shown }] } },
         };
       });
-      const r = await client.prompt(id, { text });
+      const r = await client.prompt(id, prompt);
       const realId = r?.data?.id;
       set((st) => {
         const t = st.timelines[id];
@@ -1489,6 +1510,11 @@ function modelKey(m: { providerID: string; id: string }) {
 }
 
 // Stores hold live connections; a hot swap would orphan them. Reload instead.
+/** A sent message's images by file name, to show again in a box it's put back in. */
+function previewsOf(m: Extract<UIMessage, { kind: "user" }>): Record<string, string> {
+  return Object.fromEntries((m.files ?? []).filter((f) => f.name && /^(data|blob):/.test(f.uri)).map((f) => [f.name!, f.uri]));
+}
+
 if (import.meta.hot) import.meta.hot.accept(() => window.location.reload());
 
 // A reload inside the debounce window must not eat the last keystrokes: land the queued write while the page is still here.

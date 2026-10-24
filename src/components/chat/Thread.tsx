@@ -13,6 +13,7 @@ import { ChangedFiles } from "./ChangedFiles";
 import { usesScreen } from "../../lib/browserSteps";
 import { isStopError, toolKind } from "../../lib/opencode/tools";
 import { ThreadSession } from "./ToolParts";
+import { MessageAttachments } from "./Attachments";
 import { TurnStatus, type RunError } from "./TurnStatus";
 import { Spinner } from "../ui/AgentClock";
 import { stepNow, Working } from "./Working";
@@ -376,16 +377,18 @@ const UserBubble = memo(function UserBubble({ msg, sessionId }: { msg: Extract<U
   const real = !msg.pending && !msg.id.startsWith("local_");
   return (
     <motion.div layout="position" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.15 }} className="group/user mt-5 mb-3 flex flex-col items-end">
+      <MessageAttachments attachments={msg.attachments} files={msg.files} pending={msg.pending} />
+      {msg.text && (
+        <div className={`selectable relative max-w-[min(560px,80%)] rounded-[20px] bg-bubble-me px-4 py-2.5 text-[15px] leading-[1.45] whitespace-pre-wrap text-on-bubble-me ${msg.pending ? "opacity-60" : ""}`}>
+          <div className={long && !expanded ? "max-h-[220px] overflow-hidden [mask-image:linear-gradient(to_bottom,black_70%,transparent)]" : ""}>{msg.text}</div>
+          {long && (
+            <button className="mt-1 text-[13px] font-medium underline underline-offset-2 opacity-80 hover:opacity-100" onClick={() => setExpanded((v) => !v)}>
+              {expanded ? "Show less" : "Show more"}
+            </button>
+          )}
+        </div>
+      )}
       {/* Actions sit under the bubble, right-aligned with it, shown on hover (always on phones). */}
-      <div className={`selectable relative max-w-[min(560px,80%)] rounded-[20px] bg-bubble-me px-4 py-2.5 text-[15px] leading-[1.45] whitespace-pre-wrap text-on-bubble-me ${msg.pending ? "opacity-60" : ""}`}>
-        <div className={long && !expanded ? "max-h-[220px] overflow-hidden [mask-image:linear-gradient(to_bottom,black_70%,transparent)]" : ""}>{msg.text}</div>
-        {long && (
-          <button className="mt-1 text-[13px] font-medium underline underline-offset-2 opacity-80 hover:opacity-100" onClick={() => setExpanded((v) => !v)}>
-            {expanded ? "Show less" : "Show more"}
-          </button>
-        )}
-        {msg.files?.length ? <div className="mt-2 flex flex-wrap gap-1.5">{msg.files.map((f) => <span key={f.uri} className="rounded-md bg-on-bubble-me/15 px-2 py-0.5 text-[12px] text-on-bubble-me/80">{f.name ?? f.uri.split("/").pop()}</span>)}</div> : null}
-      </div>
       {real && (
         <div className="mt-0.5 -mr-1 flex h-7 shrink-0 items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover/user:opacity-100 focus-within:opacity-100 max-[760px]:opacity-100">
           <ActionButton
@@ -401,7 +404,7 @@ const UserBubble = memo(function UserBubble({ msg, sessionId }: { msg: Extract<U
           <ActionButton label="Edit and resend (undoes from here)" onClick={() => void useChat.getState().undo(sessionId, msg.id)}>
             <Pencil size={13} />
           </ActionButton>
-          <ActionButton label="Fork from here into a new session" onClick={() => void useChat.getState().fork(sessionId, msg.id, msg.text)}>
+          <ActionButton label="Fork from here into a new session" onClick={() => void useChat.getState().fork(sessionId, msg.id, msg.text, msg)}>
             <GitFork size={13} />
           </ActionButton>
         </div>

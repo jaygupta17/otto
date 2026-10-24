@@ -8,6 +8,7 @@
  */
 import type { SessionMessageInfo, V2Event } from "@opencode/client";
 import { stopNoteChild, stopNoteShell } from "./tools";
+import { splitNote, type Attachment } from "../attachments";
 
 export type ToolStatus = "streaming" | "running" | "completed" | "error";
 
@@ -49,8 +50,13 @@ export type UIMessage =
   | {
       kind: "user";
       id: string;
+      /** What the user typed; the attachment note is split off into `note`. */
       text: string;
-      files?: { uri: string; name?: string }[];
+      /** Files sent with the message: images carry a `data:` (or local blob) URL to show. */
+      files?: UserFile[];
+      /** Everything the user uploaded with it, and the note the agent got about them. */
+      attachments?: Attachment[];
+      note?: string;
       time: number;
       pending?: boolean;
       /** Set while the message waits in the session inbox (sent during a run). */
@@ -156,10 +162,23 @@ export function contextTokens(t?: Tokens): number {
   return t ? t.input + t.output + t.cache.read + t.cache.write : 0;
 }
 
+export type UserFile = { uri: string; name?: string; mime?: string };
+
+type StoredFile = { uri?: string; data?: string; mime?: string; name?: string | null };
+/** A stored attachment as something to show: its bytes as a `data:` URL when the server kept them. */
+const userFiles = (files?: StoredFile[]): UserFile[] | undefined =>
+  files?.length ? files.map((f, i) => ({ uri: f.data && f.mime ? `data:${f.mime};base64,${f.data}` : (f.uri ?? `file-${i}`), name: f.name ?? undefined, mime: f.mime })) : undefined;
+
+/** A user message as shown: the typed text, its files, and the attachment note split off. */
+export function userMessage(id: string, text: string, files: StoredFile[] | undefined, metadata: unknown, time: number): Extract<UIMessage, { kind: "user" }> {
+  const split = splitNote(text, metadata);
+  return { kind: "user", id, text: split.text, files: userFiles(files), attachments: split.attachments, note: split.note, time };
+}
+
 function fromRest(m: SessionMessageInfo): UIMessage | null {
   switch (m.type) {
     case "user":
-      return { kind: "user", id: m.id, text: m.text, files: m.files?.map((f, i) => ({ uri: `file-${i}`, name: f.name ?? f.mime })), time: m.time.created };
+      return userMessage(m.id, m.text, m.files, (m as { metadata?: unknown }).metadata, m.time.created);
     case "assistant": {
       const blocks: Block[] = [];
       let ti = 0;
@@ -274,7 +293,7 @@ export function applyEvent(msgs: UIMessage[], e: V2Event): UIMessage[] {
 
   switch (e.type) {
     case "session.inbox.enqueued": {
-      const item = d.item as { type: string; payload?: { text?: string; files?: { uri: string; name?: string }[]; description?: string; metadata?: Json } };
+      const item = d.item as { type: string; payload?: { text?: string; files?: StoredFile[]; description?: string; metadata?: Json } };
       const id = d.inboxID as string;
       // A report or note the server posts lands here live; it's stored under the same id.
       if (item?.type === "synthetic") {
@@ -283,9 +302,9 @@ export function applyEvent(msgs: UIMessage[], e: V2Event): UIMessage[] {
         return u ? [...msgs, u] : msgs;
       }
       if (item?.type !== "user") return msgs;
-      const existing = msgs.findIndex((m) => m.id === id || (m.kind === "user" && m.pending && m.text === item.payload?.text));
       const delivery = (item as { delivery?: Delivery }).delivery;
-      const msg: UIMessage = { kind: "user", id, text: item.payload?.text ?? "", files: item.payload?.files, time: created, pending: true, delivery };
+      const msg: UIMessage = { ...userMessage(id, item.payload?.text ?? "", item.payload?.files, item.payload?.metadata, created), pending: true, delivery };
+      const existing = msgs.findIndex((m) => m.id === id || (m.kind === "user" && m.pending && m.text === msg.text));
       if (existing >= 0) {
         const next = msgs.slice();
         next[existing] = msg;

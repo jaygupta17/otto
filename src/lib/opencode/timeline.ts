@@ -6,7 +6,7 @@
  */
 import type { SessionMessagesResponse } from "@opencode/client";
 import type { InboxItem } from "./client";
-import { projectHistory, type UIMessage } from "./projection";
+import { projectHistory, userMessage, type UIMessage } from "./projection";
 
 /** The part of `OpenCode` a page read needs (a fake in tests). */
 export interface TimelineSource {
@@ -55,7 +55,7 @@ export async function withTimeout<T>(fn: (signal: AbortSignal) => Promise<T>, ms
 function toPage(r: SessionMessagesResponse, inbox: InboxItem[]): TimelinePage {
   const messages = projectHistory([...r.data].reverse());
   // Messages sent during a run that the agent hasn't read yet.
-  for (const it of inbox) if (it.type === "user") messages.push({ kind: "user", id: it.id, text: it.payload.text ?? "", time: it.time.created, pending: true, delivery: it.delivery });
+  for (const it of inbox) if (it.type === "user") messages.push({ ...userMessage(it.id, it.payload.text ?? "", it.payload.files, it.payload.metadata, it.time.created), pending: true, delivery: it.delivery });
   return { messages, older: r.cursor?.next ?? null };
 }
 

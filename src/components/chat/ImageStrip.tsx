@@ -44,12 +44,13 @@ export const ImageStrip = memo(function ImageStrip({ blocks }: { blocks: Block[]
           </button>
         ))}
       </div>
-      <Viewer shot={open} onClose={() => setOpen(null)} />
+      <ImageViewer shot={open} onClose={() => setOpen(null)} />
     </>
   );
 });
 
-function Viewer({ shot, onClose }: { shot: Shot | null; onClose: () => void }) {
+/** One image, full screen; click anywhere or Esc to close. */
+export function ImageViewer({ shot, onClose }: { shot: { src: string; name: string } | null; onClose: () => void }) {
   const root = useRef<HTMLDivElement>(null);
   useLayer(!!shot, onClose);
   useFocusTrap(root, !!shot);

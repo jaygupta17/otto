@@ -65,7 +65,7 @@ export interface InboxItem {
   sessionID: string;
   time: { created: number };
   type: "user" | "synthetic" | "compaction" | "move";
-  payload: { text?: string; files?: { uri: string; name?: string }[] };
+  payload: { text?: string; files?: { uri?: string; data?: string; mime?: string; name?: string }[]; metadata?: Record<string, unknown> };
   delivery: "steer" | "queue";
 }
 
@@ -232,9 +232,9 @@ export class OpenCode {
       signal: query.signal,
     });
   }
-  prompt(id: string, input: { text: string; files?: { uri: string; name?: string }[]; delivery?: "steer" | "queue" }) {
+  prompt(id: string, input: { text: string; files?: { uri: string; name?: string }[]; metadata?: Record<string, unknown>; delivery?: "steer" | "queue" }) {
     return this.request<{ data: { id: string } }>("POST", `/api/session/${id}/prompt`, {
-      body: { text: input.text, files: input.files?.length ? input.files : undefined, delivery: input.delivery ?? undefined },
+      body: { text: input.text, files: input.files?.length ? input.files : undefined, metadata: input.metadata, delivery: input.delivery ?? undefined },
     });
   }
   command(id: string, command: string, args: string) {
@@ -425,12 +425,12 @@ export class OpenCode {
     return r.output;
   }
 
-  /** Write (create or replace) a file on the server. */
-  async writeFile(path: string, content: string, directory?: string) {
+  /** Write (create or replace) a file on the server; missing folders are made. */
+  async writeFile(path: string, content: string | Uint8Array, directory?: string) {
     const res = await httpFetch(this.url("/api/experimental/fs/write", { path, ...locQuery(directory) }), {
       method: "POST",
       headers: this.headers({ "Content-Type": "application/octet-stream" }),
-      body: content,
+      body: content as BodyInit,
     });
     if (!res.ok) {
       const t = await res.text().catch(() => "");
