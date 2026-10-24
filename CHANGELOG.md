@@ -13,14 +13,21 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 - On phones, Sessions drops its title: the machine you're on is a pill at the top, like the menu it opens to switch workspaces. Sessions that need you, are working or have a result you haven't seen come first, each on its own card, and a working one shows what it's doing right now ("Edit Thread.tsx", "Thinking"); once you've opened one it moves down to Recent. Then your agents, one big row each (tap one to start a session; anyone already busy above is left out), then recent sessions as plain text. Rows light up with dots where you press them.
 - The desktop sidebar is laid out the same way: Active sessions raised with the agent's face and what it's doing, then your agents (click one to start a session), then Pinned and Recent as plain text. No more date groups.
 - Section labels in session lists are a quiet grey instead of blue.
-- The model's thinking is hidden in chat by default; turn on Settings › Appearance › Show thinking to see it. The bird that works between steps is bigger.
+- The model's thinking shows in chat by default as a folded line that stays closed while it streams; turn off Settings › Appearance › Show thinking to hide it.
+- Copy, edit and fork on your messages sit under the message instead of beside it.
+- A working turn ends in one quiet line instead of a bird: a breathing dither orb and what it's doing right now ("Thinking…", "Reading Thread.tsx…", "Running bun test…"), rolling to the next step as it goes. That line heads the steps and they stay folded until you open them, while it works and after. Steps in the trail no longer spin. Session rows say the step while it happens ("Editing Thread.tsx").
 - Opening a session puts the cursor in the reply box (not on touch screens, so the keyboard doesn't cover the chat).
-- The bird in the chat header stays awake, and a teammate's handoff line no longer has a moving strip beside it.
-- Explore and General show their birds everywhere a teammate would: handoff lines, the running strip above the reply box, their conversation and its working bird, and questions they ask.
+- In a session, the agent's bird moves out of the header and perches on the top right of the reply box, bigger: it shows what they're doing, nods at each new step, types while files are edited, watches what you type and nods along. Thought clouds, bulbs and sparkles are bigger on small birds so their faces read. The header keeps their name over the session's title. A teammate's handoff line no longer has a moving strip beside it.
+- Explore and General show a face everywhere a teammate would: handoff lines, the running strip above the reply box, their conversation, and questions they ask.
+- Sessions with work still going in the background (a teammate on a part, a command left running) stay under Active with their bird awake, and say what's going: "Scout working in the background", "bun dev running in the background".
+- Agents now send slow work to the background instead of waiting on it: a lead hands parts to teammates in the background and keeps talking to you, and anyone running a long build or test suite carries on with something else, or tells you what's running and stops there. They pick up from the result when it lands.
+- Faces on handoff lines are bigger, so you can see what the teammate is up to. While a handoff runs, the turn no longer adds a "Waiting on Scout…" line under it: the handoff line already says what's happening.
 - Stop and "open their conversation" on handoff lines and the running strip are always shown instead of waiting for hover.
 - Recent sessions no longer show a bird, on phones or in the sidebar: birds are for agents, so it's clear at a glance what's history.
 - Sleeping birds are easier to spot: a deeper breath and sway, a snore bubble, and bigger ice z's drifting up.
-- Explore and General have birds of their own (a falcon and a phoenix) and show up in Agents as subagents.
+- Explore and General have faces of their own, pixel glyphs rather than birds (birds are for teammates): ice and flickering while they work. They show up in Agents as subagents.
+- The starting team is Juno with Scout, Relay and Patch, beside the Explore and General helpers. Piper moves to the hiring gallery.
+- On phones, a new session with a teammate shows their bird, name and greeting, without the description underneath.
 - Your open session, drafts and model picks come back after a reload.
 - Free and paid versions of the same model are told apart in menus, and models without thinking levels no longer offer one.
 - Pinch-zoom works on phones again, and text fields no longer zoom the page when you tap them.
@@ -29,6 +36,7 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 - Schedules around a daylight-saving change run at the right time.
 - Live text no longer shimmers red in themes whose colours are mixes (like Tokyo Night Day).
+- "Keep working in the background" on a teammate's handoff line shows a few seconds in, as it should. Before, it was usually hidden while the teammate worked, because every handoff looked as if it was already in the background.
 
 ## [0.15.0] - 2026-10-23
 

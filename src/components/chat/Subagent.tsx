@@ -7,7 +7,7 @@ import { Button } from "../ui/Button";
 import { AgentClock } from "../ui/AgentClock";
 import { AgentMark } from "../ui/Bird";
 import { useFace } from "../../state/face";
-import { useAgentName, useMascot } from "../../state/teammates";
+import { useAgentName, useHasFace } from "../../state/teammates";
 import { Thread } from "./Thread";
 import { AskDock } from "./Asks";
 
@@ -27,7 +27,7 @@ export function SubagentHost({ compact }: { compact: boolean }) {
     if (id) void useChat.getState().loadTimeline(id, true);
   }, [id]);
 
-  const mascot = useMascot(open?.agent);
+  const faced = useHasFace(open?.agent);
   const face = useFace(id);
   const name = useAgentName(open?.agent) || "Subagent";
   return (
@@ -43,7 +43,7 @@ export function SubagentHost({ compact }: { compact: boolean }) {
           {open?.title && <span className="min-w-0 truncate font-normal text-muted">{open.title}</span>}
           {busy && (
             <span className="ml-auto flex shrink-0 items-center gap-2">
-              {!mascot && <AgentClock size={12} />}
+              {!faced && <AgentClock size={12} />}
               <Button size="sm" variant="ghost" icon={<Square size={12} />} onClick={() => id && void (parent ? stopSubagent(parent, id, open?.title) : interrupt(id))}>
                 Stop
               </Button>

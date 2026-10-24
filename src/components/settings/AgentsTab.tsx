@@ -16,7 +16,7 @@ import { TeammateEditor } from "./TeammateEditor";
 import { useTeammates, useTeammateState } from "../../state/teammates";
 import { Sheet } from "../ui/Sheet";
 import { AgentMark, Bird } from "../ui/Bird";
-import { CATALOG, hash, HELPER_BIRDS, isListedAgent, listNames, STARTER_TEAM, type Teammate } from "../../lib/teammates";
+import { CATALOG, hash, isHelper, isListedAgent, listNames, STARTER_TEAM, type Teammate } from "../../lib/teammates";
 import { HireGallery } from "./HireGallery";
 import { COMPOSIO_SERVER } from "../../lib/composio";
 import { appEffect, KINDS, sample } from "../../lib/appPermissions";
@@ -394,9 +394,9 @@ function TeammateRow({ t, active, disabled, onClick }: { t: Teammate; active: bo
 function AgentRow({ id, info, cfg, active, onClick }: { id: string; info?: AgentInfo; cfg?: AgentConfig; active: boolean; onClick: () => void }) {
   const disabled = cfg?.disabled;
   return (
-    // A helper wears its bird, so it gets a teammate's row height.
-    <button onClick={onClick} className={`flex w-full items-center gap-2.5 rounded-xl text-left transition-colors ${id in HELPER_BIRDS ? "px-1.5 py-1" : "px-2.5 py-2"} ${active ? "chip" : "hover:bg-hover"}`}>
-      <AgentMark id={id} size={id in HELPER_BIRDS ? 34 : 20} />
+    // A helper wears its glyph, so it gets a teammate's row height.
+    <button onClick={onClick} className={`flex w-full items-center gap-2.5 rounded-xl text-left transition-colors ${isHelper(id) ? "px-1.5 py-1" : "px-2.5 py-2"} ${active ? "chip" : "hover:bg-hover"}`}>
+      <AgentMark id={id} size={isHelper(id) ? 34 : 20} />
       <span className={`min-w-0 flex-1 truncate text-[13px] ${disabled ? "text-faint line-through" : "text-ink"}`}>{info?.name ?? id}</span>
       {(info?.mode ?? cfg?.mode) !== "primary" && <span className="shrink-0 text-[12px] text-faint">{modeLabel(info?.mode ?? cfg?.mode)}</span>}
     </button>

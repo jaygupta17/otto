@@ -7,7 +7,11 @@ import { useConnection } from "../../state/connection";
 import { AgentPicker, ModelPicker } from "./Pickers";
 import { Spinner } from "../ui/AgentClock";
 import { toast } from "../../state/ui";
-import { useAgentName, useTeammates } from "../../state/teammates";
+import { useAgentName, useMascot, useTeammates } from "../../state/teammates";
+import { useFace } from "../../state/face";
+import { useDoing } from "../../state/tiers";
+import { Bird } from "../ui/Bird";
+import { FEET, FIT, type BirdId } from "../../lib/flock/birds";
 import { cycleAgent } from "../../lib/actions";
 import { ContextMeter } from "./SessionExtras";
 import type { FsEntry } from "../../lib/opencode/client";
@@ -232,7 +236,7 @@ export function Composer({ sessionId, placeholder = "Do anything…", autoFocus 
   // A run is never without its Stop; a draft adds Steer beside it instead of replacing it.
   const showStop = busy;
   const showSend = !busy || !!draft.trim();
-  // In a session the header already says who you're talking to, so the tools skip the agent.
+  // In a session the header says who you're talking to (and their bird perches on the box), so the tools skip the agent.
   const inline = !!sessionId;
 
   /** Start the draft with a trigger character and open its suggestions. */
@@ -424,6 +428,41 @@ export function Composer({ sessionId, placeholder = "Do anything…", autoFocus 
       ) : (
         card
       )}
+    </div>
+  );
+}
+
+/** The bird perched on a session's reply box, if its agent has one (plain agents don't). */
+export function usePerched(sessionId: string) {
+  // A lead's part runs in a child session the sidebar doesn't list; it knows who's on it.
+  return useMascot(useChat((s) => s.sessions[sessionId]?.agent ?? s.delegated[sessionId]));
+}
+
+/**
+ * Who you're talking to, standing on the top right of the reply box (or
+ * whatever is stacked on it): what they're doing, eyes on what you type, a
+ * nod per word. Put it in the box's positioned column; the thread ends clear
+ * of it (see `usePerched`).
+ */
+export function Perch({ sessionId, size }: { sessionId: string; size: number }) {
+  const mate = usePerched(sessionId);
+  const name = useAgentName(useChat((s) => s.sessions[sessionId]?.agent ?? s.delegated[sessionId]));
+  const state = useFace(sessionId);
+  const words = useChat((s) => (s.drafts[sessionId] ?? "").trim().split(/\s+/).filter(Boolean).length);
+  // It follows the turn's status line: a nod at each new step, typing while a file's being written.
+  const doing = useDoing(sessionId, useChat((s) => !!s.busy[sessionId]));
+  const [steps, setSteps] = useState(0);
+  useEffect(() => {
+    if (doing) setSteps((n) => n + 1);
+  }, [doing]);
+  const mood = state === "working" && /^(Editing|Writing) /.test(doing) ? "type" : undefined;
+  if (!mate) return null;
+  // Feet on the card's edge (its 1px ring), clear of its rounded corner.
+  const id = mate.bird as BirdId;
+  const drop = FIT[id] ? (FEET[id] * size) / FIT[id][3] + 0.6 : 2;
+  return (
+    <div className="absolute right-6 bottom-full z-10 flex" style={{ transform: `translateY(${drop.toFixed(1)}px)` }}>
+      <Bird bird={mate.bird} seed={mate.face} size={size} state={state} mood={mood} attentive={words > 0} pulse={words + steps} doze={false} interactive label={name || undefined} />
     </div>
   );
 }

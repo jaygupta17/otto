@@ -7,7 +7,8 @@ const turn = (...blocks: unknown[]) => [{ kind: "user", id: "u" }, { kind: "assi
 
 describe("doingOf", () => {
   test("names the step a turn is on, by file where it has one", () => {
-    expect(doingOf(turn(tool("edit", { filePath: "/w/src/Thread.tsx" })))).toBe("Edit Thread.tsx");
+    expect(doingOf(turn(tool("edit", { filePath: "/w/src/Thread.tsx" })))).toBe("Editing Thread.tsx");
+    expect(doingOf(turn({ ...tool("edit", { filePath: "/w/src/Thread.tsx" }), status: "completed" }))).toBe("Edited Thread.tsx");
   });
 
   test("says when it's thinking or writing, and nothing once that's done", () => {

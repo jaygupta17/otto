@@ -35,7 +35,8 @@ import { buildBird, type Mood } from "../../lib/flock/build";
 import { BIRD } from "../../lib/flock/birds";
 import { reaction } from "../../state/face";
 import { useTeammate } from "../../state/teammates";
-import { HELPER_BIRDS } from "../../lib/teammates";
+import { HELPERS } from "../../lib/teammates";
+import { DitherAvatar } from "./DitherAvatar";
 import { DitherOrb } from "./Dither";
 
 export type FaceState = "idle" | "working" | "writing" | "needs" | "done" | "failed" | "stopped" | "retrying";
@@ -338,13 +339,24 @@ function useBirdLife(
   }, [ref, big, small, interactive, always, greet, quiet, setAct, setAwake]);
 }
 
-/** How an agent shows up in lists and menus: a teammate's bird, or the orb for a plain agent. */
-export function AgentMark({ id, size = 18, state, doze }: { id: string | undefined; color?: unknown; size?: number; state?: FaceState; doze?: boolean }) {
+/** How an agent shows up in lists and menus: a teammate's bird, a helper's glyph, or the orb for a plain agent. */
+export function AgentMark({ id, size = 18, state, doze, label }: { id: string | undefined; color?: unknown; size?: number; state?: FaceState; doze?: boolean; label?: string }) {
   const t = useTeammate(id);
-  if (t) return <Bird bird={t.bird} seed={t.face} size={size} state={state} doze={doze} />;
-  const helper = id ? HELPER_BIRDS[id] : undefined;
-  if (helper) return <Bird bird={helper.bird} seed={helper.face} size={size} state={state} doze={doze} />;
+  if (t) return <Bird bird={t.bird} seed={t.face} size={size} state={state} doze={doze} label={label} />;
+  const helper = id && Object.hasOwn(HELPERS, id) ? HELPERS[id] : undefined;
+  if (helper) return <HelperMark seed={helper.glyph} size={size} state={state} label={label} />;
   return <PlainMark size={size} state={state} />;
+}
+
+/** A helper (explore, general): its dither glyph in a bird-sized box, ice and flickering while it works, ice while it needs you, red when it failed. */
+function HelperMark({ seed, size, state, label }: { seed: string; size: number; state?: FaceState; label?: string }) {
+  const live = state === "working" || state === "writing" || state === "retrying";
+  const tone = live || state === "needs" ? "text-accent" : state === "failed" ? "text-danger" : "text-ink";
+  return (
+    <span className={`grid shrink-0 place-items-center ${tone}`} style={{ width: size, height: size }}>
+      <DitherAvatar seed={seed} size={size} live={live} label={label} />
+    </span>
+  );
 }
 
 /** A plain agent (no teammate): the agent orb, bare, in a bird-sized box so a list's column stays even. Ice while it works. */

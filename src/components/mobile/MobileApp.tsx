@@ -12,7 +12,7 @@ import { deleteSession, renameSession } from "../../lib/actions";
 import { useNow } from "../../hooks/useNow";
 import { Thread } from "../chat/Thread";
 import { useBack } from "../../lib/back";
-import { Composer } from "../chat/Composer";
+import { Composer, Perch, usePerched } from "../chat/Composer";
 import { AgentPicker, ProjectPicker } from "../chat/Pickers";
 import { BackButton, Sheet } from "../ui/Sheet";
 import { InboxButton } from "../shell/Inbox";
@@ -36,7 +36,7 @@ import { FilesPanel } from "../files/FilesPanel";
 import { EditorBody } from "../files/Editor";
 import { SchedulesView } from "../schedules/SchedulesView";
 import { WorkspaceIcon, statusText } from "../shell/Sidebar";
-import { useDoing, useOfferedAgents, useSessionTiers } from "../../state/tiers";
+import { useBackgroundLine, useDoing, useOfferedAgents, useSessionTiers } from "../../state/tiers";
 import { SessionHistory } from "../chat/SessionHistory";
 import { SettingsScreen, TabBar, TABS, TeamScreen, type Tab } from "./Tabs";
 
@@ -282,11 +282,13 @@ const ActiveCard = memo(function ActiveCard({ s, now }: { s: SessionInfo; now: n
   const mood = useFace(s.id);
   const who = useAgentName(s.agent);
   const doing = useDoing(s.id, busy);
+  // Its turn is over but work it started is still going: still working, as far as you're concerned.
+  const away = useBackgroundLine(s.id);
   const failed = s.outcome === "failed";
   return (
     <button {...spot} onClick={() => open(s.id)} data-tone={asking ? "needs" : undefined} className="bezel flex w-full items-center gap-3.5 rounded-[20px] py-3 pr-4 pl-3 text-left">
       <Spot />
-      <AgentMark id={s.agent} size={56} state={mood} />
+      <AgentMark id={s.agent} size={56} state={away && (mood === "idle" || mood === "done") ? "working" : mood} />
       <span className="min-w-0 flex-1">
         <span className="flex items-baseline gap-2">
           <span className="min-w-0 flex-1 truncate text-[17px] leading-snug font-semibold text-ink">{s.title || "New session"}</span>
@@ -297,6 +299,8 @@ const ActiveCard = memo(function ActiveCard({ s, now }: { s: SessionInfo; now: n
             <span className="text-info">Needs you</span>
           ) : busy ? (
             <span className="shimmer min-w-0 truncate">{doing || (who ? `${who} is working` : "Working")}</span>
+          ) : away ? (
+            <span className="shimmer min-w-0 truncate">{away}</span>
           ) : (
             <>
               <Pip tone={failed ? "error" : "new"} label={failed ? "Didn't finish" : "New result"} />
@@ -365,6 +369,9 @@ const RecentRow = memo(function RecentRow({ s, now, first }: { s: SessionInfo; n
   );
 });
 
+/** The bird standing on a session's reply box. */
+const PERCH = 52;
+
 function SessionScreen({ sessionId }: { sessionId: string }) {
   const session = useChat((s) => s.sessions[sessionId]);
   const open = useChat((s) => s.open);
@@ -408,6 +415,8 @@ function SessionScreen({ sessionId }: { sessionId: string }) {
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+  // The thread ends a little above a perched bird's head (44px, over the 16px fade), not behind it.
+  const rise = usePerched(sessionId) ? PERCH - 16 : 0;
 
   return (
     <motion.div
@@ -467,14 +476,15 @@ function SessionScreen({ sessionId }: { sessionId: string }) {
         </div>
       </Popover>
 
-      <Thread sessionId={sessionId} bottomInset={inset} />
+      <Thread sessionId={sessionId} bottomInset={inset + rise} />
 
       <div
         ref={composerRef}
         className="safe-bottom pointer-events-none absolute inset-x-0 bottom-0 z-10 px-3"
       >
         <PanelFade className="h-4" />
-        <div className="panel-fill pointer-events-auto pb-2">
+        <div className="panel-fill pointer-events-auto relative pb-2">
+          <Perch sessionId={sessionId} size={PERCH} />
           <AskDock sessionId={sessionId} />
           <BackgroundStrip sessionId={sessionId} />
           <InboxTray sessionId={sessionId} />
@@ -500,7 +510,7 @@ function SessionScreen({ sessionId }: { sessionId: string }) {
   );
 }
 
-/** Meeting the teammate a new session is with: face, name, greeting, their starters. */
+/** Meeting the teammate a new session is with: face, name and greeting. Their tagline waits on their profile. */
 function DraftIntro() {
   const mate = useTeammate(useChat((s) => s.pickedAgent));
   const words = useChat((s) => (s.drafts.new ?? "").trim().split(/\s+/).filter(Boolean).length);
@@ -517,7 +527,6 @@ function DraftIntro() {
       <Bird bird={mate.bird} seed={mate.face} size={88} attentive={typing} interactive pulse={words} label={mate.name} />
       <div className="mt-4 text-[14px] font-medium text-ink-2">{mate.name}</div>
       <div className="mt-1 text-[22px] leading-tight font-semibold">{mate.greeting || `What should ${mate.name} work on?`}</div>
-      {mate.tagline && <div className="mt-2 max-w-[300px] text-[14px] text-muted">{mate.tagline}</div>}
     </motion.div>
   );
 }

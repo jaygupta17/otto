@@ -189,7 +189,7 @@ export const useUI = create<UIState>((set, get) => ({
     set({ homeCompact: v });
     void kv.set("ui.homeCompact", v);
   },
-  showThinking: false,
+  showThinking: true,
   setShowThinking(v) {
     set({ showThinking: v });
     void kv.set("ui.showThinking", v);
@@ -246,7 +246,7 @@ export async function initUI() {
   void kv.delete("ui.backdrop");
   void kv.delete("ui.backdrops");
   if ((await kv.get<boolean>("ui.homeCompact")) === false) useUI.setState({ homeCompact: false });
-  if ((await kv.get<boolean>("ui.showThinking")) === true) useUI.setState({ showThinking: true });
+  if ((await kv.get<boolean>("ui.showThinking")) === false) useUI.setState({ showThinking: false });
   const layout = await kv.get<{ sidebarOpen?: boolean; panel?: PanelSurface | null; lastPanel?: PanelSurface; panelWidths?: UIState["panelWidths"]; treeOpen?: boolean }>("ui.layout");
   if (layout) useUI.setState({ sidebarOpen: layout.sidebarOpen !== false, panel: layout.panel ?? null, lastPanel: layout.panel ?? layout.lastPanel ?? "files", panelWidths: layout.panelWidths ?? {}, treeOpen: layout.treeOpen !== false });
   useUI.subscribe((s, prev) => {

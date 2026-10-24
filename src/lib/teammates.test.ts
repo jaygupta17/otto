@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { BIRD_IDS } from "./flock/birds";
-import { HELPER_BIRDS, isListedAgent, isOfferedAgent } from "./teammates";
+import { HELPERS, isHelper, isListedAgent, isOfferedAgent, STARTER_TEAM } from "./teammates";
 
 describe("helper birds", () => {
   test("explore and general are listed but not offered", () => {
@@ -16,9 +15,15 @@ describe("helper birds", () => {
     expect(isListedAgent("relay")).toBe(true);
   });
 
-  test("every helper is a real Flock bird, and no two share one", () => {
-    const birds = Object.values(HELPER_BIRDS).map((h) => h.bird);
-    for (const b of birds) expect(BIRD_IDS).toContain(b);
-    expect(new Set(birds).size).toBe(birds.length);
+  test("helpers are glyphs, each its own", () => {
+    expect(Object.keys(HELPERS).sort()).toEqual(["explore", "general"]);
+    const seeds = Object.values(HELPERS).map((h) => h.glyph);
+    expect(new Set(seeds).size).toBe(seeds.length);
+    expect(isHelper("relay")).toBe(false);
+    expect(isHelper("toString")).toBe(false);
+  });
+
+  test("the starting team is Juno with Scout, Relay and Patch", () => {
+    expect(STARTER_TEAM.map((t) => t.id)).toEqual(["juno", "scout", "relay", "patch"]);
   });
 });

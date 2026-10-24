@@ -53,10 +53,10 @@ import { useChat } from "../../state/chat";
 import { useShells } from "../../state/shells";
 import { openSubagent } from "../../state/subagent";
 import { useMemory } from "../../state/memory";
-import { AgentClock } from "../ui/AgentClock";
-import { Bird, PlainMark, type FaceState } from "../ui/Bird";
+import { AgentMark, type FaceState } from "../ui/Bird";
 import { useFace } from "../../state/face";
-import { useAgentName, useMascot } from "../../state/teammates";
+import { useAgentName } from "../../state/teammates";
+import { Loader, stepNow, type Retry } from "./Working";
 import { useDoing } from "../../state/tiers";
 import { ErrorBlock, ProseBox, ToolBody } from "./ToolBody";
 import { ImageStrip } from "./ImageStrip";
@@ -71,11 +71,12 @@ const isLive = (b: ToolBlock) => b.status === "running" || b.status === "streami
 
 /**
  * A run of tool calls and thoughts between two pieces of prose. Tools fold
- * into one summary line ("Edited 2 files · ran 3 commands") that opens into a
- * tree of rows; subagents stand on their own, in order, since they run long
+ * into one line ("Worked 55s") that opens into a tree of rows; while the run
+ * is the live end of a turn, that line is the turn's status ("Reading
+ * Thread.tsx…"). Subagents stand on their own, in order, since they run long
  * and have a conversation of their own to open.
  */
-export const ActivityGroup = memo(function ActivityGroup({ blocks, live }: { blocks: Block[]; live: boolean }) {
+export const ActivityGroup = memo(function ActivityGroup({ blocks, live, retry }: { blocks: Block[]; live: boolean; retry?: Retry }) {
   const segments = useMemo(() => {
     const out: ({ kind: "tools"; blocks: Block[]; key: string } | { kind: "agent"; b: ToolBlock })[] = [];
     for (const b of blocks) {
@@ -91,18 +92,18 @@ export const ActivityGroup = memo(function ActivityGroup({ blocks, live }: { blo
   return (
     <div className="my-1.5">
       {segments.map((s, i) =>
-        s.kind === "agent" ? <SubagentRow key={s.b.key} b={s.b} /> : <ToolRun key={s.key} blocks={s.blocks} live={live && i === segments.length - 1} />,
+        s.kind === "agent" ? <SubagentRow key={s.b.key} b={s.b} /> : <ToolRun key={s.key} blocks={s.blocks} live={live && i === segments.length - 1} retry={retry} />,
       )}
     </div>
   );
 });
 
-const ToolRun = memo(function ToolRun({ blocks, live }: { blocks: Block[]; live: boolean }) {
-  const [userOpen, setUserOpen] = useState<boolean | null>(null);
+const ToolRun = memo(function ToolRun({ blocks, live, retry }: { blocks: Block[]; live: boolean; retry?: Retry }) {
+  // Folded until you open it, live or not: the line says what it's on.
+  const [open, setOpen] = useState(false);
   const browser = useMemo(() => browserSteps(blocks), [blocks]);
   const stepOf = useMemo(() => new Map(browser.map((s) => [s.b.key, s.step])), [browser]);
   const running = blocks.some((b) => (b.kind === "tool" && isLive(b)) || (b.kind === "reasoning" && b.streaming));
-  const open = userOpen ?? (live || running);
   const failed = blocks.filter(toolFailed).length;
   // "Worked 1m 12s" leads; what was done follows quietly. Thinking alone reads as "Thought".
   const actions = useMemo(() => blocks.filter((b) => b.kind === "tool"), [blocks]);
@@ -115,29 +116,55 @@ const ToolRun = memo(function ToolRun({ blocks, live }: { blocks: Block[]; live:
   // Commands it left running keep going after the run folds; say so on the line.
   const ids = useMemo(() => blocks.flatMap((b) => (b.kind === "tool" ? (backgroundShellID(b) ?? []) : [])), [blocks]);
   const going = useShells((st) => ids.filter((id) => st.byId[id]?.status === "running" && !st.stopped[id]).length);
+  // Folded, a long command holding up the turn still offers to carry on by itself.
+  const holding = live && !open ? blocks.findLast((b): b is ToolBlock => b.kind === "tool" && isLive(b) && toolKind(b.name) === "shell" && !backgroundShellID(b) && typeof b.metadata?.shellID === "string") : undefined;
+  const sid = useContext(ThreadSession);
+  const [sending, setSending] = useState(false);
   return (
     <div>
-      <button
-        aria-expanded={open}
-        onClick={() => setUserOpen(!open)}
-        data-tip={detail || undefined}
-        className="group -ml-1 flex max-w-full items-center gap-1.5 rounded-md px-1 py-1 text-[13px] text-muted transition-colors hover:text-ink"
-      >
-        {running && <AgentClock size={12} className="mr-0.5" />}
-        <span className={`shrink-0 ${running ? "shimmer" : "text-ink-2 group-hover:text-ink"}`}>{verb}</span>
-        {Number.isFinite(took) && took >= 1000 && <span className="shrink-0 text-faint tabular-nums">{duration(took)}</span>}
-        {/* What was done shows on hover; the line itself stays a quiet "Worked 55s". */}
-        {detail && <span className="sr-only">: {detail}</span>}
-        {!running && going > 0 && <span className="shimmer shrink-0">· {going} still running</span>}
-        {failed > 0 && (
-          <span className="ml-1 inline-flex items-center gap-1 text-[12px] text-danger" aria-label={`${failed} failed`}>
-            <AlertTriangle size={12} /> {failed}
-          </span>
+      <div className="flex max-w-full items-center gap-1">
+        <button
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
+          data-tip={detail || undefined}
+          className={`group -ml-1 flex min-w-0 items-center gap-1.5 rounded-md px-1 text-[13px] text-muted transition-colors hover:text-ink ${live ? "h-7" : "py-1"}`}
+        >
+          {live ? (
+            <Loader doing={stepNow(blocks)} retry={retry} />
+          ) : (
+            <>
+              <span className={`shrink-0 ${running ? "shimmer" : "text-ink-2 group-hover:text-ink"}`}>{verb}</span>
+              {Number.isFinite(took) && took >= 1000 && <span className="shrink-0 text-faint tabular-nums">{duration(took)}</span>}
+            </>
+          )}
+          {/* What was done shows on hover; the line itself stays a quiet "Worked 55s". */}
+          {detail && <span className="sr-only">: {detail}</span>}
+          {!running && going > 0 && <span className="shimmer shrink-0">· {going} still running</span>}
+          {failed > 0 && (
+            <span className="ml-1 inline-flex items-center gap-1 text-[12px] text-danger" aria-label={`${failed} failed`}>
+              <AlertTriangle size={12} /> {failed}
+            </span>
+          )}
+          <motion.span animate={{ rotate: open ? 90 : 0 }} transition={{ duration: 0.18, ease }} className="shrink-0 text-faint group-hover:text-ink">
+            <ChevronRight size={14} />
+          </motion.span>
+        </button>
+        {holding && sid && now - holding.started > 4000 && (
+          <button
+            aria-label="Keep running in the background"
+            title="Keep running in the background"
+            disabled={sending}
+            onClick={async () => {
+              setSending(true);
+              await useChat.getState().background(sid);
+              setSending(false);
+            }}
+            className={`${rowIcon} disabled:opacity-50`}
+          >
+            <SendToBack size={13} />
+          </button>
         )}
-        <motion.span animate={{ rotate: open ? 90 : 0 }} transition={{ duration: 0.18, ease }} className="shrink-0 text-faint group-hover:text-ink">
-          <ChevronRight size={14} />
-        </motion.span>
-      </button>
+      </div>
       <AnimatePresence initial={false}>
         {open && (
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.24, ease }} className="overflow-hidden">
@@ -321,17 +348,12 @@ const ToolRow = memo(function ToolRow({ b: call, step }: { b: ToolBlock; step?: 
           title={b.name}
         >
           <span className={`relative grid h-5 w-5 shrink-0 place-items-center rounded-md ${failed ? "text-danger" : "text-muted"}`}>
-            {active ? (
-              <AgentClock size={12} />
-            ) : (
-              <>
-                <span className={`transition-opacity ${open ? "opacity-0" : "group-hover/row:opacity-0 group-focus-within/row:opacity-0"}`}>{step ? <Globe size={15} /> : iconFor(b)}</span>
-                <ChevronRight
-                  size={14}
-                  className={`absolute text-faint transition-[opacity,transform] ${open ? "rotate-90 opacity-100" : "opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100"}`}
-                />
-              </>
-            )}
+            {/* The turn's status line says it's live; the row keeps its icon. */}
+            <span className={`transition-opacity ${open ? "opacity-0" : "group-hover/row:opacity-0 group-focus-within/row:opacity-0"}`}>{step ? <Globe size={15} /> : iconFor(b)}</span>
+            <ChevronRight
+              size={14}
+              className={`absolute text-faint transition-[opacity,transform] ${open ? "rotate-90 opacity-100" : "opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100"}`}
+            />
           </span>
           <span className={`shrink-0 ${failed ? "text-danger" : active ? "shimmer" : "text-ink-2"}`}>{label.verb}</span>
           {label.path ? (
@@ -447,13 +469,12 @@ function BackgroundNote({ phase, error }: { phase: string; error?: string }) {
 // ---------------------------------------------------------------------------
 
 /**
- * Who a task went to: their bird (a plain agent's orb) wearing the task's
+ * Who a task went to: their bird (a helper's glyph, a plain agent's orb) wearing the task's
  * state, so it is the spinner, the check and the alert at once. The name
  * waits in its tooltip; the line beside it is for what they're doing. On a
  * phone a tap on the bird says who it is instead of opening the row.
  */
 function Avatar({ agent, name, state = "idle" }: { agent?: string; name: string; state?: FaceState }) {
-  const t = useMascot(agent);
   const touch = useRef(false);
   return (
     <span
@@ -463,7 +484,7 @@ function Avatar({ agent, name, state = "idle" }: { agent?: string; name: string;
       onClick={(e) => touch.current && e.stopPropagation()}
       className="grid shrink-0 place-items-center"
     >
-      {t ? <Bird bird={t.bird} seed={t.face} size={28} state={state} label={name} /> : <PlainMark size={28} state={state} />}
+      <AgentMark id={agent} size={40} state={state} label={name} />
     </span>
   );
 }
@@ -597,7 +618,7 @@ const SubagentRow = memo(function SubagentRow({ b }: { b: ToolBlock }) {
       <AnimatePresence initial={false}>
         {open && (
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2, ease }} className="overflow-hidden">
-            <div className="ml-[13px] space-y-2.5 border-l border-line py-2 pl-[26px]">
+            <div className="ml-[19px] space-y-2.5 border-l border-line py-2 pl-[32px]">
               {s.prompt && (
                 <Section title="Brief" actions={<CopyButton text={s.prompt} label="Copy brief" />}>
                   <ProseBox text={s.prompt} />
@@ -643,7 +664,7 @@ export const SubagentReport = memo(function SubagentReport({ msg }: { msg: Extra
       <AnimatePresence initial={false}>
         {open && text && (
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2, ease }} className="overflow-hidden">
-            <div className="ml-[13px] border-l border-line py-2 pl-[26px]">
+            <div className="ml-[19px] border-l border-line py-2 pl-[32px]">
               <Section title={failed ? "What went wrong" : stopped ? "Partial result" : "Result"} actions={<CopyButton text={text} label="Copy report" />}>
                 <ProseBox text={text} />
               </Section>
@@ -661,13 +682,13 @@ const ThoughtRow = memo(function ThoughtRow({ b }: { b: ReasonBlock }) {
   return (
     <div className="relative">
       <TrailNode tone={b.streaming ? "live" : "done"} />
-      <button aria-expanded={open || b.streaming} onClick={() => setOpen((v) => !v)} className="flex w-full items-center gap-2 rounded-md py-1 text-left text-[14px] hover:bg-hover">
-        <span className="grid h-5 w-5 place-items-center text-muted">{b.streaming ? <AgentClock size={12} /> : <Brain size={15} />}</span>
+      <button aria-expanded={open} onClick={() => setOpen((v) => !v)} className="flex w-full items-center gap-2 rounded-md py-1 text-left text-[14px] hover:bg-hover">
+        <span className="grid h-5 w-5 place-items-center text-muted"><Brain size={15} /></span>
         <span className={b.streaming ? "shimmer" : "text-ink-2"}>{b.streaming ? "Thinking" : "Thought"}</span>
         {secs > 0 && <span className="text-faint tabular-nums">{secs}s</span>}
       </button>
       <AnimatePresence initial={false}>
-        {(open || b.streaming) && b.text && (
+        {open && b.text && (
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2, ease }} className="overflow-hidden">
             <div className={`selectable mb-2 ml-7 border-l border-line pl-3 text-[13px] leading-relaxed whitespace-pre-wrap text-muted ${b.streaming ? "dither-fade-top flex max-h-[120px] flex-col justify-end overflow-hidden" : ""}`}>
               {b.streaming ? b.text.slice(-600) : b.text}

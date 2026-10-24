@@ -43,7 +43,8 @@ const dirOf = new Map<string, string>();
  * is left out of `replaced`, so its commands are kept rather than pruned.
  */
 async function fetchShells(dirs: Array<string | undefined>, fetch: (directory?: string) => Promise<ShellInfo[]>) {
-  const results = await Promise.allSettled(dirs.map((d) => fetch(d)));
+  // Async, so a fetch that throws outright settles as a failure like any other.
+  const results = await Promise.allSettled(dirs.map(async (d) => fetch(d)));
   const fresh: Array<{ dir: string; items: ShellInfo[] }> = [];
   results.forEach((r, i) => {
     if (r.status === "fulfilled") fresh.push({ dir: dirs[i] ?? "", items: r.value });

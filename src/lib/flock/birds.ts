@@ -346,6 +346,8 @@ export const FIT: Record<BirdId, [number, number, number, number]> = {
   flake: [29.5, 30, 194, 194],
   cinder: [2, 6, 236, 236],
 };
+/** How far a FIT frame runs below the bird's feet (to the middle of their line): what to drop it by to stand it on an edge. */
+export const FEET: Record<BirdId, number> = { nyx: 6, vanta: 14.5, floe: 6, talon: 5.4, zip: 6, fjord: 6, flake: 6, cinder: 4.5 };
 
 export const BIRDS: BirdDef[] = [nyx, vanta, floe, talon, zip, fjord, flake, cinder];
 export const BIRD: Record<string, BirdDef> = Object.fromEntries(BIRDS.map((b) => [b.id, b]));

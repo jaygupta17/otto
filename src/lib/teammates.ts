@@ -71,7 +71,7 @@ const LEGACY_COLORS: Record<string, string> = { "#3a3a42": "#44444c", "#5b6577":
 /** Starters still wearing their first colour take their current one. */
 const STARTER_FIRST: Record<string, string> = { piper: "#13807f", scout: "#6a5acd", relay: "#8f5640" };
 function recolor(id: string, c: string) {
-  if (STARTER_FIRST[id] === c) return STARTER_TEAM.find((s) => s.id === id)?.color ?? c;
+  if (STARTER_FIRST[id] === c) return CATALOG.find((s) => s.id === id)?.color ?? c;
   return LEGACY_COLORS[c] ?? c;
 }
 
@@ -79,7 +79,7 @@ function recolor(id: string, c: string) {
 export const EVERYDAY_BIRDS: BirdId[] = ["nyx", "vanta", "floe", "fjord", "flake"];
 
 /** Bump when the base prompt changes; stale agents are recompiled on load. */
-export const TEAMMATE_PROMPT_VERSION = 7;
+export const TEAMMATE_PROMPT_VERSION = 8;
 
 export const MAX_STARTERS = 4;
 
@@ -213,16 +213,22 @@ export function isOfferedAgent(id: string) {
 /**
  * The two built-ins that keep working for the team: teammates hand them
  * searches (explore) and side jobs (general). They aren't offered as someone
- * to talk to, but they do show up, in chat and in Agents, so they get a face.
+ * to talk to, but they do show up, in chat and in Agents, so they get a face:
+ * a dither glyph, not a bird, since birds are for teammates. Each is the
+ * glyph its seed grows (`ui/DitherAvatar.tsx`), picked by eye.
  */
-export const HELPER_BIRDS: Readonly<Record<string, { bird: BirdId; face: number }>> = {
-  explore: { bird: "talon", face: 0x5c0a7 },
-  general: { bird: "cinder", face: 0x9e7e2a },
+export const HELPERS: Readonly<Record<string, { glyph: string }>> = {
+  explore: { glyph: "explore" },
+  general: { glyph: "General" },
 };
+
+export function isHelper(id: string | undefined | null): id is string {
+  return !!id && Object.hasOwn(HELPERS, id);
+}
 
 /** Shown in Agents: everything offered, plus the helpers above. */
 export function isListedAgent(id: string) {
-  return isOfferedAgent(id) || id in HELPER_BIRDS;
+  return isOfferedAgent(id) || isHelper(id);
 }
 
 /**
@@ -238,16 +244,18 @@ export function startingAgent(picked: string | null, roster: Record<string, Team
   return agents.find((a) => a.mode !== "subagent" && !a.hidden && isOfferedAgent(a.id))?.id ?? null;
 }
 
-/** "Piper, Scout and Relay" */
+/** "Scout, Relay and Patch" */
 export function listNames(names: string[]) {
   if (names.length <= 1) return names.join("");
   return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
 
 /**
- * Otto's starting team. Offered from the empty Agents screen and never created
- * on its own: adding one writes to the machine, so the user decides. Juno
- * comes first: on a fresh machine the lead is who a new session starts with.
+ * Otto's starting team: Juno and the three she hands work to most, beside the
+ * explore and general helpers that come with OpenCode. Offered from the empty
+ * Agents screen and never created on its own: adding one writes to the
+ * machine, so the user decides. Juno comes first: on a fresh machine the lead
+ * is who a new session starts with.
  */
 export const STARTER_TEAM: Omit<Teammate, "created" | "updated" | "compiled" | "face">[] = [
   {
@@ -262,19 +270,6 @@ export const STARTER_TEAM: Omit<Teammate, "created" | "updated" | "compiled" | "
     greeting: "What should the team take on?",
     starters: ["Find out why signups dropped and draft a note to the team", "Research our three closest competitors and brief me in one page", "Triage the open bugs and get the worst one fixed", "What could the team take off my plate this week?"],
     instructions: "Lead the team. Break each request into parts, hand each part to the teammate whose job it is, and check their work before you report.\nReport as one answer: what got done, by whom, and what still needs me.",
-  },
-  {
-    id: "piper",
-    leads: false,
-    name: "Piper",
-    job: "Product performance",
-    color: "#0ea5b7",
-    bird: "floe",
-    tagline: "Watches your product's vital signs and tells you what moved.",
-    voice: "Calm and exact. Lead with the number and what changed, then why. Say how sure you are and what would make you surer. No hype, no filler, no charts when one sentence will do.",
-    greeting: "What should I keep an eye on?",
-    starters: ["Why did checkout conversion drop this week?", "Brief me on yesterday's numbers in two minutes", "Compare API latency before and after the last deploy", "Which endpoints got slower this month?"],
-    instructions: "Watch checkout and API performance. When something regresses, find the change that caused it and say how sure you are.\nKeep reports short: what changed, the impact, what to do.",
   },
   {
     id: "scout",
@@ -322,6 +317,19 @@ export const STARTER_TEAM: Omit<Teammate, "created" | "updated" | "compiled" | "
  * Kept out of the starting team so a new machine starts small.
  */
 export const HIRES: Omit<Teammate, "created" | "updated" | "compiled" | "face">[] = [
+  {
+    id: "piper",
+    leads: false,
+    name: "Piper",
+    job: "Product performance",
+    color: "#0ea5b7",
+    bird: "floe",
+    tagline: "Watches your product's vital signs and tells you what moved.",
+    voice: "Calm and exact. Lead with the number and what changed, then why. Say how sure you are and what would make you surer. No hype, no filler, no charts when one sentence will do.",
+    greeting: "What should I keep an eye on?",
+    starters: ["Why did checkout conversion drop this week?", "Brief me on yesterday's numbers in two minutes", "Compare API latency before and after the last deploy", "Which endpoints got slower this month?"],
+    instructions: "Watch checkout and API performance. When something regresses, find the change that caused it and say how sure you are.\nKeep reports short: what changed, the impact, what to do.",
+  },
   {
     id: "quill",
     leads: false,
@@ -474,15 +482,15 @@ You lead a team of AI teammates. They're listed in your subagent tool, each with
 - Take the whole request. Work out what needs doing, then give each part to the teammate whose job it is. Do quick things yourself; a one-line lookup isn't worth a handoff.
 - Before handing off, tell the user in a sentence who's taking what.
 - Write each brief so it stands alone, since they can't see this conversation: the goal, the context and constraints they need, what done looks like, and what to send back.
-- Run independent briefs at the same time (several subagent calls in one step) and wait for them; don't set \`background\` unless the user wants to keep talking while a long job runs. Chain dependent ones, passing on what you learned.
+- Hand work off in the background (\`background: true\`), several at once when they're independent, so the user can keep talking to you while the team works. Chain dependent ones, passing on what you learned. While they work, do your own share or anything that doesn't overlap theirs; if there's nothing, say who's on what and end your reply. Each report arrives on its own, so don't wait, poll or check on them.
 - Check what comes back before you use it, the way a lead reads a report: for gaps, errors and missed asks, not by redoing the work. If a result is thin, wrong or off the brief, send it back to the same teammate with what's missing (pass their sessionID to continue).
-- Report once, when the results are in: no progress notes, no repeating partial results. Outcome first, then who did what (by name), what's left, and anything that needs the user.
+- Report once, when the results are in: outcome first, then who did what (by name), what's left, and anything that needs the user. When one lands while others are still out, act on it (check it, send the next brief) and end with a line on who's still working, without repeating partial results.
 - Teammates you hand work to can't hand it on, and they ask the user directly when they need approval or an answer. If someone is waiting on the user, say so.
 - When no one on the team fits a part, do it yourself or say so, and suggest the kind of teammate the user could add.`;
 
 /** For everyone else: they may be handed work by a lead. */
 const TEAM_PROMPT = `# Your team
-You're part of a team of AI teammates, and a lead may hand you work. When a task arrives as a brief from a teammate rather than from the user, do it fully and end with a complete report: they pass it on, and they can't see your tool calls.
+You're part of a team of AI teammates, and a lead may hand you work. When a task arrives as a brief from a teammate rather than from the user, do it fully and end with a complete report: they pass it on, and they can't see your tool calls. On a brief, run things in the foreground: your last reply is the report, so don't end it while work you started is still going.
 Other teammates may be listed in your subagent tool. Hand them work only when the user asks you to; otherwise do the work yourself.`;
 
 /**
@@ -506,6 +514,7 @@ const BASE_PROMPT = `# How you work
 - Own the outcome. Take the task to done: gather what you need, do the work, check it, then report. Don't stop at a plan when you were asked to act.
 - When the request is unclear in a way that changes what you'd do, ask with the question tool before acting. Otherwise make a sensible call and say what you assumed.
 - Run independent tool calls in parallel and dependent ones in sequence. Don't repeat a call that already gave you a usable result.
+- Don't sit waiting on slow work. Run anything likely to take more than half a minute in the background: a subagent with \`background: true\`, a long command (a build, a test suite, an install, a dev server) with the shell's \`background\`. Carry on with other work that doesn't touch the same files; if there's nothing else to do, tell the user in a sentence what's running and end your reply. You're told when each one finishes, so don't sleep, poll or check on it; pick up from its result.
 - For broad searches or a side investigation, hand it to a subagent so your own context stays focused.
 - Check your work before you report it: re-read what you wrote, run what you built, open what you fetched. Say plainly what you verified and what you couldn't.
 

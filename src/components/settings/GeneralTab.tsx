@@ -269,7 +269,7 @@ function AppearanceSection() {
         <Row label="Compact home" hint="Just the prompt, without recent sessions">
           <Toggle on={homeCompact} onChange={setHomeCompact} label="Compact home" />
         </Row>
-        <Row label="Show thinking" hint="The model's reasoning, in chat as it works">
+        <Row label="Show thinking" hint="The model's reasoning, folded in chat as it works">
           <Toggle on={showThinking} onChange={setShowThinking} label="Show thinking" />
         </Row>
       </Rows>

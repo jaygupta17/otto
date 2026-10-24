@@ -4,6 +4,8 @@
  *
  *   DitherOrb   a lit sphere. Spinning, its light circles the rim: the
  *               "an agent is at work" mark (AgentClock renders one).
+ *   DitherBreath a ball of 2px dots that breathes as its light drifts: what
+ *               sits beside a turn's "Reading Thread.tsx…" while it works.
  *   DitherGauge a still pie of dots filled clockwise to a share (context used).
  *   DitherMeter the same share as a straight bar.
  *   DitherGround a short patch of dots for an empty state's mark to stand on.
@@ -124,6 +126,24 @@ export const DitherOrb = memo(function DitherOrb({
       style={{ width: size, height: size, ...style }}
     />
   );
+});
+
+/**
+ * A turn at work: a lit ball of 2px dots that swells and settles about every
+ * 2.4s while its light drifts round it. Busy enough that a long wait never
+ * looks frozen, soft enough to sit beside text.
+ */
+export const DitherBreath = memo(function DitherBreath({ size = 28, className = "" }: { size?: number; className?: string }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  const cells = Math.max(8, Math.round(size / 2));
+  const r = cells / 2;
+  useDither(ref, cells, cells, true, (x, y, t) => {
+    // Never reaches the canvas edge, so it stays round at full breath.
+    const R = (0.66 + 0.24 * (0.5 + 0.5 * Math.sin(t * 2.6))) * (r - 0.25);
+    const a = t * 1.7;
+    return sphere((x + 0.5 - r) / R, (y + 0.5 - r) / R, Math.cos(a) * 0.8, Math.sin(a) * 0.8 - 0.4, 0.6, 0.2);
+  });
+  return <canvas ref={ref} aria-hidden className={`dither inline-block shrink-0 ${className}`} style={{ width: cells * 2, height: cells * 2 }} />;
 });
 
 /**

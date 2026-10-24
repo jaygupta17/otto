@@ -18,7 +18,7 @@ import { ANYONE, appEffect, appRequest, JUST_YOU, resourceLabel, withoutRemember
 import { appLogo } from "../../lib/composio";
 import type { PermissionRule } from "../../lib/permissions";
 import { useExtensions } from "../../state/extensions";
-import { useMascot, useTeammate, useTeammates } from "../../state/teammates";
+import { useHasFace, useTeammate, useTeammates } from "../../state/teammates";
 import { AgentMark } from "../ui/Bird";
 import { MenuItem, Popover } from "../ui/Popover";
 import { rovingKeys } from "../../lib/layers";
@@ -101,7 +101,7 @@ function DockHeader({ ask, asks, index, onPick, collapsed, onCollapse }: { ask: 
   const via = useSubagentOf(sid);
   const agent = useChat((s) => agentOf(s, sid));
   const mate = useTeammate(agent);
-  const mascot = useMascot(agent);
+  const faced = useHasFace(agent);
   const handoff = ask.type === "form" && !!asHandoff(ask.form);
   const questions = ask.type === "form" && !handoff ? ask.form.fields.filter((f) => !f.hidden).length : 0;
   const title = ask.type === "permission" ? describePermission(ask.req).verb : handoff ? "Take over the screen" : questions > 1 ? `${questions} questions` : "Question";
@@ -110,7 +110,7 @@ function DockHeader({ ask, asks, index, onPick, collapsed, onCollapse }: { ask: 
   const Icon = ask.type === "permission" ? ShieldQuestion : handoff ? Hand : MessageCircleQuestion;
   return (
     <div className="flex min-w-0 items-center gap-2.5 py-2.5 pr-2 pl-3.5">
-      {mascot ? <AgentMark id={agent} size={22} state="needs" /> : <Icon size={16} className="shrink-0 text-info" />}
+      {faced ? <AgentMark id={agent} size={22} state="needs" /> : <Icon size={16} className="shrink-0 text-info" />}
       <div className="flex min-w-0 flex-1 items-baseline gap-1.5">
         <span className="truncate text-[14px] font-semibold text-ink">{title}</span>
         {who && <span className="shrink-0 truncate text-[13px] text-muted">{who}</span>}

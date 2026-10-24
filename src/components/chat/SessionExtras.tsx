@@ -13,9 +13,9 @@ import { Popover } from "../ui/Popover";
 import { Button, IconButton } from "../ui/Button";
 import { AgentClock, Spinner } from "../ui/AgentClock";
 import { DitherGauge, DitherMeter } from "../ui/Dither";
-import { Bird } from "../ui/Bird";
+import { AgentMark } from "../ui/Bird";
 import { useShells, inTree } from "../../state/shells";
-import { useAgentName, useMascot } from "../../state/teammates";
+import { useAgentName, useHasFace } from "../../state/teammates";
 import { openSubagent } from "../../state/subagent";
 import { subagentOf, toolKind } from "../../lib/opencode/tools";
 import { duration } from "../../lib/format";
@@ -165,12 +165,12 @@ function CommandLine({ item, root, now }: { item: Extract<Running, { kind: "comm
 }
 
 function TeammateLine({ item, root, now }: { item: Extract<Running, { kind: "teammate" }>; root: string; now: number }) {
-  const t = useMascot(item.agent);
+  const faced = useHasFace(item.agent);
   const name = useAgentName(item.agent) || "Subagent";
   const [stopping, setStopping] = useState(false);
   return (
     <div className="group/bg flex h-7 min-w-0 items-center gap-2 rounded-md px-1.5 text-[13px]">
-      {t ? <Bird bird={t.bird} seed={t.face} size={18} state="working" /> : <AgentClock size={11} />}
+      {faced ? <AgentMark id={item.agent} size={18} state="working" /> : <AgentClock size={11} />}
       <span className="shrink-0 font-medium text-ink-2">{name}</span>
       {item.description && <span className="shimmer min-w-0 truncate">{item.description}</span>}
       <span className="ml-auto shrink-0 pl-1 text-[12px] text-faint font-mono tabular-nums">{duration(now - item.started)}</span>

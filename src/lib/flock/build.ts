@@ -145,9 +145,17 @@ const star5 = (R: number, r: number) => { let d = ""; for (let k = 0; k < 10; k+
 const flakeD = (s: number) => `M0,${f(-s)} V${f(s)} M${f(-s * 0.87)},${f(-s * 0.5)} L${f(s * 0.87)},${f(s * 0.5)} M${f(-s * 0.87)},${f(s * 0.5)} L${f(s * 0.87)},${f(-s * 0.5)}`;
 function sceneFx(b: BirdDef, mood: Mood, vb: number[], sw: number, px: number) {
   const [vx, vy, vw, vh] = vb, fx = b.fx;
+  // The marks are drawn for a hero bird; on a 56px one they'd be specks. They grow as the bird
+  // shrinks (lines kept at the bird's weight), stepping away from its middle so they don't cover
+  // it, and may spill out of its box. List birds keep theirs.
+  const g = px >= 32 ? Math.min(1.8, Math.max(1, 96 / px)) : 1, msw = sw / g, out = 1 + (g - 1) * 0.3;
   const cl = ([x, y]: Pt, mx = 14, my = 14): Pt => [Math.min(Math.max(x, vx + mx), vx + vw - mx), Math.min(Math.max(y, vy + my), vy + vh - my)];
-  const at = ([x, y]: Pt, inner: string, cls = "", st = "") => `<g transform="translate(${f(x)} ${f(y)})"><g${cls ? ` class="${cls}"` : ""}${st ? ` style="${st}"` : ""}>${inner}</g></g>`;
-  const P = (d: string, k?: number, fill?: string) => `<path d="${d}"${k ? ` stroke-width="${f(sw * k)}"` : ""}${fill ? ` fill="${fill}"` : ""}/>`;
+  const at = ([x, y]: Pt, inner: string, cls = "", st = "", grow = true) => {
+    const big = grow && g > 1, ox = vx + vw / 2, oy = vy + vh / 2;
+    if (big) [x, y] = [ox + (x - ox) * out, oy + (y - oy) * out];
+    return `<g transform="translate(${f(x)} ${f(y)})${big ? ` scale(${f(g)})` : ""}"${big ? ` stroke-width="${f(msw)}"` : ""}><g${cls ? ` class="${cls}"` : ""}${st ? ` style="${st}"` : ""}>${inner}</g></g>`;
+  };
+  const P = (d: string, k?: number, fill?: string) => `<path d="${d}"${k ? ` stroke-width="${f(msw * k)}"` : ""}${fill ? ` fill="${fill}"` : ""}/>`;
   const dot = (cx: number, cy: number, r: number, cls = "", st = "") => `<circle${cls ? ` class="${cls}"` : ""}${st ? ` style="${st}"` : ""} cx="${cx}" cy="${cy}" r="${f(r)}" fill="${INK}" stroke="none"/>`;
   const lerp = (p: Pt, q: Pt, t: number): Pt => [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t];
   const [cx, cy] = fx.crown, R = rng(hash(b.id + mood));
@@ -174,16 +182,16 @@ function sceneFx(b: BirdDef, mood: Mood, vb: number[], sw: number, px: number) {
       });
       break;
     case "idea": {
-      const rays = [-160, -125, -90, -55, -20].map((a, n) => { const c = Math.cos((a * Math.PI) / 180), s = Math.sin((a * Math.PI) / 180); return `<path class="fk-ray" style="animation-delay:${n * 0.12}s" d="M${f(c * 13)},${f(-5 + s * 13)} L${f(c * 18.5)},${f(-5 + s * 18.5)}" stroke-width="${f(sw * 0.8)}"/>`; }).join("");
+      const rays = [-160, -125, -90, -55, -20].map((a, n) => { const c = Math.cos((a * Math.PI) / 180), s = Math.sin((a * Math.PI) / 180); return `<path class="fk-ray" style="animation-delay:${n * 0.12}s" d="M${f(c * 13)},${f(-5 + s * 13)} L${f(c * 18.5)},${f(-5 + s * 18.5)}" stroke-width="${f(msw * 0.8)}"/>`; }).join("");
       o += at(cl(fx.bulb, 21, 25), P(BULB, 0, BG) + P("M-4.5,10.5 H4.5 M-3,14 H3", 0.8) + P("M-3,3 L-1.5,-3 L0,0 L1.5,-3 L3,3", 0.6) + rays, "fk-popin");
       break;
     }
     case "wow":
-      o += at(cl(fx.mark, 10, 16), P("M0,-11 L0,1", 1.5) + dot(0, 7.5, sw * 0.85), "fk-popin");
+      o += at(cl(fx.mark, 10, 16), P("M0,-11 L0,1", 1.5) + dot(0, 7.5, msw * 0.85), "fk-popin");
       o += at(cl([cx, cy - 4], 22, 22), P("M-15,-5 L-20,-10 M0,-11 L0,-18 M15,-5 L20,-10", 0.75), "fk-popin", "animation-delay:.08s");
       break;
     case "huh":
-      o += at(cl(fx.mark, 10, 16), P("M-5,-6.5 C-5,-12.5 5,-12.5 5,-6.5 C5,-2.5 0,-1.5 0,3.5", 1.3) + dot(0, 9.5, sw * 0.85), "fk-wob");
+      o += at(cl(fx.mark, 10, 16), P("M-5,-6.5 C-5,-12.5 5,-12.5 5,-6.5 C5,-2.5 0,-1.5 0,3.5", 1.3) + dot(0, 9.5, msw * 0.85), "fk-wob");
       break;
     case "angry":
       o += at(cl(fx.vein, 12, 12), P("M-7.5,-2.5 Q-2.5,-2.5 -2.5,-7.5 M2.5,-7.5 Q2.5,-2.5 7.5,-2.5 M7.5,2.5 Q2.5,2.5 2.5,7.5 M-2.5,7.5 Q-2.5,2.5 -7.5,2.5", 1.1), "fk-beat");
@@ -194,7 +202,7 @@ function sceneFx(b: BirdDef, mood: Mood, vb: number[], sw: number, px: number) {
       const u = toUnits(px, vw), zs = Math.min(7, Math.max(3.4, px * 0.07)) * u, sd = b.fxSide || 1;
       const z = `M${f(-zs)},${f(-zs)} H${f(zs)} L${f(-zs)},${f(zs)} H${f(zs)}`;
       [0, -1.3, -2.6].forEach((d) => {
-        o += at(fx.zz, `<path d="${z}" style="stroke:var(--bird-shine)" stroke-width="${f(Math.max(sw * 0.95, 1.3 * u))}"/>`, "fk-zzz", `animation-delay:${d}s;--zx:${f(sd * 7 * u)}px;--zy:${f(-17 * u)}px`);
+        o += at(fx.zz, `<path d="${z}" style="stroke:var(--bird-shine)" stroke-width="${f(Math.max(sw * 0.95, 1.3 * u))}"/>`, "fk-zzz", `animation-delay:${d}s;--zx:${f(sd * 7 * u)}px;--zy:${f(-17 * u)}px`, false);
       });
       break;
     }
@@ -236,7 +244,7 @@ function sceneFx(b: BirdDef, mood: Mood, vb: number[], sw: number, px: number) {
       });
       const [bx, by] = b.beak, [dx, dy] = b.beakDir;
       [[0, 3.6, 0], [1, 2.6, -1.1]].forEach(([k, r, d]) => {
-        o += at([bx + dx * (6 + k * 2), by + dy * (6 + k * 2)], `<circle r="${r}" fill="${BG}" stroke-width="${f(sw * 0.6)}"/>`, "fk-puff", `animation-delay:${d}s;--px:${f(dx * 16 + (dx ? 0 : 6))};--py:${f(dy * 12 - 8)}`);
+        o += at([bx + dx * (6 + k * 2), by + dy * (6 + k * 2)], `<circle r="${r}" fill="${BG}" stroke-width="${f(msw * 0.6)}"/>`, "fk-puff", `animation-delay:${d}s;--px:${f(dx * 16 + (dx ? 0 : 6))};--py:${f(dy * 12 - 8)}`);
       });
       break;
     }

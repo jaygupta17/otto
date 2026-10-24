@@ -6,7 +6,7 @@
 import { create } from "zustand";
 import { readGlobalConfig, updateGlobalConfig, type AgentConfig } from "../lib/opencode/config";
 import { installMemory, removeMemory } from "../lib/memory";
-import { CATALOG, compileAgent, hash, HELPER_BIRDS, listNames, readTeammates, startingAgent, STARTER_TEAM, TEAMMATE_PROMPT_VERSION, updateTeammates, type Teammate } from "../lib/teammates";
+import { CATALOG, compileAgent, hash, isHelper, listNames, readTeammates, startingAgent, STARTER_TEAM, TEAMMATE_PROMPT_VERSION, updateTeammates, type Teammate } from "../lib/teammates";
 import { useChat } from "./chat";
 import { mateFace } from "./face";
 import type { FaceState } from "../components/ui/Bird";
@@ -248,10 +248,14 @@ export function useTeammate(id: string | undefined | null) {
   return useTeammates((s) => (id ? s.byId?.[id] : undefined));
 }
 
-/** The bird an agent shows up as: a teammate's own, or a helper's (explore, general). None for a plain agent. */
+/** The bird an agent shows up as: a teammate's own. None for a helper (explore and general are glyphs) or a plain agent. */
 export function useMascot(id: string | undefined | null): { bird: Teammate["bird"]; face: number } | undefined {
-  const t = useTeammate(id);
-  return t ?? (id ? HELPER_BIRDS[id] : undefined);
+  return useTeammate(id);
+}
+
+/** Whether an agent has a face of its own that carries its state: a teammate's bird or a helper's glyph. */
+export function useHasFace(id: string | undefined | null) {
+  return !!useTeammate(id) || isHelper(id);
 }
 
 /** What a teammate is up to across its sessions, plus parts of a lead's job it's doing. */

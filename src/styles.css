@@ -588,7 +588,74 @@ html[data-touch] #root {
   background-image: var(--shimmer-tile-accent);
 }
 
+/* The trailing "..." on a turn's status line, each dot lighting in turn. */
+.loader-dots > span {
+  animation: loader-dot 1.2s ease-in-out infinite;
+}
+.loader-dots > span:nth-child(2) {
+  animation-delay: 0.16s;
+}
+.loader-dots > span:nth-child(3) {
+  animation-delay: 0.32s;
+}
+@keyframes loader-dot {
+  0%,
+  70%,
+  100% {
+    opacity: 0.25;
+  }
+  35% {
+    opacity: 1;
+  }
+}
+
+/* A helper's glyph (ui/DitherAvatar.tsx): its checker flips phase when you
+   hover it, and keeps flipping while it works. */
+.glyph {
+  transition: transform 220ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.glyph-b {
+  opacity: 0;
+}
+.glyph:hover {
+  transform: scale(1.12) rotate(-3deg);
+}
+.glyph:hover .glyph-a {
+  opacity: 0;
+}
+.glyph:hover .glyph-b {
+  opacity: 1;
+}
+.glyph[data-live] .glyph-a {
+  animation: glyph-a 0.9s steps(1, end) infinite;
+}
+.glyph[data-live] .glyph-b {
+  animation: glyph-b 0.9s steps(1, end) infinite;
+}
+@keyframes glyph-a {
+  50% {
+    opacity: 0;
+  }
+}
+@keyframes glyph-b {
+  0% {
+    opacity: 0;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .loader-dots > span,
+  .glyph[data-live] .glyph-a,
+  .glyph[data-live] .glyph-b {
+    animation: none;
+  }
+  .glyph,
+  .glyph:hover {
+    transform: none;
+  }
   .shimmer,
   :root[data-shimmer] .shimmer {
     animation: none;

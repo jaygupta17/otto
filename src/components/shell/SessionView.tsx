@@ -3,7 +3,7 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { useChat } from "../../state/chat";
 import { useUI } from "../../state/ui";
 import { Thread } from "../chat/Thread";
-import { Composer } from "../chat/Composer";
+import { Composer, Perch, usePerched } from "../chat/Composer";
 import { SessionHistory } from "../chat/SessionHistory";
 import { PanelToggle } from "../panel/SidePanel";
 import { AgentPicker } from "../chat/Pickers";
@@ -18,6 +18,8 @@ import { kbd } from "../../hooks/useShortcuts";
 
 /** Height of the fade above the composer (`h-5`). */
 const FADE = 20;
+/** The bird standing on the composer. */
+const PERCH = 56;
 
 /** Desktop session pane: header, thread, floating composer. */
 export function SessionView({ sessionId }: { sessionId: string }) {
@@ -27,6 +29,8 @@ export function SessionView({ sessionId }: { sessionId: string }) {
   const open = useChat((s) => s.open);
   const composerRef = useRef<HTMLDivElement>(null);
   const [inset, setInset] = useState(140);
+  // The thread ends a little above a perched bird's head, not behind it.
+  const rise = usePerched(sessionId) ? PERCH - FADE + 4 : 0;
 
   useLayoutEffect(() => {
     const el = composerRef.current;
@@ -67,12 +71,13 @@ export function SessionView({ sessionId }: { sessionId: string }) {
         <PanelToggle />
       </header>
 
-      <Thread sessionId={sessionId} bottomInset={inset} />
+      <Thread sessionId={sessionId} bottomInset={inset + rise} />
 
       <div ref={composerRef} className="pointer-events-none absolute inset-x-0 bottom-0 z-10">
         <PanelFade className="h-5" />
         <div className="panel-fill pointer-events-auto px-5 pb-4 sm:px-8">
-          <div className="mx-auto w-full max-w-[760px]">
+          <div className="relative mx-auto w-full max-w-[760px]">
+            <Perch sessionId={sessionId} size={PERCH} />
             <ConnectionBanner />
             <AskDock sessionId={sessionId} />
             <BackgroundStrip sessionId={sessionId} />

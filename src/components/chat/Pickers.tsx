@@ -342,7 +342,7 @@ function LevelPage({ m, current, onBack, onPick }: { m: ModelInfo; current: stri
   );
 }
 
-/** Who you're talking to. A small chip in the composer, or in a session's header the face and name over `subtitle`. Either opens the switcher. */
+/** Who you're talking to. A small chip in the composer, or in a session's header the name over `subtitle` (their bird perches on the reply box instead). Either opens the switcher. */
 export function AgentPicker({ sessionId, header = false, compact = false, subtitle }: { sessionId: string | null; header?: boolean; compact?: boolean; subtitle?: ReactNode }) {
   const anchor = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
@@ -363,7 +363,7 @@ export function AgentPicker({ sessionId, header = false, compact = false, subtit
   const info = agents.find((a) => a.id === current);
   // Loaded but nothing to talk to yet: the chip becomes the way to add a teammate.
   const empty = !current && roster !== null;
-  // The face on the chip shows what this session's agent is doing.
+  // The face on the chip (and the label everywhere) says what this session's agent is doing.
   const state = useFace(useChat((s) => s.activeId));
   const stateName = { working: "working", writing: "writing", retrying: "retrying", needs: "needs you", failed: "didn't finish" }[state as string] ?? "";
   useEffect(() => {
@@ -380,21 +380,18 @@ export function AgentPicker({ sessionId, header = false, compact = false, subtit
         aria-expanded={open}
         className={
           header
-            ? "no-drag flex min-w-0 items-center gap-2.5 rounded-lg py-1 pr-2 pl-1 text-left transition-colors hover:bg-hover"
+            ? "no-drag flex min-w-0 items-center rounded-lg px-2 py-1 text-left transition-colors hover:bg-hover"
             : `flex min-w-0 items-center gap-1.5 rounded-full transition-colors hover:bg-hover hover:text-ink ${compact ? "h-10 pr-2.5 pl-1.5 text-[14px]" : "h-8 pr-2 pl-1 text-[13px]"} ${empty ? "text-ink" : "text-ink-2"} ${open ? "bg-hover text-ink" : ""}`
         }
       >
         {header ? (
-          <>
-            <AgentMark id={current} color={info?.color} size={30} state={state} doze={false} />
-            <span className="min-w-0">
-              <span className="flex items-center gap-1 text-[14px] leading-tight font-semibold text-ink">
-                <span className="truncate">{empty ? "Add a teammate" : name || "Agent"}</span>
-                <ChevronDown size={13} className="shrink-0 text-faint" />
-              </span>
-              {subtitle && <span className="block truncate text-[12px] leading-tight text-muted">{subtitle}</span>}
+          <span className="min-w-0">
+            <span className="flex items-center gap-1 text-[14px] leading-tight font-semibold text-ink">
+              <span className="truncate">{empty ? "Add a teammate" : name || "Agent"}</span>
+              <ChevronDown size={13} className="shrink-0 text-faint" />
             </span>
-          </>
+            {subtitle && <span className="block truncate text-[12px] leading-tight text-muted">{subtitle}</span>}
+          </span>
         ) : (
           <>
             {/* Who'll take it: their face and name, like DitherUI's mode pills. A phone's draft shows the name big above, so the pill keeps the face. */}

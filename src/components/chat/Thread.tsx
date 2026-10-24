@@ -6,17 +6,16 @@ import { duration, stamp } from "../../lib/format";
 import { useNow } from "../../hooks/useNow";
 import { revertIndex, useChat } from "../../state/chat";
 import { useUI } from "../../state/ui";
-import { Bird } from "../ui/Bird";
-import { useMascot } from "../../state/teammates";
 import { Markdown } from "./Markdown";
 import { ActivityGroup, SubagentReport } from "./Activity";
 import { ScreenCard } from "./ScreenCard";
 import { ChangedFiles } from "./ChangedFiles";
 import { usesScreen } from "../../lib/browserSteps";
-import { isStopError } from "../../lib/opencode/tools";
+import { isStopError, toolKind } from "../../lib/opencode/tools";
 import { ThreadSession } from "./ToolParts";
 import { TurnStatus, type RunError } from "./TurnStatus";
-import { AgentClock, Spinner } from "../ui/AgentClock";
+import { Spinner } from "../ui/AgentClock";
+import { stepNow, Working } from "./Working";
 import { Button } from "../ui/Button";
 import { layerOpen } from "../../lib/layers";
 
@@ -340,7 +339,7 @@ export function Thread({ sessionId, bottomInset = 0 }: { sessionId: string; bott
             return <Turn key={it.key} msgs={it.msgs} live={live} screen={i === screenAt} start={it.start} retry={live ? retry : undefined} sessionId={sessionId} forkBefore={nextUsers[i]} />;
           })}
           {revert && hidden > 0 && <RevertBar sessionId={sessionId} files={revert.files?.length ?? 0} count={(timeline?.messages ?? []).slice(cut).filter((m) => m.kind === "user").length} />}
-          {awaitingFirst && <Working sessionId={sessionId} />}
+          {awaitingFirst && <Working doing="Thinking" />}
         </div>
       </div>
       {/* The run's two voices: polite for where it is, assertive for one that failed. Keyed so a new session starts from what's on screen, not what the last one said. */}
@@ -376,8 +375,8 @@ const UserBubble = memo(function UserBubble({ msg, sessionId }: { msg: Extract<U
   const [copied, setCopied] = useState(false);
   const real = !msg.pending && !msg.id.startsWith("local_");
   return (
-    <motion.div layout="position" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.15 }} className="group/user mt-5 mb-3 flex items-center justify-end gap-1">
-      {/* Actions sit beside the bubble, not under it, so they never push the reply down. */}
+    <motion.div layout="position" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.15 }} className="group/user mt-5 mb-3 flex flex-col items-end">
+      {/* Actions sit under the bubble, right-aligned with it, shown on hover (always on phones). */}
       <div className={`selectable relative max-w-[min(560px,80%)] rounded-[20px] bg-bubble-me px-4 py-2.5 text-[15px] leading-[1.45] whitespace-pre-wrap text-on-bubble-me ${msg.pending ? "opacity-60" : ""}`}>
         <div className={long && !expanded ? "max-h-[220px] overflow-hidden [mask-image:linear-gradient(to_bottom,black_70%,transparent)]" : ""}>{msg.text}</div>
         {long && (
@@ -388,7 +387,7 @@ const UserBubble = memo(function UserBubble({ msg, sessionId }: { msg: Extract<U
         {msg.files?.length ? <div className="mt-2 flex flex-wrap gap-1.5">{msg.files.map((f) => <span key={f.uri} className="rounded-md bg-on-bubble-me/15 px-2 py-0.5 text-[12px] text-on-bubble-me/80">{f.name ?? f.uri.split("/").pop()}</span>)}</div> : null}
       </div>
       {real && (
-        <div className="order-first flex h-7 shrink-0 items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover/user:opacity-100 focus-within:opacity-100 max-[760px]:opacity-100">
+        <div className="mt-0.5 -mr-1 flex h-7 shrink-0 items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover/user:opacity-100 focus-within:opacity-100 max-[760px]:opacity-100">
           <ActionButton
             label={copied ? "Copied" : "Copy"}
             onClick={() => {
@@ -494,6 +493,8 @@ function segmentsOf(msgs: UIMessage[], thinking: boolean): Segment[] {
   return segs;
 }
 
+const isHandoff = (b: Block) => b.kind === "tool" && toolKind(b.name) === "subagent";
+
 type TurnProps = { msgs: UIMessage[]; live: boolean; screen: boolean; start: number; retry?: { attempt: number; message: string; next: number }; sessionId: string; forkBefore: string | null };
 
 const Turn = memo(function Turn({ msgs, live, screen, start, retry, sessionId, forkBefore }: TurnProps) {
@@ -504,9 +505,15 @@ const Turn = memo(function Turn({ msgs, live, screen, start, retry, sessionId, f
   const text = segs.filter((s) => s.kind === "text").map((s) => (s as { text: string }).text).join("\n\n");
   const model = assistants.find((m) => m.model)?.model;
   const blocks = useMemo(() => msgs.flatMap((m) => (m.kind === "assistant" ? m.blocks : [])), [msgs]);
-  // Something above is already moving (streaming words, a running tool, a teammate on it): that says it's working.
-  // Hidden thinking doesn't count: the bird stands in for it.
-  const moving = live && (segs.some((s) => s.kind === "text" && s.streaming) || blocks.some((b) => (b.kind === "tool" && (b.status === "running" || b.status === "streaming")) || (thinking && b.kind === "reasoning" && b.streaming)));
+  // The reply's own words streaming in say it's working; anything else gets the status line.
+  const writing = live && segs.some((s) => s.kind === "text" && s.streaming);
+  const doing = live ? stepNow(blocks) : "";
+  // A live run of steps carries the status line as its own heading, and a handoff still going
+  // says what's happening on its own line; anywhere else the status line stands alone.
+  const last = segs.at(-1);
+  const tail = last?.kind === "activity" ? last.blocks : [];
+  const handoffs = tail.slice(tail.findLastIndex((b) => !isHandoff(b)) + 1);
+  const headed = live && tail.length > 0 && (handoffs.length === 0 || handoffs.some((b) => b.kind === "tool" && (b.status === "running" || b.status === "streaming")));
 
   return (
     <div className="group/turn mb-4 last:mb-0">
@@ -517,7 +524,7 @@ const Turn = memo(function Turn({ msgs, live, screen, start, retry, sessionId, f
               <Markdown text={s.text} streaming={live && s.streaming} />
             </motion.div>
           );
-        if (s.kind === "activity") return <ActivityGroup key={s.key} blocks={s.blocks} live={live && i === segs.length - 1} />;
+        if (s.kind === "activity") return <ActivityGroup key={s.key} blocks={s.blocks} live={live && i === segs.length - 1} retry={retry} />;
         if (s.kind === "shell") return <ShellCard key={s.key} msg={s.msg} />;
         if (s.kind === "subagent") return <SubagentReport key={s.key} msg={s.msg} />;
         return <ErrorCard key={s.key} text={s.text} />;
@@ -525,7 +532,7 @@ const Turn = memo(function Turn({ msgs, live, screen, start, retry, sessionId, f
       {screen && <ScreenCard blocks={blocks} live={live} sessionId={sessionId} />}
       {!live && <ChangedFiles blocks={blocks} />}
       {live ? (
-        (!moving || retry) && <Working sessionId={sessionId} retry={retry} />
+        !headed && (!writing || retry) && <Working doing={doing} retry={retry} />
       ) : (
         text && <TurnFooter text={text} took={end && start ? end - start : 0} model={model?.id} speed={turnSpeed(assistants)} onFork={() => void useChat.getState().fork(sessionId, forkBefore)} />
       )}
@@ -544,30 +551,6 @@ function sameTurn(a: TurnProps, b: TurnProps) {
   if (a.msgs.length !== b.msgs.length) return false;
   for (let i = 0; i < a.msgs.length; i++) if (a.msgs[i] !== b.msgs[i]) return false;
   return true;
-}
-
-/**
- * The turn is live but nothing above is moving (waiting on the model, between
- * steps): just the teammate's working face (or the clock), so it never looks
- * frozen. Only a retry earns words, and a shiver.
- */
-function Working({ sessionId, retry }: { sessionId: string; retry?: { attempt: number; message: string; next: number } }) {
-  const now = useNow(!!retry);
-  // A lead's part runs in a child session the sidebar doesn't list; it knows who's on it.
-  const mate = useMascot(useChat((s) => s.sessions[sessionId]?.agent ?? s.delegated[sessionId]));
-  return (
-    // No live region here: `TurnStatus` speaks the turn's state once, so the
-    // indicator can't repeat it. The mark still names itself for anyone reading through the thread.
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-3 flex min-h-11 items-center gap-3 text-[13px]">
-      {mate ? <Bird bird={mate.bird} seed={mate.face} size={44} state={retry ? "retrying" : "working"} label="Working" /> : <AgentClock size={20} />}
-      {retry && (
-        <span className="text-ink-2">
-          Retrying{retry.attempt > 1 ? ` (attempt ${retry.attempt})` : ""}
-          {retry.next > now ? ` in ${Math.ceil((retry.next - now) / 1000)}s` : ""} <span className="text-muted">· {retry.message}</span>
-        </span>
-      )}
-    </motion.div>
-  );
 }
 
 /** Output tokens/second across a turn's steps (weighted by tokens). */

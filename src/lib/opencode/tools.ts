@@ -385,7 +385,8 @@ export function subagentOf(b: ToolBlock): SubagentCall {
     description: str(input.description),
     prompt: str(input.prompt),
     childID: str(md.sessionID) ?? str(md.sessionId),
-    background: md.status === "running" || input.background === true,
+    // OpenCode marks every handoff "running" as it starts; one left running in the background is a call that settled that way.
+    background: input.background === true || (b.status === "completed" && md.status === "running"),
   };
 }
 
@@ -507,6 +508,52 @@ export function toolLabel(b: ToolBlock): { verb: string; target: string; path?: 
       const target = str(input.description) ?? str(input.query) ?? str(input.title) ?? str(input.url) ?? inputPath(input) ?? str(input.command) ?? str(input.name) ?? "";
       return { verb, target: firstLine(target, 100), path: inputPath(input) };
     }
+  }
+}
+
+/** A live call as a status line says it: "Reading Thread.tsx", "Running bun test", "Waiting on Explore". */
+export function toolDoing(b: ToolBlock): string {
+  const { verb, target } = toolLabel(b);
+  const say = (doing: string, what = target) => (what ? `${doing} ${what}` : doing);
+  switch (toolKind(b.name)) {
+    case "shell":
+      return say("Running", firstLine(target, 60));
+    case "read":
+      return say("Reading");
+    case "write":
+      return say("Writing");
+    case "edit":
+    case "patch":
+      return say("Editing");
+    case "grep":
+      return say("Searching");
+    case "glob":
+      return say("Looking for");
+    case "webfetch":
+      return say("Opening");
+    case "websearch":
+      return say("Searching the web for");
+    case "subagent": {
+      const s = subagentOf(b);
+      return s.agent ? `Waiting on ${titleCase(s.agent)}` : "Waiting on a helper";
+    }
+    case "question":
+      return "Waiting for you";
+    case "skill":
+      return target ? `Loading the ${target} skill` : "Loading a skill";
+    case "memory":
+    case "execute": {
+      const mem = memoryCalls(b);
+      if (mem) return mem.every((c) => c.action === "memory_remember") ? "Remembering" : "Checking memory";
+      // An app at work says itself ("Using Gmail"); other code is just a script.
+      return /^(Using|Waiting) /.test(verb) ? say(verb) : "Running a script";
+    }
+    case "todo":
+      return "Planning";
+    case "session":
+      return "Tidying the session";
+    default:
+      return `Using ${verb}`;
   }
 }
 

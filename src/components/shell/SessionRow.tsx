@@ -10,7 +10,7 @@ import { AgentClock } from "../ui/AgentClock";
 import { Pip } from "../ui/Pip";
 import { useAgentName } from "../../state/teammates";
 import { useFace } from "../../state/face";
-import { useDoing } from "../../state/tiers";
+import { useBackgroundLine, useDoing } from "../../state/tiers";
 import { AgentMark } from "../ui/Bird";
 
 /** The one mark a session shows where there's no bird: working, needs you, failed, or a new result. */
@@ -46,6 +46,8 @@ export const SessionRow = memo(function SessionRow({ s, now, face, onNavigate }:
   const where = [agentName, basename(s.location.directory)].filter(Boolean).join(" · ");
   const mood = useFace(s.id);
   const doing = useDoing(s.id, !!face && busy);
+  // Its turn is over but work it started is still going: still working, as far as you're concerned.
+  const away = useBackgroundLine(s.id);
 
   return (
     <motion.div layout="position" aria-current={active ? "true" : undefined} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.15 }}>
@@ -67,7 +69,7 @@ export const SessionRow = memo(function SessionRow({ s, now, face, onNavigate }:
             : `group relative flex items-center rounded-[10px] py-[7px] pr-2.5 pl-3 transition-colors ${active ? "chip" : "hover:bg-hover"}`
         }
       >
-        {face && <AgentMark id={s.agent} size={40} state={mood} />}
+        {face && <AgentMark id={s.agent} size={40} state={away && (mood === "idle" || mood === "done") ? "working" : mood} />}
         <span className="min-w-0 flex-1">
           {editing ? (
             <input
@@ -97,6 +99,8 @@ export const SessionRow = memo(function SessionRow({ s, now, face, onNavigate }:
                 <span className="text-info">Needs you</span>
               ) : busy ? (
                 <span className="shimmer min-w-0 truncate">{doing || (agentName ? `${agentName} is working` : "Working")}</span>
+              ) : away ? (
+                <span className="shimmer min-w-0 truncate">{away}</span>
               ) : unread ? (
                 <>
                   <Pip tone={failed ? "error" : "new"} label={failed ? "Didn't finish" : "New result"} />
@@ -112,7 +116,7 @@ export const SessionRow = memo(function SessionRow({ s, now, face, onNavigate }:
           ) : (
             <span className="flex items-center gap-2">
               <span className={`min-w-0 flex-1 truncate text-[12.5px] ${asking ? "text-info" : failed ? "text-danger" : "text-muted"}`}>{asking ? "Needs you" : failed ? "Didn't finish" : where}</span>
-              <SessionPip busy={busy} asking={asking} unread={unread} failed={false} />
+              <SessionPip busy={busy || !!away} asking={asking} unread={unread} failed={false} />
             </span>
           )}
         </span>
