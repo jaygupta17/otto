@@ -27,7 +27,9 @@ kotlin {
 }
 
 dependencies {
-    implementation("androidx.core:core-ktx:1.9.0")
+    // 1.12+ is the first version with IntentCompat.getParcelableExtra /
+    // getParcelableArrayListExtra, which SharePlugin.kt uses.
+    implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.appcompat:appcompat:1.6.0")
     implementation(project(":tauri-android"))
 }
