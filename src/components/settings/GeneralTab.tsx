@@ -69,9 +69,6 @@ function NotificationsSection() {
             label="System notifications"
           />
         </Row>
-        <Row label="Banners inside Otto" hint="For sessions you aren't looking at">
-          <Toggle on={prefs.toasts} onChange={(v) => setPrefs({ toasts: v })} label="Banners inside Otto" />
-        </Row>
         {kind("finished", "Agent finished")}
         {kind("failed", "Agent hit a problem")}
         {kind("permission", "Needs your approval")}
@@ -79,10 +76,7 @@ function NotificationsSection() {
         <Row label="Test" hint="Sends one in 4 seconds, so you can switch away">
           <Button
             size="sm"
-            onClick={() => {
-              toast({ tone: "info", title: "Switch to another app to see a system notification" });
-              setTimeout(() => dispatchAlerts([{ kind: "finished", title: "Agent finished", body: "This is a test notification" }]), 4000);
-            }}
+            onClick={() => setTimeout(() => dispatchAlerts([{ kind: "finished", title: "Agent finished", body: "This is a test notification" }]), 4000)}
           >
             Send test
           </Button>

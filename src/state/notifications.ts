@@ -3,7 +3,7 @@
  *
  * Where one goes depends on where you are:
  *   - looking at that session        nothing (you can see it)
- *   - in Otto, somewhere else        a toast with "Open", and the inbox
+ *   - in Otto, somewhere else        the inbox (the session list shows it too)
  *   - Otto in the background         a system notification, and the inbox
  *
  * Alerts come from the event stream, so a phone only gets them while Otto
@@ -31,12 +31,10 @@ export interface AgentAlert {
 export interface NotifyPrefs {
   /** System notifications while Otto is in the background. */
   system: boolean;
-  /** In-app toasts for other sessions. */
-  toasts: boolean;
   kinds: Record<AlertKind, boolean>;
 }
 
-const DEFAULT_PREFS: NotifyPrefs = { system: true, toasts: true, kinds: { finished: true, failed: true, permission: true, question: true } };
+const DEFAULT_PREFS: NotifyPrefs = { system: true, kinds: { finished: true, failed: true, permission: true, question: true } };
 const MAX = 50;
 
 interface State {
@@ -92,20 +90,7 @@ export function dispatchAlerts(alerts: Omit<AgentAlert, "id" | "time" | "read">[
   const rank: Record<AlertKind, number> = { permission: 3, question: 3, failed: 2, finished: 1 };
   const last = fresh.reduce((a, b) => (rank[b.kind] >= rank[a.kind] ? b : a));
   const more = fresh.length > 1 ? ` · ${fresh.length - 1} more in the inbox` : "";
-  const waiting = last.kind === "permission" || last.kind === "question";
-  if (background) {
-    if (prefs.system) void sendSystem(last.title, (last.body ?? "") + more, last.sessionId);
-  } else if (prefs.toasts) {
-    const sid = last.sessionId;
-    ui.pushToast({
-      tone: last.kind === "failed" ? "error" : last.kind === "finished" ? "ok" : "info",
-      kind: last.kind,
-      sticky: waiting,
-      title: last.title,
-      body: (last.body ?? "") + more,
-      action: sid ? { label: waiting ? "Review" : "Open", run: () => openFromAlert(sid) } : undefined,
-    });
-  }
+  if (background && prefs.system) void sendSystem(last.title, (last.body ?? "") + more, last.sessionId);
 }
 
 async function sendSystem(title: string, body: string, sessionId?: string) {
