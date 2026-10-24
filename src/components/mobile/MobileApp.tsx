@@ -2,7 +2,7 @@ import { AnimatePresence, motion, useDragControls } from "motion/react";
 import { ChevronDown, FolderTree, MoreHorizontal, Plus, Search, SquarePen, Trash2, Pencil, Check, Settings } from "lucide-react";
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { SessionInfo } from "@opencode/client";
-import { useChat } from "../../state/chat";
+import { startingSession, useChat } from "../../state/chat";
 import { useConnection } from "../../state/connection";
 import { useActiveWorkspace, useWorkspaces } from "../../state/workspaces";
 import { useUI, type PanelSurface } from "../../state/ui";
@@ -58,6 +58,7 @@ export function MobileApp() {
   const [seen, setSeen] = useState<Set<Tab>>(() => new Set([tab]));
   if (!seen.has(tab)) setSeen(new Set(seen).add(tab));
   const pushed = !!activeId || draftOpen;
+  const starting = useChat(startingSession);
   const select = (t: Tab) => {
     // The current tab again goes back to its top.
     if (t === tab) return document.querySelector(`[data-tab="${t}"] [data-scroll-root]`)?.scrollTo({ top: 0, behavior: "smooth" });
@@ -99,7 +100,8 @@ export function MobileApp() {
         </div>
         <TabBar tab={tab} onSelect={select} />
       </motion.div>
-      <AnimatePresence>{draftOpen ? <DraftScreen key="draft" /> : activeId && <SessionScreen key={activeId} sessionId={activeId} />}</AnimatePresence>
+      {/* A sent draft becomes its session where it stands: no slide out and back in. */}
+      <AnimatePresence custom={starting}>{draftOpen ? <DraftScreen key="draft" /> : activeId && <SessionScreen key={activeId} sessionId={activeId} />}</AnimatePresence>
     </div>
   );
 }
@@ -373,6 +375,8 @@ const RecentRow = memo(function RecentRow({ s, now, first }: { s: SessionInfo; n
 const PERCH = 52;
 
 function SessionScreen({ sessionId }: { sessionId: string }) {
+  // Read once: only the first render decides how it arrives.
+  const [starting] = useState(() => startingSession(useChat.getState()));
   const session = useChat((s) => s.sessions[sessionId]);
   const open = useChat((s) => s.open);
   const status = useConnection((s) => s.status);
@@ -420,7 +424,7 @@ function SessionScreen({ sessionId }: { sessionId: string }) {
 
   return (
     <motion.div
-      initial={{ x: "100%" }}
+      initial={starting ? false : { x: "100%" }}
       animate={{ x: 0 }}
       exit={{ x: "100%" }}
       transition={{ type: "spring", stiffness: 380, damping: 40 }}
@@ -535,6 +539,8 @@ function DraftIntro() {
  * A new session on the phone: the same screen as a session, empty until the
  * first message. Sending closes the draft and opens the session it made.
  */
+const leave = { out: (sent: boolean) => (sent ? { opacity: 0, transition: { duration: 0 } } : { x: "100%" }) };
+
 function DraftScreen() {
   const open = useChat((s) => s.open);
   const ws = useActiveWorkspace();
@@ -546,7 +552,8 @@ function DraftScreen() {
     <motion.div
       initial={{ x: "100%" }}
       animate={{ x: 0 }}
-      exit={{ x: "100%" }}
+      variants={leave}
+      exit="out"
       transition={{ type: "spring", stiffness: 380, damping: 40 }}
       drag="x"
       dragControls={drag}

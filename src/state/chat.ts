@@ -86,7 +86,8 @@ interface State {
   loadTail(id: string): Promise<void>;
   loadOlder(id: string): Promise<void>;
   /** `attachments` are already uploaded; `previews` maps their paths to local URLs to show until the server echoes them. */
-  send(text: string, opts?: { sessionId?: string | null; attachments?: Attachment[]; previews?: Record<string, string> }): Promise<string | null>;
+  /** `onOpen` runs the moment a new session takes the screen, before the server has the message. */
+  send(text: string, opts?: { sessionId?: string | null; attachments?: Attachment[]; previews?: Record<string, string>; onOpen?: (id: string) => void }): Promise<string | null>;
   interrupt(id: string): Promise<void>;
   /** Move what the session is waiting on (a long command, a subagent) to the background; the turn goes on. */
   background(id: string): Promise<void>;
@@ -635,25 +636,25 @@ export const useChat = create<State>((set, get) => ({
     if (!client || (!text.trim() && !atts.length)) return null;
     let sid = opts?.sessionId ?? null;
     const localId = uid("local_");
+    let fresh: SessionInfo | null = null;
     try {
       if (!sid) {
         const model = get().pickedModel ?? get().defaultModel;
         const dir = get().projectDir ?? undefined;
-        const s = await client.createSession({ directory: dir, model, agent: get().pickedAgent || undefined });
-        sid = s.id;
-        set((st) => ({ sessions: { ...st.sessions, [s.id]: s }, timelines: { ...st.timelines, [s.id]: { messages: [], loaded: true, loading: false, older: null } }, activeId: s.id }));
-        void savePrefs();
+        fresh = await client.createSession({ directory: dir, model, agent: get().pickedAgent || undefined });
+        sid = fresh.id;
       }
       const id = sid;
-      await commitRevert(id);
+      if (!fresh) await commitRevert(id);
       const st0 = get();
-      const ref = (st0.sessions[id]?.model as ModelRef | undefined) ?? st0.pickedModel ?? st0.defaultModel;
+      const session = fresh ?? st0.sessions[id];
+      const ref = (session?.model as ModelRef | undefined) ?? st0.pickedModel ?? st0.defaultModel;
       const info = ref ? st0.models.find((m) => m.providerID === ref.providerID && m.id === ref.id) : undefined;
       // Unknown models get the images too: the server drops what a model can't take.
       const vision = info ? (info.capabilities?.input ?? []).includes("image") : true;
-      const out = composeMessage(text, atts, st0.sessions[id]?.location.directory ?? st0.projectDir ?? st0.homeDir ?? "", vision);
+      const out = composeMessage(text, atts, session?.location.directory ?? st0.projectDir ?? st0.homeDir ?? "", vision);
       const prompt = { text: out.text, files: out.files, metadata: out.metadata };
-      if (get().busy[id]) {
+      if (!fresh && get().busy[id]) {
         // Mid-run: the server holds it in the inbox (shown above the composer) until the agent reads it.
         await client.prompt(id, { ...prompt, delivery: get().delivery });
         return id;
@@ -666,13 +667,21 @@ export const useChat = create<State>((set, get) => ({
           }
         : {};
       busyGeneration++;
+      // A new session takes the screen in one step, its message already in it
+      // and the draft gone with the home screen, so nothing jumps in between.
       set((st) => {
-        const t = st.timelines[id] ?? { ...empty(), loaded: true };
+        const t = (!fresh && st.timelines[id]) || { ...empty(), loaded: true };
+        const msg: UIMessage = { kind: "user", id: localId, key: localId, text, time: Date.now(), pending: true, ...shown };
         return {
           busy: { ...st.busy, [id]: true },
-          timelines: { ...st.timelines, [id]: { ...t, messages: [...t.messages, { kind: "user", id: localId, text, time: Date.now(), pending: true, ...shown }] } },
+          timelines: { ...st.timelines, [id]: { ...t, messages: [...t.messages, msg] } },
+          ...(fresh && { sessions: { ...st.sessions, [id]: st.sessions[id] ?? fresh }, activeId: id, drafts: { ...st.drafts, new: "" } }),
         };
       });
+      if (fresh) {
+        void savePrefs();
+        opts?.onOpen?.(id);
+      }
       const r = await client.prompt(id, prompt);
       const realId = r?.data?.id;
       set((st) => {
@@ -1500,6 +1509,12 @@ export function asksFor(parents: Record<string, string>, askSession: string, ses
 // ---------------------------------------------------------------------------
 // Selectors
 // ---------------------------------------------------------------------------
+
+/** True while the open session is one just started: its only message is the one going out. Its screen replaces the new-chat one in place. */
+export function startingSession(s: Pick<State, "activeId" | "timelines">): boolean {
+  const msgs = s.activeId ? s.timelines[s.activeId]?.messages : undefined;
+  return !!msgs?.length && msgs.every((m) => m.kind === "user" && m.pending && m.id.startsWith("local_"));
+}
 
 export function sortedSessions(sessions: Record<string, SessionInfo>): SessionInfo[] {
   return Object.values(sessions).sort((a, b) => b.time.updated - a.time.updated);

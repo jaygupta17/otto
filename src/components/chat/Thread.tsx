@@ -56,7 +56,7 @@ function buildItems(messages: UIMessage[]): Item[] {
     if (m.kind === "user") {
       turn = null;
       lastUserTime = m.time;
-      items.push({ type: "user", key: m.id, msg: m });
+      items.push({ type: "user", key: m.key ?? m.id, msg: m });
     } else if (m.kind === "assistant" || m.kind === "shell" || m.kind === "shellReport" || m.kind === "subagent" || (m.kind === "notice" && m.tone === "error")) {
       if (!turn) {
         turn = { type: "turn", key: `turn-${m.id}`, msgs: [], start: lastUserTime || m.time };
@@ -200,10 +200,12 @@ export function Thread({ sessionId, bottomInset = 0 }: { sessionId: string; bott
   useLayoutEffect(() => {
     if (lastUser === seenUser.current) return;
     const first = seenUser.current === null && !timeline?.loaded;
+    // A new session's first message has nowhere to scroll from.
+    const opening = seenUser.current === null;
     seenUser.current = lastUser;
     if (first) return;
     pinned.current = true;
-    scrollToBottom(true);
+    scrollToBottom(!opening);
   }, [lastUser, timeline?.loaded, scrollToBottom]);
 
   // Only the user's own scrolling unpins; our programmatic (and smooth) scrolls

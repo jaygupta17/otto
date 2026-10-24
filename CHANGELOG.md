@@ -10,6 +10,10 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 - Attach files to a message: + › Upload files, paste a screenshot, or drop files on the reply box. They're saved in the project under `.otto/uploads` (kept out of git), and the agent is told where each one is. Images are also shown to the model when it can see images. Your messages show the images and files you sent, including after you reopen the session, and editing or forking a message brings its files back.
 
+### Fixed
+
+- Sending the first message of a new session no longer flickers: your words stay in the box until the session opens, the conversation replaces the new-session screen in one step with your message already in it (on phones too, with no slide out and back in), and the message no longer fades in twice once the server confirms it.
+
 ## [0.16.0] - 2026-10-24
 
 ### Changed

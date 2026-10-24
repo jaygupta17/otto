@@ -166,11 +166,14 @@ export function Composer({ sessionId, placeholder = "Do anything…", autoFocus 
     // inline state below the box says so.
     if ((!text && !attached) || uploading || sending || !ready || needsAgent || !client) return;
     const cmd = /^\/(\S+)\s*([\s\S]*)$/.exec(text);
+    const builtin = cmd && BUILTIN.find((b) => b.name === cmd[1] && (sessionId || !b.needsSession));
+    // A new chat's text stays in the box until its session takes the screen; send clears it then.
+    const opening = !sessionId && !builtin;
+    let opened: string | null = null;
     setSending(true);
-    setDraft(draftKey, "");
+    if (!opening) setDraft(draftKey, "");
     setSuggest(null);
     try {
-      const builtin = cmd && BUILTIN.find((b) => b.name === cmd[1] && (sessionId || !b.needsSession));
       if (builtin) {
         await runBuiltin(builtin.name, sessionId);
       } else if (shellMode && sessionId) {
@@ -181,17 +184,27 @@ export function Composer({ sessionId, placeholder = "Do anything…", autoFocus 
         const list = useAttachments.getState().byKey[draftKey] ?? [];
         const attachments = readyAttachments(list);
         const previews = Object.fromEntries(list.filter((a) => a.path && a.preview).map((a) => [a.path!, a.preview!]));
-        useAttachments.getState().clear(draftKey);
+        if (!opening) useAttachments.getState().clear(draftKey);
         try {
-          const id = await send(text, { sessionId, attachments, previews });
-          if (id) onSent?.(id);
+          const id = await send(text, {
+            sessionId,
+            attachments,
+            previews,
+            onOpen: (id) => {
+              opened = id;
+              useAttachments.getState().clear(draftKey);
+              onSent?.(id);
+            },
+          });
+          if (id && !opened) onSent?.(id);
         } catch (e) {
-          useAttachments.getState().restore(draftKey, attachments, Object.fromEntries(list.filter((a) => a.preview).map((a) => [a.name, a.preview!])));
+          useAttachments.getState().restore(opened ?? draftKey, attachments, Object.fromEntries(list.filter((a) => a.preview).map((a) => [a.name, a.preview!])));
           throw e;
         }
       }
     } catch (e) {
-      setDraft(draftKey, text);
+      // Failed after the switch: the words go back in the session's own box.
+      setDraft(opened ?? draftKey, text);
       if (cmd) toast({ tone: "error", title: "Command failed", body: (e as Error).message });
     } finally {
       setSending(false);
@@ -322,6 +335,8 @@ export function Composer({ sessionId, placeholder = "Do anything…", autoFocus 
         addFiles(draftKey, files, root);
       }}
       aria-label="Message"
+      // Starting a session: the words are on their way, so they can't change under it.
+      readOnly={sending && !sessionId}
       data-composer
       onBlur={() => setTimeout(() => setSuggest(null), 120)}
       // A new session's card is roomier: it's the whole page. Phones type at 16px so iOS doesn't zoom in.

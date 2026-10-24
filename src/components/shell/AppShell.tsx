@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from "motion/react";
 import { useRef } from "react";
-import { useChat } from "../../state/chat";
+import { startingSession, useChat } from "../../state/chat";
 import { useUI } from "../../state/ui";
 import { Sidebar } from "./Sidebar";
 import { Home } from "./Home";
@@ -25,6 +25,13 @@ export function AppShell({ compact = false }: { compact?: boolean }) {
   const view = useUI((s) => s.view);
   const root = useChat((s) => (s.activeId ? s.sessions[s.activeId]?.location.directory : null) ?? s.projectDir ?? s.homeDir);
   const rowRef = useRef<HTMLDivElement>(null);
+  // A session started from home takes home's place: same key, so it swaps in
+  // without a fade (which would blank the screen between prompt and message).
+  const starting = useChat(startingSession);
+  const fresh = useRef<string | null>(null);
+  if (starting && activeId) fresh.current = activeId;
+  else if (activeId !== fresh.current) fresh.current = null;
+  const page = view === "schedules" ? "schedules" : !activeId || activeId === fresh.current ? "home" : activeId;
 
   useShortcuts();
 
@@ -40,7 +47,7 @@ export function AppShell({ compact = false }: { compact?: boolean }) {
         <main className="surface-panel relative h-full min-w-0 flex-1 overflow-hidden">
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
-              key={view === "schedules" ? "schedules" : (activeId ?? "home")}
+              key={page}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0, transition: { duration: 0.06 } }}

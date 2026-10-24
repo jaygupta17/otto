@@ -50,6 +50,8 @@ export type UIMessage =
   | {
       kind: "user";
       id: string;
+      /** Stays put when a sent message trades its local id for the server's, so it isn't drawn twice. */
+      key?: string;
       /** What the user typed; the attachment note is split off into `note`. */
       text: string;
       /** Files sent with the message: images carry a `data:` (or local blob) URL to show. */
@@ -307,7 +309,8 @@ export function applyEvent(msgs: UIMessage[], e: V2Event): UIMessage[] {
       const existing = msgs.findIndex((m) => m.id === id || (m.kind === "user" && m.pending && m.text === msg.text));
       if (existing >= 0) {
         const next = msgs.slice();
-        next[existing] = msg;
+        const was = msgs[existing] as { key?: string; id: string };
+        next[existing] = { ...msg, key: was.key ?? was.id };
         return next;
       }
       return [...msgs, msg];
