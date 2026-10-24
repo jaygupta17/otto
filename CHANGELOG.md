@@ -6,6 +6,8 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-10-24
+
 ### Added
 
 - Attach files to a message: + › Upload files, paste a screenshot, or drop files on the reply box. They're saved in the project under `.otto/uploads` (kept out of git), and the agent is told where each one is. Images are also shown to the model when it can see images. Your messages show the images and files you sent, including after you reopen the session, and editing or forking a message brings its files back.
@@ -375,7 +377,8 @@ First public release.
 - Scheduled tasks that run on the agent machine.
 - Project file browser with syntax highlighting.
 
-[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.16.0...HEAD
+[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.17.0...HEAD
+[0.17.0]: https://github.com/jaygupta17/otto/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/jaygupta17/otto/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/jaygupta17/otto/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/jaygupta17/otto/compare/v0.13.1...v0.14.0
