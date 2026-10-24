@@ -6,6 +6,8 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-10-24
+
 ### Changed
 
 - A new reply box: the text sits on a raised card that lights up in ice when you type, and its tools get their own row underneath: + on the left with the agent you're talking to, the model and a round send on the right. While a run is going, a Steer or Queue pill says what your message will do, and stop goes quiet once there's something to send. Shell mode shows as a pill you can tap to leave.
@@ -352,7 +354,8 @@ First public release.
 - Scheduled tasks that run on the agent machine.
 - Project file browser with syntax highlighting.
 
-[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.15.0...HEAD
+[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.16.0...HEAD
+[0.16.0]: https://github.com/jaygupta17/otto/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/jaygupta17/otto/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/jaygupta17/otto/compare/v0.13.1...v0.14.0
 [0.13.1]: https://github.com/jaygupta17/otto/compare/v0.13.0...v0.13.1
