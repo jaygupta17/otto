@@ -6,7 +6,8 @@
  * Boat streams it (Moonlight) to a signed URL that must be opened within ten
  * minutes, so a fresh one is asked for every time the view mounts. The view
  * is watch-only until the person takes control; a glass pane over the stream
- * swallows input until then.
+ * swallows input until then (double-click, or tap then confirm on touch; see
+ * ScreenFrame).
  */
 import { AlertTriangle, AppWindow, Globe, Hand, Maximize, Minimize, MonitorPlay, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -17,6 +18,7 @@ import { useWorkspaces, secretKeys } from "../../state/workspaces";
 import { secrets } from "../../lib/secrets";
 import { BoatClient, BoatError } from "../../lib/providers/boat";
 import type { Handoff } from "../../lib/handoff";
+import { useTouch } from "../../hooks/useMedia";
 import { Button, IconButton } from "../ui/Button";
 import { AgentClock, Spinner } from "../ui/AgentClock";
 import { browserSteps, shortUrl } from "../../lib/browserSteps";
@@ -100,9 +102,19 @@ export function useScreenStream(active: boolean) {
 }
 
 /**
+ * The confirm button renders at once but ignores activation this long after
+ * it appears, so the second tap of a fast double-tap can't land on it and take
+ * control. Above a double-tap's interval (~150–250ms), well under the beat of
+ * seeing the button and deliberately tapping it.
+ */
+const CONFIRM_MS = 300;
+
+/**
  * The stream itself, at the screen's 16:9 so there are no black bars. Watch
- * only (a glass pane takes the input) unless `control`; double-click takes
- * control.
+ * only (a glass pane takes the input) unless `control`. Taking control:
+ * double-click on a mouse; on touch and the keyboard a tap (or Enter) only
+ * arms a "Take control" button, and that button takes control — an
+ * accidental tap must never pause a running agent.
  */
 export function ScreenFrame({
   stream,
@@ -120,11 +132,33 @@ export function ScreenFrame({
 }) {
   const { load, nonce, reload } = stream;
   const frame = useRef<HTMLIFrameElement>(null);
+  const touch = useTouch();
+  const [armed, setArmed] = useState(false);
+  const confirmRef = useRef<HTMLButtonElement>(null);
+  // Every arm stamps the time and restarts the confirm gate below.
+  const armedAt = useRef(0);
+  const toggleArmed = () => {
+    armedAt.current = performance.now();
+    setArmed((a) => !a);
+  };
+  // The armed button takes focus, so the keyboard confirms with one more key.
+  useEffect(() => {
+    if (armed) confirmRef.current?.focus({ preventScroll: true });
+  }, [armed]);
   // Taking control puts the keyboard in the stream (once the stream is there).
   const ready = load.state === "ready" ? load.url : null;
   useEffect(() => {
-    if (control) frame.current?.focus();
+    // preventScroll: lib/viewport.ts pins the page at scroll 0 under the phone
+    // keyboard, and the frame is always in view where it shows.
+    if (control) frame.current?.focus({ preventScroll: true });
   }, [control, ready, nonce]);
+  const take = () => {
+    setArmed(false);
+    // One shot: taking control pauses a busy agent, so a tap and its
+    // follow-up click must not interrupt twice.
+    if (useComputer.getState().control) return;
+    void useComputer.getState().takeControl(sessionId);
+  };
   return (
     <div
       className={`relative mx-auto aspect-video w-full overflow-hidden bg-black ${control ? "ring-2 ring-info ring-inset" : ""} ${className}`}
@@ -158,9 +192,43 @@ export function ScreenFrame({
           </div>
         </div>
       )}
-      {/* Watch-only: the stream sees no input until the person takes control. */}
+      {/* Watch-only: the stream sees no input until the person takes control.
+          A tap or Enter arms the button (tap again to put it away); only the
+          button takes over. Double-click still takes control on a mouse. */}
       {!control && load.state === "ready" && (
-        <div className="absolute inset-0 cursor-default" title="Double-click to take control" onDoubleClick={() => void useComputer.getState().takeControl(sessionId)} />
+        <>
+          <button
+            type="button"
+            aria-label={armed ? "Hide the take control button" : "Show the take control button"}
+            title={touch ? undefined : "Double-click to take control"}
+            onClick={touch ? toggleArmed : undefined}
+            onDoubleClick={take}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter" && e.key !== " ") return;
+              e.preventDefault(); // the key's own click would arm twice
+              toggleArmed();
+            }}
+            className="absolute inset-0"
+          />
+          {armed && (
+            <Button
+              ref={confirmRef}
+              variant="glass"
+              size="lg"
+              icon={<Hand size={14} />}
+              onClick={() => {
+                // Silently ignore the tap that lands where the button just
+                // appeared (a fast double-tap), and any same-beat keyboard
+                // activation: a native button's Enter/Space arrives as a click.
+                if (performance.now() - armedAt.current < CONFIRM_MS) return;
+                take();
+              }}
+              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 [@media(pointer:coarse)]:h-11"
+            >
+              Take control
+            </Button>
+          )}
+        </>
       )}
     </div>
   );

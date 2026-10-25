@@ -192,6 +192,8 @@ function PreviewView({ inHeader, active }: { inHeader: boolean; active: boolean 
           spellCheck={false}
           autoCapitalize="off"
           autoCorrect="off"
+          inputMode="url"
+          enterKeyHint="go"
           className="min-w-0 flex-1 bg-transparent text-[12px] outline-none placeholder:text-faint"
         />
       </form>
