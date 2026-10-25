@@ -102,12 +102,44 @@ export function useScreenStream(active: boolean) {
 }
 
 /**
- * The confirm button renders at once but ignores activation this long after
- * it appears, so the second tap of a fast double-tap can't land on it and take
- * control. Above a double-tap's interval (~150–250ms), well under the beat of
- * seeing the button and deliberately tapping it.
+ * The confirm button renders at once but ignores pointer activation this long
+ * after it appears, so the second tap of a fast double-tap can't land on it and
+ * take control. Above a double-tap's interval (~150–250ms), well under the beat
+ * of seeing the button and deliberately tapping it. Keyboard and screen reader
+ * activation isn't held to this: it is never a stray tap (see `confirmTakes`).
  */
 const CONFIRM_MS = 300;
+
+/** A touch or pen press within this of a `dblclick` is that gesture's synthetic event, not a mouse's. */
+const SYNTHETIC_MS = 1000;
+
+/**
+ * Whether an activation of the confirm button takes control.
+ *
+ * `detail` is a pointer click's tap count and 0 for the click a keyboard or
+ * screen reader activation synthesises (checked in Chromium: Enter/Space on a
+ * button arrive as a click with detail 0). A pointer activation is ignored
+ * while it could be the second tap of a fast double-tap landing where the
+ * button just appeared; `detail` 0 is never a stray tap, so it goes through at
+ * once — unless the keypress that armed is still down. That one press must not
+ * both arm and confirm (a released key can synthesise its click on the button
+ * that took focus in between).
+ */
+export function confirmTakes(detail: number, sinceArmMs: number, armingKeyHeld: boolean): boolean {
+  if (detail === 0) return !armingKeyHeld;
+  return sinceArmMs >= CONFIRM_MS;
+}
+
+/**
+ * Whether a double-click on the pane takes control. Only a mouse's own
+ * double-click may: a double-tap synthesises `click, click, dblclick` in mobile
+ * webviews, and a touchscreen does the same even where the machine's primary
+ * pointer is a mouse.
+ */
+export function dblclickTakes(coarsePointer: boolean, sinceNonMouseMs: number | null): boolean {
+  if (coarsePointer) return false;
+  return sinceNonMouseMs === null || sinceNonMouseMs >= SYNTHETIC_MS;
+}
 
 /**
  * The stream itself, at the screen's 16:9 so there are no black bars. Watch
@@ -132,15 +164,27 @@ export function ScreenFrame({
 }) {
   const { load, nonce, reload } = stream;
   const frame = useRef<HTMLIFrameElement>(null);
+  const pane = useRef<HTMLButtonElement>(null);
   const touch = useTouch();
   const [armed, setArmed] = useState(false);
   const confirmRef = useRef<HTMLButtonElement>(null);
   // Every arm stamps the time and restarts the confirm gate below.
   const armedAt = useRef(0);
+  // The keypress that armed is still down: its release must not also confirm.
+  const armKeyHeld = useRef(false);
+  // The last touch or pen press; a double-tap's synthetic dblclick follows one.
+  const nonMouseAt = useRef<number | null>(null);
   const toggleArmed = () => {
     armedAt.current = performance.now();
     setArmed((a) => !a);
   };
+  // A reload or reconnect swaps the stream under the pane — a context change
+  // the person didn't author — so it must go back to watch-only at once.
+  const context = load.state === "ready" ? `${load.url}:${nonce}` : load.state;
+  useEffect(() => {
+    setArmed(false);
+    armKeyHeld.current = false;
+  }, [context]);
   // The armed button takes focus, so the keyboard confirms with one more key.
   useEffect(() => {
     if (armed) confirmRef.current?.focus({ preventScroll: true });
@@ -163,6 +207,18 @@ export function ScreenFrame({
     <div
       className={`relative mx-auto aspect-video w-full overflow-hidden bg-black ${control ? "ring-2 ring-info ring-inset" : ""} ${className}`}
       style={maxHeight ? { maxWidth: `calc(${maxHeight} * 16 / 9)` } : undefined}
+      onPointerDown={(e) => {
+        armKeyHeld.current = false;
+        if (e.pointerType !== "mouse") nonMouseAt.current = performance.now();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Escape" && armed) {
+          e.preventDefault();
+          armKeyHeld.current = false;
+          setArmed(false);
+          pane.current?.focus({ preventScroll: true });
+        }
+      }}
     >
       {load.state === "ready" && (
         <iframe
@@ -193,19 +249,38 @@ export function ScreenFrame({
         </div>
       )}
       {/* Watch-only: the stream sees no input until the person takes control.
-          A tap or Enter arms the button (tap again to put it away); only the
-          button takes over. Double-click still takes control on a mouse. */}
+          A tap or Enter arms the button (tap again, or Escape, to put it away);
+          only the button takes over. A mouse's double-click still takes control
+          at once; a double-tap must never look like one. */}
       {!control && load.state === "ready" && (
         <>
           <button
+            ref={pane}
             type="button"
-            aria-label={armed ? "Hide the take control button" : "Show the take control button"}
+            aria-label="Take control of the agent's screen"
+            aria-expanded={armed}
             title={touch ? undefined : "Double-click to take control"}
-            onClick={touch ? toggleArmed : undefined}
-            onDoubleClick={take}
+            onClick={
+              touch
+                ? () => {
+                    armKeyHeld.current = false;
+                    toggleArmed();
+                  }
+                : undefined
+            }
+            onDoubleClick={
+              touch
+                ? undefined
+                : () => {
+                    if (!dblclickTakes(touch, nonMouseAt.current === null ? null : performance.now() - nonMouseAt.current)) return;
+                    take();
+                  }
+            }
             onKeyDown={(e) => {
               if (e.key !== "Enter" && e.key !== " ") return;
               e.preventDefault(); // the key's own click would arm twice
+              if (e.repeat) return; // holding the key arms once
+              armKeyHeld.current = true;
               toggleArmed();
             }}
             className="absolute inset-0"
@@ -216,12 +291,22 @@ export function ScreenFrame({
               variant="glass"
               size="lg"
               icon={<Hand size={14} />}
-              onClick={() => {
-                // Silently ignore the tap that lands where the button just
-                // appeared (a fast double-tap), and any same-beat keyboard
-                // activation: a native button's Enter/Space arrives as a click.
-                if (performance.now() - armedAt.current < CONFIRM_MS) return;
+              onClick={(e) => {
+                // A fast double-tap can land where the button just appeared;
+                // a keyboard or screen reader activation never is one.
+                if (!confirmTakes(e.detail, performance.now() - armedAt.current, armKeyHeld.current)) return;
+                armKeyHeld.current = false;
                 take();
+              }}
+              onKeyDown={(e) => {
+                if (e.key !== "Enter" && e.key !== " ") return;
+                // Holding the key must not confirm through its auto-repeats.
+                if (e.repeat) {
+                  e.preventDefault();
+                  return;
+                }
+                // A fresh press on the button, not the arming key's release.
+                armKeyHeld.current = false;
               }}
               className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 [@media(pointer:coarse)]:h-11"
             >
