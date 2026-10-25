@@ -1,12 +1,18 @@
 import { memo } from "react";
-import ReactMarkdown, { type Components } from "react-markdown";
+import ReactMarkdown, { defaultUrlTransform, type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { CodeBlock } from "./CodeBlock";
 import { openLink } from "../../lib/preview";
 import { CONNECT_LINK } from "../../lib/composio";
 import { ConnectChip } from "./ConnectChip";
+import { isPathHref, pathFromHref, rehypeFileLinks, soleLink } from "../../lib/mdLinks";
+import { FileCard, FileLink, LinkCard } from "./LinkParts";
 
 const plugins = [remarkGfm];
+const rehypePlugins = [rehypeFileLinks];
+
+/** File paths stay as hrefs; anything else is sanitised as before. */
+const urlTransform = (url: string) => (isPathHref(url) ? url : defaultUrlTransform(url));
 
 function makeComponents(streaming: boolean): Components {
   return {
@@ -17,21 +23,39 @@ function makeComponents(streaming: boolean): Components {
       if (!m && !text.includes("\n")) return <code>{children}</code>;
       return <CodeBlock code={text.replace(/\n$/, "")} lang={m?.[1] ?? ""} streaming={streaming} />;
     },
+    p: ({ node, children }) => {
+      // A paragraph that is just one link grows into a preview card. While the
+      // message streams the target is still growing, so cards wait for it to settle.
+      const link = streaming ? null : soleLink(node);
+      if (link && !CONNECT_LINK.test(link.href)) {
+        return pathFromHref(link.href) ? <FileCard href={link.href} /> : <LinkCard href={link.href} label={link.text} />;
+      }
+      return <p>{children}</p>;
+    },
+    // A table scrolls sideways at its natural column widths instead of
+    // reflowing to fit (`.table-wrap` in styles.css).
+    table: ({ children }) => (
+      <div className="table-wrap scroll-quiet">
+        <table>{children}</table>
+      </div>
+    ),
     a: ({ href, children }) =>
       // An app's connect link (Composio) reads as a button that follows the sign-in.
       href && CONNECT_LINK.test(href) ? (
         <ConnectChip href={href}>{children}</ConnectChip>
+      ) : href && pathFromHref(href) ? (
+        <FileLink href={href}>{children}</FileLink>
       ) : (
-      <a
-        href={href}
-        onClick={(e) => {
-          e.preventDefault();
-          if (href) openLink(href);
-        }}
-      >
-        {children}
-      </a>
-    ),
+        <a
+          href={href}
+          onClick={(e) => {
+            e.preventDefault();
+            if (href) openLink(href);
+          }}
+        >
+          {children}
+        </a>
+      ),
   };
 }
 
@@ -68,7 +92,7 @@ export function splitBlocks(text: string): string[] {
 
 const Block = memo(function Block({ text, streaming }: { text: string; streaming: boolean }) {
   return (
-    <ReactMarkdown remarkPlugins={plugins} components={streaming ? live : settled}>
+    <ReactMarkdown remarkPlugins={plugins} rehypePlugins={rehypePlugins} urlTransform={urlTransform} components={streaming ? live : settled}>
       {text}
     </ReactMarkdown>
   );
