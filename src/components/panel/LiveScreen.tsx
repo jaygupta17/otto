@@ -102,6 +102,14 @@ export function useScreenStream(active: boolean) {
 }
 
 /**
+ * The confirm button renders at once but ignores activation this long after
+ * it appears, so the second tap of a fast double-tap can't land on it and take
+ * control. Above a double-tap's interval (~150–250ms), well under the beat of
+ * seeing the button and deliberately tapping it.
+ */
+const CONFIRM_MS = 300;
+
+/**
  * The stream itself, at the screen's 16:9 so there are no black bars. Watch
  * only (a glass pane takes the input) unless `control`. Taking control:
  * double-click on a mouse; on touch and the keyboard a tap (or Enter) only
@@ -127,6 +135,12 @@ export function ScreenFrame({
   const touch = useTouch();
   const [armed, setArmed] = useState(false);
   const confirmRef = useRef<HTMLButtonElement>(null);
+  // Every arm stamps the time and restarts the confirm gate below.
+  const armedAt = useRef(0);
+  const toggleArmed = () => {
+    armedAt.current = performance.now();
+    setArmed((a) => !a);
+  };
   // The armed button takes focus, so the keyboard confirms with one more key.
   useEffect(() => {
     if (armed) confirmRef.current?.focus({ preventScroll: true });
@@ -187,12 +201,12 @@ export function ScreenFrame({
             type="button"
             aria-label={armed ? "Hide the take control button" : "Show the take control button"}
             title={touch ? undefined : "Double-click to take control"}
-            onClick={touch ? () => setArmed((a) => !a) : undefined}
+            onClick={touch ? toggleArmed : undefined}
             onDoubleClick={take}
             onKeyDown={(e) => {
               if (e.key !== "Enter" && e.key !== " ") return;
               e.preventDefault(); // the key's own click would arm twice
-              setArmed((a) => !a);
+              toggleArmed();
             }}
             className="absolute inset-0"
           />
@@ -202,7 +216,13 @@ export function ScreenFrame({
               variant="glass"
               size="lg"
               icon={<Hand size={14} />}
-              onClick={take}
+              onClick={() => {
+                // Silently ignore the tap that lands where the button just
+                // appeared (a fast double-tap), and any same-beat keyboard
+                // activation: a native button's Enter/Space arrives as a click.
+                if (performance.now() - armedAt.current < CONFIRM_MS) return;
+                take();
+              }}
               className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 [@media(pointer:coarse)]:h-11"
             >
               Take control
