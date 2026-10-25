@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parsePathToken, pathFromHref, rehypeFileLinks, soleLink, splitPathTokens, type PathSeg } from "./mdLinks";
+import { absolutePath, checkFile, insideRoot, makeBudget, parsePathToken, pathFromHref, rehypeFileLinks, soleLink, splitPathTokens, type PathSeg } from "./mdLinks";
 
 const paths = (text: string) => splitPathTokens(text).filter((s): s is PathSeg => typeof s !== "string");
 
@@ -119,5 +119,102 @@ describe("soleLink", () => {
     expect(soleLink({ children: [text("see "), el("a", { href: "https://x.com" }, [text("x")])] })).toBeNull();
     expect(soleLink({ children: [el("a", { href: "https://x.com" }, [text("x")]), el("a", { href: "https://y.com" }, [text("y")])] })).toBeNull();
     expect(soleLink({ children: [el("a", { href: "" }, [text("x")])] })).toBeNull();
+  });
+});
+
+describe("insideRoot", () => {
+  test("collapses `.` and `..` before deciding", () => {
+    expect(insideRoot("/home/user/proj", "/home/user/proj/a.ts")).toBe(true);
+    expect(insideRoot("/home/user/proj", "/home/user/proj/./a.ts")).toBe(true);
+    expect(insideRoot("/home/user/proj", "/home/user/proj/sub/../a.ts")).toBe(true);
+    expect(insideRoot("/home/user/proj", "/home/user/proj")).toBe(true); // the root itself
+    expect(insideRoot("/home/user/proj", "/home/user/proj/../../etc/passwd")).toBe(false);
+    expect(insideRoot("/home/user/proj", "/home/user/.ssh/id_rsa")).toBe(false);
+    expect(insideRoot("/home/user/proj", "/home/user")).toBe(false);
+  });
+
+  test("the name has to end at a boundary, and drives work", () => {
+    expect(insideRoot("/home/user/proj", "/home/user/projancy/a.ts")).toBe(false);
+    expect(insideRoot("C:\\proj", "C:\\proj\\a.ts")).toBe(true);
+    expect(insideRoot("C:\\proj", "C:\\other\\a.ts")).toBe(false);
+    expect(insideRoot("", "/a.ts")).toBe(false);
+  });
+});
+
+describe("checkFile", () => {
+  const ROOT = "/home/user/proj";
+  const fs = (files: Record<string, string[]>) => {
+    const calls: string[] = [];
+    return {
+      calls,
+      client: {
+        listDir: (p: string): Promise<{ path: string; type: "file" | "directory" }[]> => {
+          calls.push(p);
+          return Promise.resolve((files[p] ?? []).map((name) => ({ path: `${p}/${name}`, type: "file" as const })));
+        },
+      },
+    };
+  };
+
+  test("resolves inside the root, and one listing answers a whole folder", async () => {
+    const { calls, client } = fs({ [`${ROOT}/src`]: ["a.ts", "b.ts"] });
+    expect(await checkFile(client, ROOT, "src/a.ts")).toBe(true);
+    expect(await checkFile(client, ROOT, "src/b.ts")).toBe(true);
+    expect(await checkFile(client, ROOT, "src/missing.ts")).toBe(false);
+    expect(calls).toEqual([`${ROOT}/src`]);
+  });
+
+  test("anything outside the root stays plain text and costs no listing", async () => {
+    const { calls, client } = fs({});
+    expect(await checkFile(client, ROOT, "/home/user/.ssh/id_rsa")).toBe(false);
+    expect(await checkFile(client, ROOT, "../../outside.ts")).toBe(false);
+    expect(await checkFile(client, ROOT, "a/../../../etc/passwd")).toBe(false);
+    expect(await checkFile(client, ROOT, "/home/user/proj")).toBe(false); // the root's parent is not listed either
+    expect(calls).toEqual([]);
+  });
+
+  test("an unreadable folder just means plain text", async () => {
+    const calls: string[] = [];
+    const client = {
+      listDir: (p: string): Promise<{ path: string; type: "file" | "directory" }[]> => {
+        calls.push(p);
+        return Promise.reject(new Error("nope"));
+      },
+    };
+    expect(await checkFile(client, `${ROOT}/err`, "x/thing.ts")).toBe(false);
+    expect(calls).toEqual([`${ROOT}/err/x`]);
+  });
+
+  test("listings run a couple at a time, whatever the message throws at it", async () => {
+    let live = 0;
+    let peak = 0;
+    const client = {
+      listDir: async (p: string) => {
+        live++;
+        peak = Math.max(peak, live);
+        await new Promise((r) => setTimeout(r, 5));
+        live--;
+        return [{ path: `${p}/x.ts`, type: "file" as const }];
+      },
+    };
+    const results = await Promise.all(["a", "b", "c", "d", "e", "f"].map((d) => checkFile(client, `${ROOT}/conc`, `${d}/x.ts`)));
+    expect(results).toEqual([true, true, true, true, true, true]);
+    expect(peak).toBeLessThanOrEqual(2);
+  });
+});
+
+describe("makeBudget", () => {
+  test("caps checks per window, then lets the next window through", async () => {
+    const budget = makeBudget(2, 5);
+    expect(budget()).toBe(true);
+    expect(budget()).toBe(true);
+    expect(budget()).toBe(false);
+    await new Promise((r) => setTimeout(r, 10));
+    expect(budget()).toBe(true);
+  });
+
+  test("absolutePath still joins relative paths to the root", () => {
+    expect(absolutePath("/home/user/proj", "a.ts")).toBe("/home/user/proj/a.ts");
+    expect(absolutePath("/home/user/proj", "./a.ts")).toBe("/home/user/proj/a.ts");
   });
 });
