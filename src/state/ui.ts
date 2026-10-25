@@ -110,6 +110,13 @@ interface UIState {
    */
   reduceMotion: boolean;
   setReduceMotion(v: boolean): void;
+  /**
+   * Fetch the title and image of links in messages, from this machine. Off by
+   * default: message text can name any URL, so a fetch is a signal to whoever
+   * wrote it — when the message was read, and where from.
+   */
+  linkPreviews: boolean;
+  setLinkPreviews(v: boolean): void;
   setTheme(t: ThemePref): void;
   toggleSidebar(v?: boolean): void;
   openSettings(tab?: UIState["settingsTab"]): void;
@@ -275,6 +282,11 @@ export const useUI = create<UIState>((set, get) => ({
     void kv.set("ui.reduceMotion", v);
     applyMotion();
   },
+  linkPreviews: false,
+  setLinkPreviews(v) {
+    set({ linkPreviews: v });
+    void kv.set("ui.linkPreviews", v);
+  },
 
   setTheme(theme) {
     try {
@@ -330,6 +342,7 @@ export async function initUI() {
   void kv.delete("ui.backdrops");
   if ((await kv.get<boolean>("ui.homeCompact")) === false) useUI.setState({ homeCompact: false });
   if ((await kv.get<boolean>("ui.showThinking")) === false) useUI.setState({ showThinking: false });
+  if ((await kv.get<boolean>("ui.linkPreviews")) === true) useUI.setState({ linkPreviews: true });
   const reduce = await kv.get<boolean>("ui.reduceMotion");
   if (typeof reduce === "boolean") useUI.setState({ reduceMotion: reduce });
   applyMotion();
