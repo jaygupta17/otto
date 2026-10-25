@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { absolutePath, checkFile, insideRoot, makeBudget, parsePathToken, pathFromHref, rehypeFileLinks, soleLink, splitPathTokens, type PathSeg } from "./mdLinks";
+import { absolutePath, checkFile, codeSpanFile, insideRoot, makeBudget, parsePathToken, pathFromHref, rehypeFileLinks, soleLink, splitPathTokens, type PathSeg } from "./mdLinks";
 
 const paths = (text: string) => splitPathTokens(text).filter((s): s is PathSeg => typeof s !== "string");
 
@@ -79,6 +79,13 @@ describe("pathFromHref", () => {
     expect(pathFromHref("#anchor")).toBeNull();
     expect(pathFromHref("")).toBeNull();
     expect(pathFromHref("src/lib/")).toBeNull();
+  });
+
+  test("a root-level path with a line suffix is a path, not a scheme", () => {
+    expect(pathFromHref("x-strategy-jay.md:1")).toEqual({ path: "x-strategy-jay.md", line: 1 });
+    expect(pathFromHref("README.md:12")).toEqual({ path: "README.md", line: 12 });
+    expect(pathFromHref("a.ts#L20")).toEqual({ path: "a.ts", line: 20 });
+    expect(pathFromHref("v1.2.3:12")).toBeNull(); // a version with a port is not a path
   });
 });
 
@@ -200,6 +207,89 @@ describe("checkFile", () => {
     const results = await Promise.all(["a", "b", "c", "d", "e", "f"].map((d) => checkFile(client, `${ROOT}/conc`, `${d}/x.ts`)));
     expect(results).toEqual([true, true, true, true, true, true]);
     expect(peak).toBeLessThanOrEqual(2);
+  });
+});
+
+describe("codeSpanFile", () => {
+  const ROOT = "/home/user/proj-spans";
+  const fs = (files: Record<string, string[]>) => {
+    const calls: string[] = [];
+    return {
+      calls,
+      client: {
+        listDir: (p: string): Promise<{ path: string; type: "file" | "directory" }[]> => {
+          calls.push(p);
+          return Promise.resolve((files[p] ?? []).map((name) => ({ path: `${p}/${name}`, type: "file" as const })));
+        },
+      },
+    };
+  };
+  // A fresh window per test, so the module's shared budget can't decide an outcome.
+  const fresh = () => makeBudget(100, 10_000);
+
+  test("a code span naming a real file becomes a link", async () => {
+    const { calls, client } = fs({ [`${ROOT}/src`]: ["a.ts", "mdLinks.ts"] });
+    expect(await codeSpanFile(client, ROOT, "src/a.ts", fresh())).toBe(true);
+    expect(await codeSpanFile(client, ROOT, "src/mdLinks.ts", fresh())).toBe(true);
+    expect(calls).toEqual([`${ROOT}/src`]); // one listing answers both
+  });
+
+  test("words, commands and versions stay literal code", async () => {
+    const { client } = fs({});
+    for (const span of ["e.g.", "i.e", "v1.2.3", "npm install", "GET /api/fs/list", "does/not/exist.md"]) {
+      expect(await codeSpanFile(client, ROOT, span, fresh())).toBe(false);
+    }
+  });
+
+  test("a path outside the root stays literal and costs no listing", async () => {
+    const { calls, client } = fs({});
+    for (const span of ["/etc/passwd", "../../.ssh/id_rsa", "/home/user/.ssh/id_rsa"]) {
+      expect(await codeSpanFile(client, ROOT, span, fresh())).toBe(false);
+    }
+    expect(calls).toEqual([]);
+  });
+
+  test("surrounding whitespace is trimmed before checking", async () => {
+    const { client } = fs({ [`${ROOT}/src`]: ["a.ts"] });
+    expect(pathFromHref("  src/a.ts  ")?.path).toBe("src/a.ts"); // what it opens is trimmed too
+    expect(await codeSpanFile(client, ROOT, "  src/a.ts  ", fresh())).toBe(true);
+  });
+
+  test("a line suffix resolves to the file and keeps the line", async () => {
+    const { calls, client } = fs({ [`${ROOT}/lines`]: ["a.ts"] });
+    expect(await codeSpanFile(client, ROOT, "lines/a.ts:12", fresh())).toBe(true);
+    expect(pathFromHref("lines/a.ts:12")).toEqual({ path: "lines/a.ts", line: 12 });
+    expect(pathFromHref("lines/a.ts#L12")).toEqual({ path: "lines/a.ts", line: 12 });
+    expect(calls).toEqual([`${ROOT}/lines`]);
+  });
+
+  test("a root-level path with a line suffix resolves too", async () => {
+    const root = "/home/user/proj-rootline"; // its own root: the listing cache is shared
+    const { client } = fs({ [root]: ["x-strategy-jay.md"] });
+    expect(await codeSpanFile(client, root, "x-strategy-jay.md:1", fresh())).toBe(true);
+  });
+
+  test("a partial path still streaming in stays literal", async () => {
+    const { client } = fs({ [`${ROOT}/src`]: ["mdLinks.ts"] });
+    for (const partial of ["src/m", "src/mdLink", "src/mdLinks.t"]) {
+      expect(await codeSpanFile(client, ROOT, partial, fresh())).toBe(false);
+    }
+    expect(await codeSpanFile(client, ROOT, "src/mdLinks.ts", fresh())).toBe(true); // settled
+  });
+
+  test("a message with many code spans does not starve the plain-text checks", async () => {
+    const files: Record<string, string[]> = {};
+    for (let d = 0; d < 5; d++) files[`${ROOT}/span${d}`] = Array.from({ length: 10 }, (_, i) => `f${i}.ts`);
+    for (let d = 0; d < 20; d++) files[`${ROOT}/prose${d}`] = [`p${d}.ts`];
+    const { client } = fs(files);
+    // One window shared by the whole message, as in the app.
+    const budget = makeBudget(30, 10_000);
+    const spans = await Promise.all(
+      Array.from({ length: 50 }, (_, i) => codeSpanFile(client, ROOT, `span${i % 5}/f${Math.floor(i / 5)}.ts`, budget)),
+    );
+    const prose = await Promise.all(Array.from({ length: 20 }, (_, d) => checkFile(client, ROOT, `prose${d}/p${d}.ts`, budget)));
+    expect(spans).toEqual(Array(50).fill(true));
+    expect(prose).toEqual(Array(20).fill(true));
   });
 });
 

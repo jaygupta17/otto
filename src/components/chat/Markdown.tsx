@@ -6,7 +6,7 @@ import { openLink } from "../../lib/preview";
 import { CONNECT_LINK } from "../../lib/composio";
 import { ConnectChip } from "./ConnectChip";
 import { isPathHref, pathFromHref, rehypeFileLinks, soleLink } from "../../lib/mdLinks";
-import { FileCard, FileLink, LinkCard } from "./LinkParts";
+import { FileLink, InlineCode, LinkCard } from "./LinkParts";
 
 const plugins = [remarkGfm];
 const rehypePlugins = [rehypeFileLinks];
@@ -20,15 +20,21 @@ function makeComponents(streaming: boolean): Components {
     code: ({ className, children }) => {
       const text = String(children ?? "");
       const m = /language-([\w+-]+)/.exec(className ?? "");
-      if (!m && !text.includes("\n")) return <code>{children}</code>;
+      // Inline code names things, so when the whole span is a real file it
+      // becomes a link (still styled as code). Fenced and indented blocks —
+      // which always carry a newline in their text — stay exactly as written.
+      if (!m && !text.includes("\n")) return <InlineCode text={text}>{children}</InlineCode>;
       return <CodeBlock code={text.replace(/\n$/, "")} lang={m?.[1] ?? ""} streaming={streaming} />;
     },
     p: ({ node, children }) => {
-      // A paragraph that is just one link grows into a preview card. While the
+      // A paragraph that is just one URL grows into a preview card. While the
       // message streams the target is still growing, so cards wait for it to settle.
+      // File paths get no special case: they render as inline chips wherever
+      // they appear, alone on a line or mid-sentence, so a paragraph of one
+      // path is just that paragraph.
       const link = streaming ? null : soleLink(node);
-      if (link && !CONNECT_LINK.test(link.href)) {
-        return pathFromHref(link.href) ? <FileCard href={link.href} /> : <LinkCard href={link.href} label={link.text} />;
+      if (link && !CONNECT_LINK.test(link.href) && !pathFromHref(link.href)) {
+        return <LinkCard href={link.href} label={link.text} />;
       }
       return <p>{children}</p>;
     },
