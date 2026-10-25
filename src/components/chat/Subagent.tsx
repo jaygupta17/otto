@@ -2,6 +2,7 @@ import { ChevronLeft, ChevronRight, Square } from "lucide-react";
 import { AnimatePresence, animate, motion, useMotionValue, useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { useChat } from "../../state/chat";
+import { useUI } from "../../state/ui";
 import { closeSubagent, openSubagent, useSiblings, useSubagentView } from "../../state/subagent";
 import { useHistoryEntry } from "../../lib/back";
 import { axisOf, ofHint, resist, settle, type Axis } from "../../lib/pager";
@@ -141,7 +142,8 @@ function Swipe({ at, count, onGo, className, children }: { at: number; count: nu
   const x = useMotionValue(0);
   const axis = useRef<Axis | null>(null);
   const width = useRef(1);
-  const still = useReducedMotion();
+  // The OS setting and the app's Reduce motion both snap the settle.
+  const still = useReducedMotion() || useUI((s) => s.reduceMotion);
   const on = count > 1;
   return (
     <motion.div

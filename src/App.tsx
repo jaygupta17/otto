@@ -9,7 +9,7 @@ import { initNotificationCenter } from "./state/notifications";
 import { initUpdates } from "./state/updates";
 import { initShare } from "./state/share";
 import { initViewport } from "./lib/viewport";
-import { useCompact } from "./hooks/useMedia";
+import { useCompact, useOsReducedMotion } from "./hooks/useMedia";
 import { Onboarding } from "./components/onboarding/Onboarding";
 import { AppShell } from "./components/shell/AppShell";
 import { MobileApp } from "./components/mobile/MobileApp";
@@ -29,6 +29,10 @@ export default function App() {
   const workspaces = useWorkspaces((s) => s.workspaces);
   const activeId = useWorkspaces((s) => s.activeId);
   const compact = useCompact();
+  const reduceMotion = useUI((s) => s.reduceMotion);
+  const osReduced = useOsReducedMotion();
+  // The OS setting is a floor: with it on, nothing animates even when the pref is off.
+  const still = reduceMotion || osReduced;
   const addOpen = useUI((s) => s.addWorkspaceOpen);
   const setAdd = useUI((s) => s.setAddWorkspace);
   const [booted, setBooted] = useState(false);
@@ -75,7 +79,7 @@ export default function App() {
   return (
     // Icons draw a touch lighter than Lucide's default, closer to SF Symbols beside system text.
     <LucideProvider strokeWidth={1.75}>
-      <MotionConfig reducedMotion="user">
+      <MotionConfig reducedMotion={reduceMotion ? "always" : "user"} skipAnimations={still}>
         {workspaces.length === 0 ? <Onboarding /> : compact ? <MobileApp /> : <AppShell compact={compact} />}
         {workspaces.length > 0 && <Settings compact={compact} />}
         {workspaces.length > 0 && <CommandPalette />}

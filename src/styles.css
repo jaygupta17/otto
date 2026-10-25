@@ -1169,3 +1169,25 @@ html[data-touch] #root {
 @media (prefers-reduced-motion: reduce) {
   .line-flash { animation: none; }
 }
+
+/* Reduce motion (Settings › Appearance, or the OS — the attribute is set when
+   either is on): the transitions between states happen at once. This kills
+   interaction chrome — hover and chevron transitions, focus rings, tooltips —
+   never the motion that reports state: shimmer, .spin, .loader-dots, the live
+   pip, the helper glyph, birds and the agent clock are CSS keyframes or canvas
+   and keep going. Unlayered on purpose: it must win over the utility layers. */
+html[data-reduce-motion] *,
+html[data-reduce-motion] *::before,
+html[data-reduce-motion] *::after {
+  transition-duration: 0s !important;
+  transition-delay: 0s !important;
+}
+/* A tooltip is a hover affordance; it just pops in. */
+html[data-reduce-motion] .tip {
+  animation: none;
+}
+/* The press spot is feedback for its own sake, and at zero duration it would
+   just flash; rows take the press without it instead. */
+html[data-reduce-motion] .spot {
+  display: none;
+}

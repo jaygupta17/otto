@@ -1,7 +1,8 @@
-import { AnimatePresence, animate, motion, useMotionValue, useTransform } from "motion/react";
+import { AnimatePresence, animate, motion, useMotionValue, useReducedMotion, useTransform } from "motion/react";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { memo, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
+import { useUI } from "../../state/ui";
 import { useHistoryEntry } from "../../lib/back";
 import { useFocusTrap, useLayer } from "../../lib/layers";
 import { EDGE, axisOf, ofHint, resist, settle, type Axis } from "../../lib/pager";
@@ -92,10 +93,13 @@ function Pager({ root, images, start, onClose }: { root: RefObject<HTMLDivElemen
   // A rotation or a resized window keeps the same page in view.
   useEffect(() => x.set(-at * width), [width]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Paging settles like any other transition: snap it when motion is reduced.
+  const still = useReducedMotion() || useUI((s) => s.reduceMotion);
+
   const go = (n: number) => {
     const to = Math.min(Math.max(n, 0), count - 1);
     setAt(to);
-    void animate(x, -to * width, spring);
+    void animate(x, -to * width, still ? { duration: 0 } : spring);
   };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -158,8 +162,8 @@ function Pager({ root, images, start, onClose }: { root: RefObject<HTMLDivElemen
           const land = settle({ axis: g.axis, edge: g.edge, dx: info.offset.x, dy: info.offset.y, vx: info.velocity.x, vy: info.velocity.y, width, at, count });
           if (land.close) return onClose();
           go(land.to);
-          void animate(y, 0, spring);
-          void animate(off, 0, spring);
+          void animate(y, 0, still ? { duration: 0 } : spring);
+          void animate(off, 0, still ? { duration: 0 } : spring);
         }}
         onClick={() => {
           // The end of a drag isn't a tap.

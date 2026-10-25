@@ -243,6 +243,8 @@ function AppearanceSection() {
   const setHomeCompact = useUI((s) => s.setHomeCompact);
   const showThinking = useUI((s) => s.showThinking);
   const setShowThinking = useUI((s) => s.setShowThinking);
+  const reduceMotion = useUI((s) => s.reduceMotion);
+  const setReduceMotion = useUI((s) => s.setReduceMotion);
   return (
     <Section title="Appearance">
       <Rows>
@@ -265,6 +267,9 @@ function AppearanceSection() {
         </Row>
         <Row label="Show thinking" hint="The model's reasoning, folded in chat as it works">
           <Toggle on={showThinking} onChange={setShowThinking} label="Show thinking" />
+        </Row>
+        <Row label="Reduce motion" hint="Transitions are instant; birds, shimmer and loading keep moving">
+          <Toggle on={reduceMotion} onChange={setReduceMotion} label="Reduce motion" />
         </Row>
       </Rows>
     </Section>

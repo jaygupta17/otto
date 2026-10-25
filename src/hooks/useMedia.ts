@@ -17,3 +17,6 @@ export const useCompact = () => useMedia("(max-width: 760px)");
 
 /** A finger, not a mouse: full-screen pages beat popovers here. */
 export const useTouch = () => useMedia("(pointer: coarse)");
+
+/** The system's "reduce motion" setting: the floor for the app's own Reduce motion. */
+export const useOsReducedMotion = () => useMedia("(prefers-reduced-motion: reduce)");
