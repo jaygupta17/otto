@@ -16,8 +16,8 @@ export const CodeBlock = memo(function CodeBlock({ code, lang, streaming, maxHei
   }, [code, lang, streaming]);
 
   return (
-    <div className="group/code relative my-3 overflow-hidden rounded-xl bg-code hairline" style={{ background: "var(--code-bg)" }}>
-      <div className="flex h-8 items-center justify-between border-b border-line px-3">
+    <div className="group/code relative my-3 overflow-hidden rounded-2xl bg-code hairline" style={{ background: "var(--code-bg)" }}>
+      <div className="flex h-8 items-center justify-between border-b border-line px-3 [@media(pointer:coarse)]:h-11">
         <span className="font-mono text-[12px] text-faint">{lang || "text"}</span>
         <button
           onClick={() => {
@@ -25,7 +25,7 @@ export const CodeBlock = memo(function CodeBlock({ code, lang, streaming, maxHei
             setCopied(true);
             setTimeout(() => setCopied(false), 1400);
           }}
-          className="relative flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[12px] text-muted opacity-0 transition-opacity after:absolute after:-inset-1.5 after:content-[''] group-hover/code:opacity-100 hover:bg-hover hover:text-ink focus:opacity-100 [@media(hover:none)]:opacity-100"
+          className="relative flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[12px] text-muted opacity-0 transition-opacity after:absolute after:-inset-1.5 after:content-[''] group-hover/code:opacity-100 hover:bg-hover hover:text-ink focus:opacity-100 [@media(hover:none)]:opacity-100 [@media(pointer:coarse)]:min-h-11"
         >
           {copied ? <Check size={12} /> : <Copy size={12} />}
           {copied ? "Copied" : "Copy"}
