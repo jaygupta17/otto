@@ -17,6 +17,13 @@ function makeComponents(streaming: boolean): Components {
       if (!m && !text.includes("\n")) return <code>{children}</code>;
       return <CodeBlock code={text.replace(/\n$/, "")} lang={m?.[1] ?? ""} streaming={streaming} />;
     },
+    // A table scrolls sideways at its natural column widths instead of
+    // reflowing to fit (`.table-wrap` in styles.css).
+    table: ({ children }) => (
+      <div className="table-wrap scroll-quiet">
+        <table>{children}</table>
+      </div>
+    ),
     a: ({ href, children }) =>
       // An app's connect link (Composio) reads as a button that follows the sign-in.
       href && CONNECT_LINK.test(href) ? (

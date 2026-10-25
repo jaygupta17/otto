@@ -755,13 +755,22 @@ html[data-touch] #root {
   box-shadow: inset 0 0 0 1px var(--border);
   color: var(--text);
 }
-.prose-chat table {
-  width: 100%;
-  border-collapse: collapse;
-  margin: 0.8em 0;
-  font-size: 0.94em;
-  display: block;
+/* Tables keep their natural column widths and scroll sideways rather than
+   reflowing to fit; long prose in a cell wraps inside a sensible cap. */
+.prose-chat .table-wrap {
   overflow-x: auto;
+  margin: 0.8em 0;
+}
+.prose-chat .table-wrap table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: 0.94em;
+}
+.prose-chat .table-wrap th,
+.prose-chat .table-wrap td {
+  overflow-wrap: break-word;
+  max-width: min(32ch, 55vw);
 }
 .prose-chat th,
 .prose-chat td {
