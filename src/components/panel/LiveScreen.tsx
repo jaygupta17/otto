@@ -6,7 +6,8 @@
  * Boat streams it (Moonlight) to a signed URL that must be opened within ten
  * minutes, so a fresh one is asked for every time the view mounts. The view
  * is watch-only until the person takes control; a glass pane over the stream
- * swallows input until then (double-click, or a tap on touch; see ScreenFrame).
+ * swallows input until then (double-click, or tap then confirm on touch; see
+ * ScreenFrame).
  */
 import { AlertTriangle, AppWindow, Globe, Hand, Maximize, Minimize, MonitorPlay, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -103,8 +104,9 @@ export function useScreenStream(active: boolean) {
 /**
  * The stream itself, at the screen's 16:9 so there are no black bars. Watch
  * only (a glass pane takes the input) unless `control`. Taking control:
- * double-click on a mouse, one tap on touch (no double-tap gesture there),
- * Enter or Space on the keyboard.
+ * double-click on a mouse; on touch and the keyboard a tap (or Enter) only
+ * arms a "Take control" button, and that button takes control — an
+ * accidental tap must never pause a running agent.
  */
 export function ScreenFrame({
   stream,
@@ -123,6 +125,12 @@ export function ScreenFrame({
   const { load, nonce, reload } = stream;
   const frame = useRef<HTMLIFrameElement>(null);
   const touch = useTouch();
+  const [armed, setArmed] = useState(false);
+  const confirmRef = useRef<HTMLButtonElement>(null);
+  // The armed button takes focus, so the keyboard confirms with one more key.
+  useEffect(() => {
+    if (armed) confirmRef.current?.focus({ preventScroll: true });
+  }, [armed]);
   // Taking control puts the keyboard in the stream (once the stream is there).
   const ready = load.state === "ready" ? load.url : null;
   useEffect(() => {
@@ -130,9 +138,10 @@ export function ScreenFrame({
     // keyboard, and the frame is always in view where it shows.
     if (control) frame.current?.focus({ preventScroll: true });
   }, [control, ready, nonce]);
-  // One shot per pane: taking control pauses a busy agent, so a tap and its
-  // follow-up click must not interrupt twice.
   const take = () => {
+    setArmed(false);
+    // One shot: taking control pauses a busy agent, so a tap and its
+    // follow-up click must not interrupt twice.
     if (useComputer.getState().control) return;
     void useComputer.getState().takeControl(sessionId);
   };
@@ -169,28 +178,37 @@ export function ScreenFrame({
           </div>
         </div>
       )}
-      {/* Watch-only: the stream sees no input until the person takes control. */}
+      {/* Watch-only: the stream sees no input until the person takes control.
+          A tap or Enter arms the button (tap again to put it away); only the
+          button takes over. Double-click still takes control on a mouse. */}
       {!control && load.state === "ready" && (
-        <button
-          type="button"
-          aria-label="Take control of the agent's screen"
-          title={touch ? undefined : "Double-click to take control"}
-          onClick={touch ? take : undefined}
-          onDoubleClick={take}
-          onKeyDown={(e) => {
-            if (e.key !== "Enter" && e.key !== " ") return;
-            e.preventDefault(); // the key's own click would take control again
-            take();
-          }}
-          className="absolute inset-0 grid place-items-center"
-        >
-          {touch && (
-            <span className="pointer-events-none inline-flex items-center gap-1.5 rounded-full border border-line bg-raised px-3 py-1.5 text-[13px] text-ink">
-              <Hand size={13} />
-              Tap to take control
-            </span>
+        <>
+          <button
+            type="button"
+            aria-label={armed ? "Hide the take control button" : "Show the take control button"}
+            title={touch ? undefined : "Double-click to take control"}
+            onClick={touch ? () => setArmed((a) => !a) : undefined}
+            onDoubleClick={take}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter" && e.key !== " ") return;
+              e.preventDefault(); // the key's own click would arm twice
+              setArmed((a) => !a);
+            }}
+            className="absolute inset-0"
+          />
+          {armed && (
+            <Button
+              ref={confirmRef}
+              variant="glass"
+              size="lg"
+              icon={<Hand size={14} />}
+              onClick={take}
+              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 [@media(pointer:coarse)]:h-11"
+            >
+              Take control
+            </Button>
           )}
-        </button>
+        </>
       )}
     </div>
   );
