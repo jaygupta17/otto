@@ -142,17 +142,85 @@ export function soleLink(node: { children?: unknown[] } | undefined): { href: st
 
 // ---------------------------------------------------------------------------
 // Existence: a path only becomes a link once we know it is a file.
+//
+// Message text is untrusted, so a path-shaped token is a question about the
+// filesystem and nothing more. It is only asked when the resolved path sits
+// inside the session root (the root's own parent is off limits too), and only
+// within a budget: a message can hold hundreds of tokens and each check is a
+// listing.
 // ---------------------------------------------------------------------------
 
 interface FsClient {
   listDir(path: string, directory?: string): Promise<{ path: string; type: "file" | "directory" }[]>;
 }
 
-const dirCache = new Map<string, { at: number; list: Promise<{ path: string; type: "file" | "directory" }[] | null> }>();
-const fileCache = new Map<string, { at: number; ok: Promise<boolean> }>();
+/** Bounded LRU: `Map` holds insertion order, so the oldest key comes first. */
+const CACHE_MAX = 300;
+
+type Cached<T> = { at: number; v: T };
+
+function cacheGet<T>(m: Map<string, Cached<T>>, k: string): Cached<T> | undefined {
+  const hit = m.get(k);
+  if (hit && Date.now() - hit.at < TTL_MS) {
+    m.delete(k);
+    m.set(k, hit);
+    return hit;
+  }
+  return undefined;
+}
+
+function cacheSet<T>(m: Map<string, Cached<T>>, k: string, v: T): Cached<T> {
+  const entry = { at: Date.now(), v };
+  m.delete(k);
+  m.set(k, entry);
+  const oldest = m.keys().next();
+  if (!oldest.done && m.size > CACHE_MAX) m.delete(oldest.value);
+  return entry;
+}
+
+const dirCache = new Map<string, Cached<Promise<{ path: string; type: "file" | "directory" }[] | null>>>();
+const fileCache = new Map<string, Cached<Promise<boolean>>>();
 
 /** A minute: long enough to absorb a stream of mentions, short enough that a file the agent just created still gets linked. */
 const TTL_MS = 60_000;
+
+/** Listings at a time (the `linkPreview` queue shape), so one message can't fan out into a burst of RPCs. */
+const waiting: (() => void)[] = [];
+let active = 0;
+const MAX_ACTIVE = 2;
+
+function slot(): Promise<void> {
+  if (active < MAX_ACTIVE) {
+    active++;
+    return Promise.resolve();
+  }
+  return new Promise<void>((resolve) => waiting.push(() => resolve())).then(() => {
+    active++;
+  });
+}
+
+function release() {
+  active--;
+  waiting.shift()?.();
+}
+
+/** Checks per window, then the rest of the window's tokens stay plain text. */
+export function makeBudget(max: number, windowMs: number): () => boolean {
+  let at = 0;
+  let used = 0;
+  return () => {
+    const now = Date.now();
+    if (now - at >= windowMs) {
+      at = now;
+      used = 0;
+    }
+    if (used >= max) return false;
+    used++;
+    return true;
+  };
+}
+
+const budgeted = makeBudget(60, 10_000);
 
 const baseName = (p: string) => p.replace(/\/+$/, "").split("/").pop() ?? p;
 
@@ -160,31 +228,56 @@ export function absolutePath(root: string, p: string) {
   return p.startsWith("/") || /^[A-Za-z]:[\\/]/.test(p) ? p : `${root.replace(/\/$/, "")}/${p.replace(/^\.\//, "")}`;
 }
 
+/** Collapse `.`/`..` and duplicate separators so containment can be compared. */
+function normalizeAbs(p: string): string {
+  const drive = /^[A-Za-z]:/.exec(p)?.[0] ?? "";
+  const up: string[] = [];
+  for (const seg of p.slice(drive.length).split(/[\\/]+/)) {
+    if (!seg || seg === ".") continue;
+    if (seg === "..") up.pop();
+    else up.push(seg);
+  }
+  return `${drive}/${up.join("/")}`;
+}
+
+/**
+ * Whether `path` resolves inside `root` (after `.`/`..` are collapsed). The
+ * root itself counts; its parent does not. Absolute paths from a message are
+ * checked the same way, so `/home/user/.ssh/id_rsa` is outside and stays plain
+ * text.
+ */
+export function insideRoot(root: string, path: string): boolean {
+  if (!root) return false;
+  const r = normalizeAbs(root).replace(/\/+$/, "");
+  const p = normalizeAbs(path);
+  return r === "/" ? p.startsWith("/") : p === r || p.startsWith(`${r}/`);
+}
+
 /**
  * Whether `path` names a file (not a directory) under `root`. Directory
  * listings are cached per folder, so a message full of paths in one folder
- * costs one request.
+ * costs one request. Paths outside `root` are refused outright, and checks
+ * beyond the budget (`makeBudget`) simply report false.
  */
 export function checkFile(client: FsClient, root: string, path: string): Promise<boolean> {
-  const abs = absolutePath(root, path).replace(/[.,;!?]+$/, "");
-  const hit = fileCache.get(abs);
-  if (hit && Date.now() - hit.at < TTL_MS) return hit.ok;
+  const abs = normalizeAbs(absolutePath(root, path).replace(/[.,;!?]+$/, ""));
+  const dir = abs.slice(0, abs.lastIndexOf("/")) || "/";
+  if (!insideRoot(root, abs) || !insideRoot(root, dir) || !budgeted()) return Promise.resolve(false);
+  const hit = cacheGet(fileCache, abs);
+  if (hit) return hit.v;
   const ok = (async () => {
-    const dir = abs.slice(0, abs.lastIndexOf("/")) || "/";
-    let entry = dirCache.get(dir);
-    if (!entry || Date.now() - entry.at >= TTL_MS) {
-      entry = {
-        at: Date.now(),
-        list: client
-          .listDir(dir, root)
-          .then((list) => list)
-          .catch(() => null),
-      };
-      dirCache.set(dir, entry);
-    }
-    const list = await entry.list;
-    return !!list?.some((e) => e.type === "file" && baseName(e.path) === baseName(abs));
+    const entry = cacheGet(dirCache, dir) ?? cacheSet(dirCache, dir, listDir(client, dir, root));
+    return (await entry.v)?.some((e) => e.type === "file" && baseName(e.path) === baseName(abs)) ?? false;
   })();
-  fileCache.set(abs, { at: Date.now(), ok });
+  cacheSet(fileCache, abs, ok);
   return ok;
+}
+
+async function listDir(client: FsClient, dir: string, root: string) {
+  await slot();
+  try {
+    return await client.listDir(dir, root).catch(() => null);
+  } finally {
+    release();
+  }
 }

@@ -245,6 +245,8 @@ function AppearanceSection() {
   const setShowThinking = useUI((s) => s.setShowThinking);
   const reduceMotion = useUI((s) => s.reduceMotion);
   const setReduceMotion = useUI((s) => s.setReduceMotion);
+  const linkPreviews = useUI((s) => s.linkPreviews);
+  const setLinkPreviews = useUI((s) => s.setLinkPreviews);
   return (
     <Section title="Appearance">
       <Rows>
@@ -270,6 +272,9 @@ function AppearanceSection() {
         </Row>
         <Row label="Reduce motion" hint="Transitions are instant; birds, shimmer and loading keep moving">
           <Toggle on={reduceMotion} onChange={setReduceMotion} label="Reduce motion" />
+        </Row>
+        <Row label="Link previews" hint="Fetches the title and image of links in messages, from your machine">
+          <Toggle on={linkPreviews} onChange={setLinkPreviews} label="Link previews" />
         </Row>
       </Rows>
     </Section>
