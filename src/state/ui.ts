@@ -28,6 +28,24 @@ export const PANEL_DEFAULT_WIDTH: Record<PanelSurface, number> = { files: 400, t
 /** Files grows to this once a file is open, so code has room beside the tree. */
 export const FILES_OPEN_WIDTH = 600;
 
+/** Remembered expanded folders per workspace root, and remembered roots in total. */
+const TREE_PATHS = 200;
+const TREE_ROOTS = 8;
+
+/** Drop anything malformed and hold the remembered tree to a sane size. */
+function sanitizeTree(raw: unknown): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  if (raw && typeof raw === "object") {
+    // Entries keep insertion order: the setters move what's touched to the end.
+    for (const [root, list] of Object.entries(raw as Record<string, unknown>).slice(-TREE_ROOTS)) {
+      if (!Array.isArray(list)) continue;
+      const paths = [...new Set(list.filter((p): p is string => typeof p === "string" && !!p))];
+      if (paths.length) out[root] = paths.slice(-TREE_PATHS);
+    }
+  }
+  return out;
+}
+
 interface UIState {
   theme: ThemePref;
   resolvedTheme: "light" | "dark";
@@ -41,6 +59,8 @@ interface UIState {
   panelExpanded: boolean;
   /** The file tree column inside the Files surface. */
   treeOpen: boolean;
+  /** Expanded folders in the file tree, per workspace root. */
+  treeExpanded: Record<string, string[]>;
   openPanel(s: PanelSurface): void;
   togglePanel(s: PanelSurface): void;
   /** Show the panel at its last surface, or hide it. */
@@ -49,6 +69,10 @@ interface UIState {
   setPanelWidth(s: PanelSurface, w: number): void;
   setPanelExpanded(v: boolean): void;
   toggleTree(v?: boolean): void;
+  /** Open/close a folder in the file tree; remembered across reloads and Refresh. */
+  setTreeExpanded(root: string, path: string, open: boolean): void;
+  /** Forget remembered folders a listing shows are gone. Silent: paths just drop. */
+  pruneTree(root: string, dir: string, dirs: string[]): void;
   /** A URL to show in the Browser surface; `n` changes on every request so the same URL can reload. */
   browserRequest: { url: string; n: number } | null;
   openInBrowser(url: string): void;
@@ -79,6 +103,13 @@ interface UIState {
   /** Show the model's thinking in chat. Off by default: the bird says it's working. */
   showThinking: boolean;
   setShowThinking(v: boolean): void;
+  /**
+   * Turn off the functional micro-transitions (sheets, pushes, entrances, hover).
+   * Mascot, shimmer and loading motion are CSS and stay; see styles.css.
+   * The OS's reduced-motion setting is a floor on top of this.
+   */
+  reduceMotion: boolean;
+  setReduceMotion(v: boolean): void;
   setTheme(t: ThemePref): void;
   toggleSidebar(v?: boolean): void;
   openSettings(tab?: UIState["settingsTab"]): void;
@@ -110,6 +141,21 @@ function applyTheme(mode: "light" | "dark") {
   }
 }
 
+/** Phones and tablets pay the most for micro-transitions, so they start with fewer. */
+const coarsePointer = typeof window !== "undefined" && !!window.matchMedia?.("(pointer: coarse)").matches;
+
+const reduceMedia = typeof window !== "undefined" ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
+
+/**
+ * Functional transitions are off when the pref says so, or when the OS does: the
+ * OS setting is a floor, so the app never moves more than the system allows.
+ * `styles.css` keys the instant transitions off this attribute; motion (framer)
+ * gets the same signal in App.tsx.
+ */
+function applyMotion() {
+  document.documentElement.toggleAttribute("data-reduce-motion", useUI.getState().reduceMotion || !!reduceMedia?.matches);
+}
+
 export const useUI = create<UIState>((set, get) => ({
   theme: readTheme(),
   resolvedTheme: resolve(readTheme()),
@@ -119,6 +165,7 @@ export const useUI = create<UIState>((set, get) => ({
   panelWidths: {},
   panelExpanded: false,
   treeOpen: true,
+  treeExpanded: {},
   openPanel(panel) {
     set({ panel });
   },
@@ -140,6 +187,34 @@ export const useUI = create<UIState>((set, get) => ({
   },
   toggleTree(v) {
     set({ treeOpen: v ?? !get().treeOpen });
+  },
+  setTreeExpanded(root, path, open) {
+    const map = { ...get().treeExpanded };
+    const kept = (map[root] ?? []).filter((p) => p !== path);
+    delete map[root];
+    // Touching a root moves it to the end, so the least recently used drop first.
+    const list = open ? [...kept, path].slice(-TREE_PATHS) : kept;
+    if (list.length) map[root] = list;
+    for (const r of Object.keys(map).slice(0, Math.max(0, Object.keys(map).length - TREE_ROOTS))) delete map[r];
+    set({ treeExpanded: map });
+    void kv.set("ui.tree", map);
+  },
+  pruneTree(root, dir, dirs) {
+    const list = get().treeExpanded[root];
+    if (!list?.length) return;
+    const prefix = `${dir.replace(/\/+$/, "")}/`;
+    const live = new Set(dirs);
+    // Any remembered folder whose immediate parent no longer lists it is gone;
+    // its whole subtree goes with it. Never an error, just gone.
+    const kept = list.filter((p) => {
+      if (!p.startsWith(prefix)) return true;
+      const child = p.slice(prefix.length).split("/")[0];
+      return !!child && live.has(child);
+    });
+    if (kept.length === list.length) return;
+    const next = { ...get().treeExpanded, [root]: kept };
+    set({ treeExpanded: next });
+    void kv.set("ui.tree", next);
   },
   browserRequest: null,
   openInBrowser(url) {
@@ -194,6 +269,12 @@ export const useUI = create<UIState>((set, get) => ({
     set({ showThinking: v });
     void kv.set("ui.showThinking", v);
   },
+  reduceMotion: coarsePointer,
+  setReduceMotion(v) {
+    set({ reduceMotion: v });
+    void kv.set("ui.reduceMotion", v);
+    applyMotion();
+  },
 
   setTheme(theme) {
     try {
@@ -236,6 +317,8 @@ media?.addEventListener("change", () => {
   }
 });
 
+reduceMedia?.addEventListener("change", applyMotion);
+
 export function toast(t: Omit<Toast, "id">) {
   useUI.getState().pushToast(t);
 }
@@ -247,8 +330,13 @@ export async function initUI() {
   void kv.delete("ui.backdrops");
   if ((await kv.get<boolean>("ui.homeCompact")) === false) useUI.setState({ homeCompact: false });
   if ((await kv.get<boolean>("ui.showThinking")) === false) useUI.setState({ showThinking: false });
+  const reduce = await kv.get<boolean>("ui.reduceMotion");
+  if (typeof reduce === "boolean") useUI.setState({ reduceMotion: reduce });
+  applyMotion();
   const layout = await kv.get<{ sidebarOpen?: boolean; panel?: PanelSurface | null; lastPanel?: PanelSurface; panelWidths?: UIState["panelWidths"]; treeOpen?: boolean }>("ui.layout");
   if (layout) useUI.setState({ sidebarOpen: layout.sidebarOpen !== false, panel: layout.panel ?? null, lastPanel: layout.panel ?? layout.lastPanel ?? "files", panelWidths: layout.panelWidths ?? {}, treeOpen: layout.treeOpen !== false });
+  const tree = await kv.get<Record<string, string[]>>("ui.tree");
+  if (tree) useUI.setState({ treeExpanded: sanitizeTree(tree) });
   useUI.subscribe((s, prev) => {
     // Whatever opened the panel (button, shortcut, a link), the button brings that surface back.
     if (s.panel && s.panel !== s.lastPanel) return useUI.setState({ lastPanel: s.panel });

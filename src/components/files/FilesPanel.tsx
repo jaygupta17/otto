@@ -61,7 +61,9 @@ export function FilesPanel({ root, onClose, bare = false }: { root: string; onCl
 
 const Dir = memo(function Dir({ root, path, depth, initiallyOpen = false, name }: { root: string; path: string; depth: number; initiallyOpen?: boolean; name?: string }) {
   const client = useChat((s) => s.client);
-  const [open, setOpen] = useState(initiallyOpen);
+  // Expanded folders are remembered per workspace root, so Refresh, remounts and reloads keep the tree.
+  const open = useUI((s) => (s.treeExpanded[root]?.includes(path) ?? false)) || initiallyOpen;
+  const setTreeExpanded = useUI((s) => s.setTreeExpanded);
   const [entries, setEntries] = useState<FsEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -69,13 +71,14 @@ const Dir = memo(function Dir({ root, path, depth, initiallyOpen = false, name }
     if (!open || entries || !client) return;
     client
       .listDir(path, root)
-      .then((list) =>
-        setEntries(
-          list
-            .filter((e) => !/^(\.git|node_modules|\.DS_Store)$/.test(baseName(e.path)))
-            .sort((a, b) => (a.type === b.type ? baseName(a.path).localeCompare(baseName(b.path)) : a.type === "directory" ? -1 : 1)),
-        ),
-      )
+      .then((list) => {
+        const visible = list
+          .filter((e) => !/^(\.git|node_modules|\.DS_Store)$/.test(baseName(e.path)))
+          .sort((a, b) => (a.type === b.type ? baseName(a.path).localeCompare(baseName(b.path)) : a.type === "directory" ? -1 : 1));
+        // Anything remembered under this folder that the listing no longer shows is stale; drop it.
+        useUI.getState().pruneTree(root, path, visible.filter((e) => e.type === "directory").map((e) => baseName(e.path)));
+        setEntries(visible);
+      })
       .catch((e) => setError((e as Error).message));
   }, [open, entries, client, path, root]);
 
@@ -103,7 +106,7 @@ const Dir = memo(function Dir({ root, path, depth, initiallyOpen = false, name }
 
   return (
     <div>
-      <button onClick={() => setOpen((v) => !v)} className="flex h-7 w-full items-center gap-1.5 rounded-md pr-2 text-left text-[13px] text-ink-2 hover:bg-hover" style={{ paddingLeft: depth * 14 + 6 }}>
+      <button onClick={() => setTreeExpanded(root, path, !open)} className="flex h-7 w-full items-center gap-1.5 rounded-md pr-2 text-left text-[13px] text-ink-2 hover:bg-hover" style={{ paddingLeft: depth * 14 + 6 }}>
         <ChevronRight size={13} className={`shrink-0 text-faint transition-transform duration-150 ${open ? "rotate-90" : ""}`} />
         {open ? <FolderOpen size={14} className="shrink-0 text-muted" /> : <Folder size={14} className="shrink-0 text-muted" />}
         <span className="truncate">{name}</span>
