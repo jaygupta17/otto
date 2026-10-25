@@ -16,11 +16,12 @@ bun run app:dev     # desktop app with hot reload
 
 ```bash
 bun run typecheck
+bun test
 bun run build
 cd src-tauri && cargo check
 ```
 
-- Follow [DESIGN.md](DESIGN.md) for anything visual: system type, the color roles, 1px structure, and the agent clock as the only ambient motion.
+- Follow [DESIGN.md](DESIGN.md) for anything visual: system type, the color roles, 1px structure, and ambient motion only on agents (a teammate's bird or the agent orb).
 - Write UI copy in sentence case. Name actions by what they do, and say how to recover in error messages.
 - Keep secrets out of logs, URLs we build, and committed files.
 - Talk to OpenCode through `src/lib/opencode/client.ts`, and keep wire shapes in `src/lib/opencode/`.
