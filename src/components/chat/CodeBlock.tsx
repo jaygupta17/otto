@@ -25,7 +25,7 @@ export const CodeBlock = memo(function CodeBlock({ code, lang, streaming, maxHei
             setCopied(true);
             setTimeout(() => setCopied(false), 1400);
           }}
-          className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[12px] text-muted opacity-0 transition-opacity group-hover/code:opacity-100 hover:bg-hover hover:text-ink focus:opacity-100"
+          className="relative flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[12px] text-muted opacity-0 transition-opacity after:absolute after:-inset-1.5 after:content-[''] group-hover/code:opacity-100 hover:bg-hover hover:text-ink focus:opacity-100 [@media(hover:none)]:opacity-100"
         >
           {copied ? <Check size={12} /> : <Copy size={12} />}
           {copied ? "Copied" : "Copy"}
