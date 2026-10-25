@@ -6,7 +6,7 @@
  * Boat streams it (Moonlight) to a signed URL that must be opened within ten
  * minutes, so a fresh one is asked for every time the view mounts. The view
  * is watch-only until the person takes control; a glass pane over the stream
- * swallows input until then.
+ * swallows input until then (double-click, or a tap on touch; see ScreenFrame).
  */
 import { AlertTriangle, AppWindow, Globe, Hand, Maximize, Minimize, MonitorPlay, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -17,6 +17,7 @@ import { useWorkspaces, secretKeys } from "../../state/workspaces";
 import { secrets } from "../../lib/secrets";
 import { BoatClient, BoatError } from "../../lib/providers/boat";
 import type { Handoff } from "../../lib/handoff";
+import { useTouch } from "../../hooks/useMedia";
 import { Button, IconButton } from "../ui/Button";
 import { AgentClock, Spinner } from "../ui/AgentClock";
 import { browserSteps, shortUrl } from "../../lib/browserSteps";
@@ -101,8 +102,9 @@ export function useScreenStream(active: boolean) {
 
 /**
  * The stream itself, at the screen's 16:9 so there are no black bars. Watch
- * only (a glass pane takes the input) unless `control`; double-click takes
- * control.
+ * only (a glass pane takes the input) unless `control`. Taking control:
+ * double-click on a mouse, one tap on touch (no double-tap gesture there),
+ * Enter or Space on the keyboard.
  */
 export function ScreenFrame({
   stream,
@@ -120,11 +122,20 @@ export function ScreenFrame({
 }) {
   const { load, nonce, reload } = stream;
   const frame = useRef<HTMLIFrameElement>(null);
+  const touch = useTouch();
   // Taking control puts the keyboard in the stream (once the stream is there).
   const ready = load.state === "ready" ? load.url : null;
   useEffect(() => {
-    if (control) frame.current?.focus();
+    // preventScroll: lib/viewport.ts pins the page at scroll 0 under the phone
+    // keyboard, and the frame is always in view where it shows.
+    if (control) frame.current?.focus({ preventScroll: true });
   }, [control, ready, nonce]);
+  // One shot per pane: taking control pauses a busy agent, so a tap and its
+  // follow-up click must not interrupt twice.
+  const take = () => {
+    if (useComputer.getState().control) return;
+    void useComputer.getState().takeControl(sessionId);
+  };
   return (
     <div
       className={`relative mx-auto aspect-video w-full overflow-hidden bg-black ${control ? "ring-2 ring-info ring-inset" : ""} ${className}`}
@@ -160,7 +171,26 @@ export function ScreenFrame({
       )}
       {/* Watch-only: the stream sees no input until the person takes control. */}
       {!control && load.state === "ready" && (
-        <div className="absolute inset-0 cursor-default" title="Double-click to take control" onDoubleClick={() => void useComputer.getState().takeControl(sessionId)} />
+        <button
+          type="button"
+          aria-label="Take control of the agent's screen"
+          title={touch ? undefined : "Double-click to take control"}
+          onClick={touch ? take : undefined}
+          onDoubleClick={take}
+          onKeyDown={(e) => {
+            if (e.key !== "Enter" && e.key !== " ") return;
+            e.preventDefault(); // the key's own click would take control again
+            take();
+          }}
+          className="absolute inset-0 grid place-items-center"
+        >
+          {touch && (
+            <span className="pointer-events-none inline-flex items-center gap-1.5 rounded-full border border-line bg-raised px-3 py-1.5 text-[13px] text-ink">
+              <Hand size={13} />
+              Tap to take control
+            </span>
+          )}
+        </button>
       )}
     </div>
   );
