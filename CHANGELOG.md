@@ -6,6 +6,8 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-10-25
+
 ### Added
 
 - Link previews: a link on a line of its own becomes a compact card with the site's title, description and image. **Off by default** — turn on "Link previews" in Settings → General → Appearance. It fetches each page from your machine, so nothing is requested unless you ask for it.
@@ -394,7 +396,8 @@ First public release.
 - Scheduled tasks that run on the agent machine.
 - Project file browser with syntax highlighting.
 
-[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.17.0...HEAD
+[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.18.0...HEAD
+[0.18.0]: https://github.com/jaygupta17/otto/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/jaygupta17/otto/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/jaygupta17/otto/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/jaygupta17/otto/compare/v0.14.0...v0.15.0
