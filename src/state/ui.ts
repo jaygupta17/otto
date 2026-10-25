@@ -260,3 +260,58 @@ export async function initUI() {
 // Stores hold live connections; a hot swap would orphan them. Reload instead.
 if (import.meta.hot) import.meta.hot.accept(() => window.location.reload());
 
+/** Remembered expanded folders per workspace root, and remembered roots in total. */
+const TREE_PATHS = 200;
+const TREE_ROOTS = 8;
+
+/** Drop anything malformed and hold the remembered tree to a sane size. */
+function sanitizeTree(raw: unknown): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  if (raw && typeof raw === "object") {
+    // Entries keep insertion order: the setters move what's touched to the end.
+    for (const [root, list] of Object.entries(raw as Record<string, unknown>).slice(-TREE_ROOTS)) {
+      if (!Array.isArray(list)) continue;
+      const paths = [...new Set(list.filter((p): p is string => typeof p === "string" && !!p))];
+      if (paths.length) out[root] = paths.slice(-TREE_PATHS);
+    }
+  }
+  return out;
+}
+
+  /** Expanded folders in the file tree, per workspace root. */
+  treeExpanded: Record<string, string[]>;
+  /** Open/close a folder in the file tree; remembered across reloads and Refresh. */
+  setTreeExpanded(root: string, path: string, open: boolean): void;
+  /** Forget remembered folders a listing shows are gone. Silent: paths just drop. */
+  pruneTree(root: string, dir: string, dirs: string[]): void;
+  treeExpanded: {},
+  setTreeExpanded(root, path, open) {
+    const map = { ...get().treeExpanded };
+    const kept = (map[root] ?? []).filter((p) => p !== path);
+    delete map[root];
+    // Touching a root moves it to the end, so the least recently used drop first.
+    const list = open ? [...kept, path].slice(-TREE_PATHS) : kept;
+    if (list.length) map[root] = list;
+    for (const r of Object.keys(map).slice(0, Math.max(0, Object.keys(map).length - TREE_ROOTS))) delete map[r];
+    set({ treeExpanded: map });
+    void kv.set("ui.tree", map);
+  },
+  pruneTree(root, dir, dirs) {
+    const list = get().treeExpanded[root];
+    if (!list?.length) return;
+    const prefix = `${dir.replace(/\/+$/, "")}/`;
+    const live = new Set(dirs);
+    // Any remembered folder whose immediate parent no longer lists it is gone;
+    // its whole subtree goes with it. Never an error, just gone.
+    const kept = list.filter((p) => {
+      if (!p.startsWith(prefix)) return true;
+      const child = p.slice(prefix.length).split("/")[0];
+      return !!child && live.has(child);
+    });
+    if (kept.length === list.length) return;
+    const next = { ...get().treeExpanded, [root]: kept };
+    set({ treeExpanded: next });
+    void kv.set("ui.tree", next);
+  },
+  const tree = await kv.get<Record<string, string[]>>("ui.tree");
+  if (tree) useUI.setState({ treeExpanded: sanitizeTree(tree) });
