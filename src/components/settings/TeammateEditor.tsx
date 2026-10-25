@@ -20,7 +20,7 @@ import { PermissionsEditor } from "./AgentsTab";
 const NO_RULES: readonly never[] = [];
 /** Every face a teammate makes, in the order a run goes through them, then the ones you cause. */
 const FACES: { id: Mood; label: string }[] = [
-  { id: "idle", label: "Idle" },
+  { id: "cool", label: "Idle" },
   { id: "sleep", label: "Napping" },
   { id: "think", label: "Working" },
   { id: "idea", label: "Got an idea" },
@@ -28,7 +28,6 @@ const FACES: { id: Mood; label: string }[] = [
   { id: "huh", label: "Needs you" },
   { id: "love", label: "Thanks for answering" },
   { id: "brr", label: "Retrying" },
-  { id: "cool", label: "Back on track" },
   { id: "happy", label: "Done" },
   { id: "party", label: "Finished" },
   { id: "wow", label: "Hit a snag" },
@@ -88,7 +87,7 @@ export function TeammateEditor({ teammate, cfg, onDone, actions }: { teammate?: 
   const initial = useMemo(() => draftOf(teammate, cfg), [teammate, cfg]);
   const [d, setD] = useState<Draft>(initial);
   const [section, setSection] = useState<"general" | "personality" | "permissions">("general");
-  const [preview, setPreview] = useState<Mood>("idle");
+  const [preview, setPreview] = useState<Mood>("cool");
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showPrompt, setShowPrompt] = useState(false);

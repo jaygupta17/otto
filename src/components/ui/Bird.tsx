@@ -41,9 +41,9 @@ import { DitherOrb } from "./Dither";
 
 export type FaceState = "idle" | "working" | "writing" | "needs" | "done" | "failed" | "stopped" | "retrying";
 
-const STATE_MOOD: Record<FaceState, Mood> = { idle: "idle", working: "think", writing: "type", needs: "huh", done: "happy", failed: "error", stopped: "sad", retrying: "brr" };
+const STATE_MOOD: Record<FaceState, Mood> = { idle: "cool", working: "think", writing: "type", needs: "huh", done: "happy", failed: "error", stopped: "sad", retrying: "brr" };
 /** What a hero bird does now and then while it waits. */
-const FIDGETS: Mood[] = ["wink", "huh", "think", "idea", "cool"];
+const FIDGETS: Mood[] = ["wink", "huh", "think", "idea"];
 
 /** One bulb per stretch of work, not one per message. */
 const IDEA_EVERY = 45_000;
