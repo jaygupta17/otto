@@ -6,6 +6,23 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 ## [Unreleased]
 
+### Added
+
+- Link previews: a link on a line of its own becomes a compact card with the site's title, description and image. **Off by default** — turn on "Link previews" in Settings → General → Appearance. It fetches each page from your machine, so nothing is requested unless you ask for it.
+- File paths in a message are links that open the file. `src/lib/preview.ts` or `README.md:20` goes straight to the line, and a linked file's own preview is one tap away. Paths that don't resolve, and anything outside the workspace, stay as plain text.
+- "Reduce motion" in Settings → General → Appearance. Sheets, messages, menus and page moves happen instantly; the birds, the shimmer and the loading indicators keep moving. It's on by default on phones, and the system setting still applies on top of it.
+- The file tree remembers which folders you had open, per workspace, across reloads and the Refresh button. A folder that's been deleted drops out quietly.
+
+### Changed
+
+- Tables in a message scroll sideways instead of squeezing their columns into unreadable wrapping.
+
+### Fixed
+
+- The copy button on code blocks is visible on phones and tablets. It only appeared on hover before, so code couldn't be copied on touch at all.
+- Taking control of the agent's screen is now a deliberate act: tap the stream to reveal "Take control", then tap that. A stray tap no longer pauses a running agent, and no double-tap, key repeat or synthetic click can skip the step. Double-clicking with a mouse still takes over at once.
+- The keyboard opens reliably when typing in the agent browser's address bar on phones.
+
 ## [0.17.0] - 2026-10-24
 
 ### Added
