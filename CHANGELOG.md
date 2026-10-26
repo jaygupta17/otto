@@ -6,6 +6,20 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 ## [Unreleased]
 
+The same update as 0.20.1, rebuilt: 0.20.1's release build stopped on a plugin version check, so nothing was published.
+
+### Changed
+
+- What a turn presented now waits at its end: a chip per artifact, under the agent's final words, instead of mid-run above the answer. Clicking one still opens it, full size, in the panel.
+
+### Removed
+
+- The list of changed files under each turn. The session's changes are still in Context.
+
+### Fixed
+
+- **Saving an artifact.** "Save a copy" and a download's Save open the native save dialog and write the file where you choose. They used to click a link to an in-memory file, which the macOS and Android webviews ignore — the button did nothing there.
+
 ## [0.20.1] - 2026-10-26
 
 ### Changed
