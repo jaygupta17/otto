@@ -6,6 +6,8 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 ## [Unreleased]
 
+## [0.19.1] - 2026-10-26
+
 ### Changed
 
 - A file path in a message is one compact piece of text wherever it appears: a small file icon, the path in monospace, and the line number when there is one. A path on its own line used to take a whole row with a "Show preview" button — now it sits in the line with the rest of the sentence, and clicking it opens the file (the Files panel shows the preview). The line height doesn't change, whether a message has one path or ten.
@@ -419,7 +421,8 @@ First public release.
 - Scheduled tasks that run on the agent machine.
 - Project file browser with syntax highlighting.
 
-[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.19.0...HEAD
+[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.19.1...HEAD
+[0.19.1]: https://github.com/jaygupta17/otto/compare/v0.18.0...v0.19.1
 [0.19.0]: https://github.com/jaygupta17/otto/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/jaygupta17/otto/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/jaygupta17/otto/compare/v0.16.0...v0.17.0
