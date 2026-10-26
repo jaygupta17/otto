@@ -8,9 +8,7 @@ import { revertIndex, useChat } from "../../state/chat";
 import { useUI } from "../../state/ui";
 import { Markdown } from "./Markdown";
 import { ActivityGroup, SubagentReport } from "./Activity";
-import { ScreenCard } from "./ScreenCard";
 import { ChangedFiles } from "./ChangedFiles";
-import { usesScreen } from "../../lib/browserSteps";
 import { isStopError, toolKind } from "../../lib/opencode/tools";
 import { ThreadSession } from "./ToolParts";
 import { MessageAttachments } from "./Attachments";
@@ -274,15 +272,6 @@ export function Thread({ sessionId, bottomInset = 0 }: { sessionId: string; bott
     return out;
   }, [items]);
 
-  // The agent's screen shows once, at the end of the latest turn that worked on it.
-  const screenAt = useMemo(() => {
-    for (let i = items.length - 1; i >= 0; i--) {
-      const it = items[i];
-      if (it.type === "turn" && it.msgs.some((m) => m.kind === "assistant" && m.blocks.some(usesScreen))) return i;
-    }
-    return -1;
-  }, [items]);
-
   // A centred time above a message that starts a new stretch of conversation: the first, and any after an hour's quiet.
   const stamps = useMemo(() => {
     const out = new Map<string, number>();
@@ -346,7 +335,7 @@ export function Thread({ sessionId, bottomInset = 0 }: { sessionId: string; bott
             }
             if (it.type === "notice") return <NoticeRow key={it.key} msg={it.msg} />;
             const live = busy && i === items.length - 1;
-            return <Turn key={it.key} msgs={it.msgs} live={live} screen={i === screenAt} start={it.start} retry={live ? retry : undefined} sessionId={sessionId} forkBefore={nextUsers[i]} />;
+            return <Turn key={it.key} msgs={it.msgs} live={live} start={it.start} retry={live ? retry : undefined} sessionId={sessionId} forkBefore={nextUsers[i]} />;
           })}
           {revert && hidden > 0 && <RevertBar sessionId={sessionId} files={revert.files?.length ?? 0} count={(timeline?.messages ?? []).slice(cut).filter((m) => m.kind === "user").length} />}
           {awaitingFirst && <Working doing="Thinking" />}
@@ -507,9 +496,9 @@ function segmentsOf(msgs: UIMessage[], thinking: boolean): Segment[] {
 
 const isHandoff = (b: Block) => b.kind === "tool" && toolKind(b.name) === "subagent";
 
-type TurnProps = { msgs: UIMessage[]; live: boolean; screen: boolean; start: number; retry?: { attempt: number; message: string; next: number }; sessionId: string; forkBefore: string | null };
+type TurnProps = { msgs: UIMessage[]; live: boolean; start: number; retry?: { attempt: number; message: string; next: number }; sessionId: string; forkBefore: string | null };
 
-const Turn = memo(function Turn({ msgs, live, screen, start, retry, sessionId, forkBefore }: TurnProps) {
+const Turn = memo(function Turn({ msgs, live, start, retry, sessionId, forkBefore }: TurnProps) {
   const thinking = useUI((s) => s.showThinking);
   const segs = useMemo(() => segmentsOf(msgs, thinking), [msgs, thinking]);
   const assistants = msgs.filter((m): m is Assistant => m.kind === "assistant");
@@ -541,7 +530,6 @@ const Turn = memo(function Turn({ msgs, live, screen, start, retry, sessionId, f
         if (s.kind === "subagent") return <SubagentReport key={s.key} msg={s.msg} />;
         return <ErrorCard key={s.key} text={s.text} />;
       })}
-      {screen && <ScreenCard blocks={blocks} live={live} sessionId={sessionId} />}
       {!live && <ChangedFiles blocks={blocks} />}
       {live ? (
         !headed && (!writing || retry) && <Working doing={doing} retry={retry} />
@@ -558,7 +546,7 @@ const Turn = memo(function Turn({ msgs, live, screen, start, retry, sessionId, f
  * streaming re-renders.
  */
 function sameTurn(a: TurnProps, b: TurnProps) {
-  if (a.live !== b.live || a.screen !== b.screen || a.start !== b.start || a.retry !== b.retry || a.sessionId !== b.sessionId || a.forkBefore !== b.forkBefore) return false;
+  if (a.live !== b.live || a.start !== b.start || a.retry !== b.retry || a.sessionId !== b.sessionId || a.forkBefore !== b.forkBefore) return false;
   if (a.msgs === b.msgs) return true;
   if (a.msgs.length !== b.msgs.length) return false;
   for (let i = 0; i < a.msgs.length; i++) if (a.msgs[i] !== b.msgs[i]) return false;

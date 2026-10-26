@@ -7,6 +7,7 @@
  *   bg-shell <seconds>           start a background `sleep <seconds>`
  *   nest-agent <label> <seconds> a foreground subagent that itself starts `bg-agent <label> <seconds>`
  *   essay <lines>                reply with <lines> lines of filler (a long turn, for lazy loading)
+ *   present <source> [title…]    show the user <source> with the `present` tool
  *   anything else                reply "ok: <text>"
  *
  * A subagent's prompt is `work <seconds>`: it runs `sleep <seconds>` and reports.
@@ -51,7 +52,7 @@ export function decide(messages: Msg[]) {
   if (last?.role === "tool") return reply("done");
   const said = text([...messages].reverse().find((m) => m.role === "user")).trim();
   // The latest instruction, wherever OpenCode put it in the message.
-  const line = said.split("\n").map((l) => l.trim()).reverse().find((l) => /^(bg-agent|fg-agent|nest-agent|bg-shell|essay|work)\b/.test(l)) ?? said;
+  const line = said.split("\n").map((l) => l.trim()).reverse().find((l) => /^(bg-agent|fg-agent|nest-agent|bg-shell|essay|work|present)\b/.test(l)) ?? said;
   const [verb, ...rest] = line.split(/\s+/);
   if (verb === "work") return call("shell", { command: `sleep ${Number(rest[0]) || 5}`, timeout: 0 });
   if (verb === "bg-agent" || verb === "fg-agent") {
@@ -60,6 +61,7 @@ export function decide(messages: Msg[]) {
   }
   if (verb === "nest-agent") return call("subagent", { agent: "general", description: "Delegator", prompt: `bg-agent ${rest[0] ?? "inner"} ${Number(rest[1]) || 5}`, background: false });
   if (verb === "bg-shell") return call("shell", { command: `sleep ${Number(rest[0]) || 5}`, background: true });
+  if (verb === "present") return call("present", { source: rest[0] ?? "", ...(rest.length > 1 ? { title: rest.slice(1).join(" ") } : {}) });
   if (verb === "essay") return reply(Array.from({ length: Number(rest[0]) || 20 }, (_, i) => `Line ${i + 1} of a long answer.`).join("\n\n"));
   return reply(`ok: ${said.slice(0, 80)}`);
 }

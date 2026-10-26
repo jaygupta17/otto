@@ -100,17 +100,23 @@ describe("the call", () => {
 describe("the tool it registers", () => {
   test("one tool named present, which answers a call and explains a bad one", async () => {
     const m = (await load()) as unknown as { default: { setup(ctx: unknown): Promise<void> } };
-    const added: { name: string; description: string; input: unknown; execute(input: Record<string, unknown>): Promise<{ content: string }> }[] = [];
+    const added: { name: string; description: string; input: unknown; execute(input: Record<string, unknown>): Promise<{ content: string; metadata?: Record<string, unknown> }> }[] = [];
     const ctx = { tool: { transform: async (fn: (editor: { add(t: unknown): void }) => void) => fn({ add: (t) => added.push(t as never) }) } };
     await m.default.setup(ctx);
     expect(added).toHaveLength(1);
     const tool = added[0];
     expect(tool.name).toBe("present");
-    expect(tool.description).toContain("artifact panel");
+    expect(tool.description).toContain("Otto's panel");
     expect(tool.input).toBe((await load()).TOOL_SCHEMA);
 
     const ok = JSON.parse((await tool.execute({ source: "out/cover.png", title: "Cover" })).content);
     expect(ok).toMatchObject({ presented: true, source: "out/cover.png", title: "Cover" });
+
+    // OpenCode never settles a call whose metadata holds an undefined value:
+    // the plain call (no `as`, no title) is the common one and must not carry any.
+    const plain = await tool.execute({ source: "out/cover.png" });
+    expect(plain.metadata).toEqual({ source: "out/cover.png" });
+    expect(Object.values(plain.metadata ?? {})).not.toContain(undefined);
 
     const bad = JSON.parse((await tool.execute({})).content);
     expect(bad.presented).toBe(false);

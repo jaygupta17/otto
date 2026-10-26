@@ -12,7 +12,8 @@
  * One surface at a time, one width for all of them, remembered.
  */
 import { BackButton, usePage } from "../ui/Sheet";
-import { Bookmark, Gauge, Globe, Image, SquareTerminal } from "lucide-react";
+import { Bookmark, ChevronLeft, Gauge, Globe, Image, SquareTerminal } from "lucide-react";
+import { IconButton } from "../ui/Button";
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { useUI, PANEL_DEFAULT_WIDTH, type PanelSurface } from "../../state/ui";
 import { TerminalSurface } from "./TerminalSurface";
@@ -63,20 +64,36 @@ export const PanelChrome = ChromeCtx.Provider;
  * header, the page bar on a phone. A title and the surface's own controls
  * only — no expand, no close, no surface menu. The dock owns all of that.
  */
-export function PanelHeader({ children, actions }: { children: ReactNode; actions?: ReactNode }) {
+export function PanelHeader({
+  children,
+  actions,
+  onBack,
+  backLabel = "Back",
+}: {
+  children: ReactNode;
+  actions?: ReactNode;
+  /** A surface that has a page of its own steps back to its list with this, before the panel itself. */
+  onBack?: () => void;
+  backLabel?: string;
+}) {
   const { docked } = useContext(ChromeCtx);
   // On a phone page: back on the left, as on every page.
   const page = usePage();
   if (page)
     return (
       <div className="flex h-[60px] shrink-0 items-center gap-2 border-b border-line pr-3 pl-3">
-        <BackButton onClick={page.back} />
+        <BackButton onClick={onBack ?? page.back} label={onBack ? backLabel : undefined} />
         <div className="flex min-w-0 flex-1 items-center gap-2">{children}</div>
         {actions && <div className="flex shrink-0 items-center gap-0.5">{actions}</div>}
       </div>
     );
   return (
-    <div className={`${docked ? "drag h-[52px]" : "h-12"} flex shrink-0 items-center gap-1 border-b border-line pr-2 pl-3`} data-tauri-drag-region>
+    <div className={`${docked ? "drag h-[52px]" : "h-12"} flex shrink-0 items-center gap-1 border-b border-line pr-2 ${onBack ? "pl-1.5" : "pl-3"}`} data-tauri-drag-region>
+      {onBack && (
+        <IconButton label={backLabel} size={28} className="no-drag" onClick={onBack}>
+          <ChevronLeft size={16} />
+        </IconButton>
+      )}
       <div className="flex min-w-0 flex-1 items-center gap-2" data-tauri-drag-region>
         {children}
       </div>

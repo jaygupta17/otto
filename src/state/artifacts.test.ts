@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { artifactsFor, isPresentTool, selectedArtifact, useArtifacts } from "./artifacts";
+import { artifactsFor, isPresentTool, openedByYou, selectedArtifact, showPresented, useArtifacts } from "./artifacts";
 import { useUI } from "./ui";
 import { useChat } from "./chat";
 
@@ -47,8 +47,8 @@ describe("recording a presentation", () => {
     const [a] = useArtifacts.getState().bySession.ses_1;
     expect(a).toMatchObject({ id: cover, title: "Cover", kind: "image", path: "/work/a/cover.png", sessionId: "ses_1", at: 1000 });
     expect(a.problem).toBeUndefined();
-    // The newest is the one on show.
-    expect(useArtifacts.getState().selected.ses_1).toBe(cover);
+    // Recorded, not opened: what the user has on screen stays put.
+    expect(useArtifacts.getState().selected.ses_1).toBeUndefined();
   });
 
   test("each renderer follows the source", async () => {
@@ -156,7 +156,7 @@ describe("things the user asked to see", () => {
   test("a path from chat opens the panel on it", async () => {
     await useArtifacts.getState().showLocal("ses_1", "/work", "a/notes.md", { line: 3 });
     expect(useUI.getState().panel).toBe("artifact");
-    expect(useArtifacts.getState().selected.ses_1).toBe("local:a/notes.md");
+    expect(useArtifacts.getState().selected.ses_1).toBe("local:ses_1:a/notes.md");
     // The line jump carries the resolved path, so the preview can scroll to it.
     expect(useArtifacts.getState().reveal).toMatchObject({ path: "/work/a/notes.md", line: 3 });
   });
@@ -180,16 +180,32 @@ describe("what a session shows", () => {
     expect(list.map((a) => a.id)).toEqual([helper, mine]);
   });
 
-  test("the selected one, or the newest when nothing is chosen", async () => {
+  test("the open one, or the list when none is", async () => {
     const store = useArtifacts.getState();
     const [first, second] = [id("a"), id("b")];
     await store.presented(first, { source: "<h1>a</h1>" }, "ses_1", "/work", 10);
     await store.presented(second, { source: "<h1>b</h1>" }, "ses_1", "/work", 20);
     const list = useArtifacts.getState().bySession.ses_1;
-    expect(selectedArtifact(undefined, list)?.id).toBe(second);
+    expect(selectedArtifact(undefined, list)).toBeNull();
     expect(selectedArtifact(first, list)?.id).toBe(first);
-    expect(selectedArtifact("gone", list)?.id).toBe(second);
-    expect(selectedArtifact(undefined, [])).toBeNull();
+    expect(selectedArtifact("gone", list)).toBeNull();
+  });
+
+  test("opening one from its chip shows it full size, and back returns to the list", async () => {
+    const call = id("chip");
+    await showPresented(call, { source: "<h1>a</h1>", title: "Page" }, "ses_1", "/work", 5);
+    expect(useUI.getState().panel).toBe("artifact");
+    expect(useArtifacts.getState().selected.ses_1).toBe(call);
+    useArtifacts.getState().back("ses_1");
+    expect(useArtifacts.getState().selected.ses_1).toBeUndefined();
+  });
+
+  test("the same path opened in two sessions is two entries", async () => {
+    await useArtifacts.getState().showLocal("ses_1", "/work", "a/build.zip");
+    await useArtifacts.getState().showLocal("ses_2", "/work", "a/build.zip");
+    expect(useArtifacts.getState().bySession.ses_1.map((a) => a.sessionId)).toEqual(["ses_1"]);
+    expect(useArtifacts.getState().bySession.ses_2.map((a) => a.sessionId)).toEqual(["ses_2"]);
+    expect(openedByYou(useArtifacts.getState().bySession.ses_1[0])).toBe(true);
   });
 
   test("no session shows nothing", async () => {
