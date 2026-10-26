@@ -9,7 +9,7 @@ import type { UIMessage } from "../lib/opencode/projection";
 import { toolDoing, toolLabel } from "../lib/opencode/tools";
 import { isOfferedAgent } from "../lib/teammates";
 import { asksFor, sortedSessions, useChat } from "./chat";
-import { inTree, useShells } from "./shells";
+import { inTree, useLeftRunning, useShells } from "./shells";
 import { useAgentName, useTeammates } from "./teammates";
 
 export function useSessionTiers(query: string): { active: SessionInfo[]; recent: SessionInfo[] } {
@@ -100,14 +100,13 @@ export function useDoing(id: string | undefined, live: boolean): string {
  */
 export function useBackgroundLine(id: string): string {
   const busy = useChat((s) => !!s.busy[id]);
-  const parents = useChat((s) => s.parents);
   const kids = useChat((s) => Object.keys(s.busy).filter((k) => s.busy[k] && k !== id && inTree(s.parents, k, id)).join(" "));
   const agent = useChat((s) => (kids ? s.delegated[kids.split(" ")[0]] : undefined));
   const name = useAgentName(agent);
-  const left = (s: ReturnType<typeof useShells.getState>) => Object.values(s.byId).filter((sh) => sh.status === "running" && !s.stopped[sh.id] && inTree(parents, sh.sessionID, id));
-  const commands = useShells((s) => left(s).length);
-  const command = useShells((s) => left(s)[0]?.command);
-  const count = (kids ? kids.split(" ").length : 0) + commands;
+  // A teammate's own command is part of its work, not a second thing running.
+  const left = useLeftRunning(id);
+  const command = left[0]?.command;
+  const count = (kids ? kids.split(" ").length : 0) + left.length;
   if (busy || !count) return "";
   if (count > 1) return `${count} running in the background`;
   if (kids) return `${name || "A teammate"} working in the background`;

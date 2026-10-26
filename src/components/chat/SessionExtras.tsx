@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowRightToLine, ArrowUpRight, ChevronDown, CornerDownRight, FileDiff as FileDiffIcon, Gauge, Layers, Square, SquarePen, SquareTerminal, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { revertIndex, useChat } from "../../state/chat";
+import { learnParents, revertIndex, useChat } from "../../state/chat";
 import { useUI } from "../../state/ui";
 import { useExtensions } from "../../state/extensions";
 import { useMemory } from "../../state/memory";
@@ -14,10 +14,10 @@ import { Button, IconButton } from "../ui/Button";
 import { AgentClock, Spinner } from "../ui/AgentClock";
 import { DitherGauge, DitherMeter } from "../ui/Dither";
 import { AgentMark } from "../ui/Bird";
-import { useShells, inTree } from "../../state/shells";
+import { useLeftRunning, useShells } from "../../state/shells";
 import { useAgentName, useHasFace } from "../../state/teammates";
 import { openSubagent } from "../../state/subagent";
-import { subagentOf, toolKind } from "../../lib/opencode/tools";
+import { subagentOf, toolKind, type ToolBlock } from "../../lib/opencode/tools";
 import { duration } from "../../lib/format";
 import { useNow } from "../../hooks/useNow";
 
@@ -77,44 +77,55 @@ const SETTLE_MS = 1500;
  * several fold into a count that opens in place.
  */
 export function BackgroundStrip({ sessionId }: { sessionId: string }) {
-  const shells = useShells((s) => s.byId);
-  const stopped = useShells((s) => s.stopped);
+  const left = useLeftRunning(sessionId);
   const parents = useChat((s) => s.parents);
   const busy = useChat((s) => s.busy);
-  const timelines = useChat((s) => s.timelines);
+  const timeline = useChat((s) => s.timelines[sessionId]);
+  const subagents = useChat((s) => s.subagents);
+  const delegated = useChat((s) => s.delegated);
   const [open, setOpen] = useState(false);
 
-  const candidates = useMemo(() => {
-    const out: Running[] = [];
-    const tree = Object.keys(timelines).filter((k) => inTree(parents, k, sessionId));
-    // A command a call is still waiting on shows in that call's row, not here.
-    const blocking = new Set<string>();
-    for (const k of tree) {
-      for (const m of (timelines[k]?.messages ?? []).slice(-3)) {
-        if (m.kind !== "assistant") continue;
-        for (const b of m.blocks) if (b.kind === "tool" && (b.status === "running" || b.status === "streaming") && typeof b.metadata?.shellID === "string") blocking.add(b.metadata.shellID);
-      }
-    }
-    for (const sh of Object.values(shells)) {
-      if (sh.status !== "running" || stopped[sh.id] || blocking.has(sh.id) || !inTree(parents, sh.sessionID, sessionId)) continue;
-      out.push({ kind: "command", id: sh.id, command: sh.command, started: sh.started, sessionID: sh.sessionID });
-    }
+  const { candidates, unknown } = useMemo(() => {
+    const out: Running[] = left.map((sh) => ({ kind: "command", id: sh.id, command: sh.command, started: sh.started, sessionID: sh.sessionID }));
+    const unknown: string[] = [];
     // Teammates on a part in the background: their call settled, their chat is still busy.
     const kids = Object.keys(busy).filter((k) => busy[k] && parents[k] === sessionId);
-    if (kids.length) {
-      const msgs = timelines[sessionId]?.messages ?? [];
+    const msgs = timeline?.loaded ? timeline.messages : [];
+    if (kids.length && msgs.length) {
       const noted = new Set(msgs.flatMap((m) => (m.kind === "stopped" && m.childID ? [m.childID] : [])));
+      const calls = new Map<string, ToolBlock>();
       for (const m of msgs) {
         if (m.kind !== "assistant") continue;
         for (const b of m.blocks) {
-          if (b.kind !== "tool" || toolKind(b.name) !== "subagent" || b.status === "running" || b.status === "streaming") continue;
-          const a = subagentOf(b);
-          if (a.background && a.childID && kids.includes(a.childID) && !noted.has(a.childID)) out.push({ kind: "teammate", id: a.childID, agent: a.agent, description: a.description, started: b.started });
+          if (b.kind !== "tool" || toolKind(b.name) !== "subagent") continue;
+          const child = subagentOf(b).childID;
+          if (child) calls.set(child, b);
         }
       }
+      for (const id of kids) {
+        if (noted.has(id)) continue;
+        const b = calls.get(id);
+        if (b) {
+          if (b.status === "running" || b.status === "streaming") continue;
+          const a = subagentOf(b);
+          if (a.background) out.push({ kind: "teammate", id, agent: a.agent, description: a.description, started: b.started });
+          continue;
+        }
+        // Handed off before the first loaded message (a few turns back, or a
+        // reconnect reloaded only the latest page): the server's record of
+        // the session stands in for the call. Anything newer than that page
+        // has its call in it, so a missing one there isn't ours to guess at.
+        const info = subagents[id];
+        if (!info) unknown.push(id);
+        else if (timeline?.older && info.started < msgs[0].time) out.push({ kind: "teammate", id, agent: delegated[id], description: info.title, started: info.started });
+      }
     }
-    return out.sort((x, y) => x.started - y.started);
-  }, [shells, stopped, parents, busy, timelines, sessionId]);
+    return { candidates: out.sort((x, y) => x.started - y.started), unknown: unknown.join(" ") };
+  }, [left, parents, busy, timeline, subagents, delegated, sessionId]);
+
+  useEffect(() => {
+    if (unknown) learnParents(unknown.split(" "));
+  }, [unknown]);
 
   const now = useNow(candidates.length > 0);
   const items = candidates.filter((i) => now - i.started >= SETTLE_MS);

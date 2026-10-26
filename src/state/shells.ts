@@ -4,11 +4,12 @@
  * calls in the chat read their state here until their report arrives, and the
  * strip above the composer lists what's still going.
  */
+import { useEffect, useMemo } from "react";
 import { create } from "zustand";
 import type { V2Event } from "../lib/opencode/events";
 import type { ShellInfo } from "../lib/opencode/client";
-import { shellStopNote } from "../lib/opencode/tools";
-import { sortedSessions, useChat } from "./chat";
+import { backgroundShellID, inputOf, shellStopNote, toolKind } from "../lib/opencode/tools";
+import { sortedSessions, useChat, type Timeline } from "./chat";
 import { toast } from "./ui";
 
 export type ShellLite = { id: string; command: string; status: ShellInfo["status"]; sessionID?: string; started: number; exit?: number };
@@ -183,6 +184,62 @@ export const useShells = create<State>((set, get) => ({
 export function inTree(parents: Record<string, string>, sid: string | undefined, root: string) {
   for (let s: string | undefined = sid, i = 0; s && i < 8; s = parents[s], i++) if (s === root) return true;
   return false;
+}
+
+/**
+ * Whether a call is still waiting on this command: a foreground `shell` shows
+ * in that call's row, not as something left running. Only the live event
+ * names the shell a call started; a call read back from history doesn't, so
+ * that one matches by its command. A session that isn't busy waits on
+ * nothing; one whose conversation isn't read yet counts as waiting until it
+ * is (`useLeftRunning` reads it), so a teammate's own command never flashes up
+ * as a second thing running.
+ */
+export function waitedOn(chat: { busy: Record<string, boolean>; timelines: Record<string, Timeline | undefined> }, sh: ShellLite): boolean {
+  const sid = sh.sessionID;
+  if (!sid || !chat.busy[sid]) return false;
+  const t = chat.timelines[sid];
+  if (!t || (!t.loaded && !t.error)) return true;
+  for (const m of t.messages.slice(-3)) {
+    if (m.kind !== "assistant") continue;
+    for (const b of m.blocks) {
+      if (b.kind !== "tool" || toolKind(b.name) !== "shell" || (b.status !== "running" && b.status !== "streaming") || backgroundShellID(b)) continue;
+      const id = b.metadata?.shellID;
+      if (typeof id === "string" ? id === sh.id : inputOf(b).command === sh.command) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Commands under `root` (its own, or a teammate's down its tree) still
+ * running with no call waiting on them: what the strip and a session's row
+ * list as running in the background.
+ */
+export function useLeftRunning(root: string): ShellLite[] {
+  const running = useShells((s) =>
+    Object.values(s.byId)
+      .filter((sh) => sh.status === "running" && !s.stopped[sh.id])
+      .map((sh) => sh.id)
+      .join(" "),
+  );
+  const list = () => (running ? running.split(" ").flatMap((id) => useShells.getState().byId[id] ?? []) : []);
+  // Busy sessions with a command running whose conversation isn't read yet: read it, so `waitedOn` can tell.
+  const unread = useChat((c) =>
+    list()
+      .flatMap((sh) => (sh.sessionID && c.busy[sh.sessionID] && !c.timelines[sh.sessionID] && inTree(c.parents, sh.sessionID, root) ? [sh.sessionID] : []))
+      .join(" "),
+  );
+  useEffect(() => {
+    for (const id of new Set(unread.split(" "))) if (id) void useChat.getState().loadTimeline(id);
+  }, [unread]);
+  const left = useChat((c) =>
+    list()
+      .filter((sh) => inTree(c.parents, sh.sessionID, root) && !waitedOn(c, sh))
+      .map((sh) => sh.id)
+      .join(" "),
+  );
+  return useMemo(() => (left ? left.split(" ").flatMap((id) => useShells.getState().byId[id] ?? []) : []), [left]);
 }
 
 // Follow the connection: a new client means a different machine.
