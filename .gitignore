@@ -20,3 +20,4 @@ marketing/
 # Launch drafts and one-off debug scripts (kept locally)
 launch/
 scripts/dbprobe.ts
+__pycache__/
