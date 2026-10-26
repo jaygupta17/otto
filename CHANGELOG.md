@@ -14,6 +14,7 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 - A teammate working in the background keeps its line above the composer however long ago it was started. It used to drop out once its handoff was a few turns back, or after coming back to the app reconnected, even though it was still running.
 - A teammate's own command no longer counts as a second thing running in the background. One teammate running `bun test` reads "Scout working in the background", not "2 running in the background", above the composer and in the session list.
+- Reloading or reconnecting while other chats are working no longer forgets which teammates are still running. Any activity elsewhere during the check used to throw it away, so a long-running teammate went missing everywhere until it finished.
 
 ## [0.18.0] - 2026-10-25
 
