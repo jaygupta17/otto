@@ -95,7 +95,7 @@ export const TOOL_SCHEMA = {
       description:
         "What to show: a path in this workspace (e.g. out/cover.png, app/index.html), an http(s) URL (e.g. https://example.com, localhost:5173), or raw HTML.",
     },
-    title: { type: "string", description: "A short label for it in the artifact list (e.g. Landing page)." },
+    title: { type: "string", description: "A short label the user will recognise, shown on the chip and in the panel (e.g. Landing page, Signups by week)." },
     as: {
       type: "string",
       enum: ["image", "html", "url", "text", "download"],
@@ -136,7 +136,7 @@ function makeTool() {
   return {
     name: "present",
     description:
-      "Show the user something in Otto's artifact panel, beside the chat: a file in this workspace, an http(s) URL (including a dev server on localhost), or raw HTML. Use it whenever you have made something to look at — a page, a screenshot, a chart, a report, a PDF — instead of describing it in prose, and present the page you built once it renders. What the source is (image, page, text, download) is worked out from the path or URL; you only need to say which if you want to override that. Each call adds to the list, newest first: present something once, when it is ready. Paths outside the workspace aren't shown.",
+      "Show the user something, full size, in Otto's panel beside the chat, with a chip in the chat they can click to open it again. Source: a file in this workspace, an http(s) URL (a dev server on localhost works), or a small piece of raw HTML. Use it whenever the user should see what you made rather than read about it: a page or app you built or changed, a screenshot, a chart, an image, a PDF or report, a document you wrote. Present it once, when it's ready and you've checked it renders; present again only after a real change. Give it a short title the user will recognise. For anything bigger than a snippet, write a file and present the file. Don't use it for code diffs, logs or command output. What it is (image, page, text, download) is worked out from the path or URL; set \`as\` only to override that. Paths outside the workspace aren't shown.",
     input: TOOL_SCHEMA,
     options: { codemode: false },
     execute: async (input) => {
@@ -147,8 +147,10 @@ function makeTool() {
         return { content: JSON.stringify({ presented: false, error: (e && e.message) || String(e) }) };
       }
       return {
-        content: JSON.stringify({ ...receipt(call), note: "Shown to the user in the artifact panel." }),
-        metadata: { source: call.source, title: call.title, as: call.as },
+        content: JSON.stringify({ ...receipt(call), note: "Shown to the user: a chip in the chat opens it in the panel. Tell them in a sentence what to look at." }),
+        // Only the keys that are set: OpenCode never settles a call whose
+        // metadata holds an undefined value, so the turn would hang on it.
+        metadata: { ...call },
       };
     },
   };

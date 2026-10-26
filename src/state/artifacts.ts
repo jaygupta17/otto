@@ -42,7 +42,7 @@ const MAX_MARKUP_TOTAL = 4_000_000;
 
 interface ArtifactState {
   bySession: Record<string, Artifact[]>;
-  /** The artifact each session is showing. */
+  /** The artifact each session has open full size; none means the list. */
   selected: Record<string, string | undefined>;
   /** Count of artifacts that arrived while the surface was closed, for the dock's pip. */
   fresh: number;
@@ -57,6 +57,10 @@ interface ArtifactState {
   /** Show a URL the user clicked; a localhost one goes through the port forwarding. */
   showUrl(sessionId: string, url: string): void;
   select(sessionId: string, id: string): void;
+  /** Open one artifact full size and bring the surface up (a chip in chat, a row in the list). */
+  show(sessionId: string, id: string): void;
+  /** Back from an artifact to the list. */
+  back(sessionId: string): void;
   /** The pip goes away once the surface has been seen. */
   seen(): void;
 }
@@ -156,13 +160,16 @@ export const useArtifacts = create<ArtifactState>((set, get) => ({
       const built = await build(callId, sessionId, root, parsed.source, { title: parsed.title, as: parsed.as, at: when });
       artifact = built.ok ? built.artifact : { id: callId, sessionId, source: parsed.source, title: parsed.title || titleFor(parsed.source, parsed.as), kind: "text", problem: built.problem, at: when };
     }
-    set((s) => ({ bySession: insert(s.bySession, artifact), selected: { ...s.selected, [sessionId]: artifact.id } }));
+    // Recorded, not opened: whatever the user has on screen stays there, and
+    // the dock's pip (or the chip in chat) says something new arrived.
+    set((s) => ({ bySession: insert(s.bySession, artifact) }));
     // Something the user hasn't looked at yet lights the dock.
     if (useUI.getState().panel !== "artifact") set((s) => ({ fresh: s.fresh + 1 }));
   },
 
   async showLocal(sessionId, root, source, opts = {}) {
-    const id = `local:${source}`;
+    // Keyed per session: the same path opened in two sessions is two entries.
+    const id = `local:${sessionId}:${source}`;
     if (!known.has(id)) {
       remember(id);
       const built = await build(id, sessionId, root, source, { title: opts.title });
@@ -179,7 +186,7 @@ export const useArtifacts = create<ArtifactState>((set, get) => ({
   },
 
   showUrl(sessionId, url) {
-    const id = `url:${url}`;
+    const id = `url:${sessionId}:${url}`;
     if (!known.has(id)) {
       remember(id);
       const artifact: Artifact = { id, sessionId, source: url, url, title: titleFor(url), kind: "url", at: Date.now() };
@@ -192,6 +199,15 @@ export const useArtifacts = create<ArtifactState>((set, get) => ({
 
   select(sessionId, id) {
     set((s) => ({ selected: { ...s.selected, [sessionId]: id } }));
+  },
+
+  show(sessionId, id) {
+    set((s) => ({ selected: { ...s.selected, [sessionId]: id }, request: s.request + 1 }));
+    useUI.getState().openPanel("artifact");
+  },
+
+  back(sessionId) {
+    if (get().selected[sessionId]) set((s) => ({ selected: { ...s.selected, [sessionId]: undefined } }));
   },
 
   seen() {
@@ -210,10 +226,27 @@ export function artifactsFor(bySession: Record<string, Artifact[]>, sessionId: s
   return [...mine, ...children].sort((a, b) => b.at - a.at).slice(0, MAX_PER_SESSION);
 }
 
-/** The artifact on show for a session, defaulting to the newest. */
+/** The artifact a session has open full size, or null for the list (also when it's gone). */
 export function selectedArtifact(selected: string | undefined, list: Artifact[]): Artifact | null {
-  if (!list.length) return null;
-  return list.find((a) => a.id === selected) ?? list[0];
+  if (!selected) return null;
+  return list.find((a) => a.id === selected) ?? null;
+}
+
+/** Whether the user opened this one (a path or link in chat) rather than an agent presenting it. */
+export const openedByYou = (a: Pick<Artifact, "id">) => a.id.startsWith("local:") || a.id.startsWith("url:");
+
+/**
+ * Open what a `present` call showed, from its chip in chat. A call the recorder
+ * hasn't reached yet (a phone that just opened the session) is recorded first.
+ */
+export async function showPresented(callId: string, input: Record<string, unknown>, sessionId: string, root: string, at?: number) {
+  const store = useArtifacts.getState();
+  if (!Object.values(store.bySession).some((l) => l.some((a) => a.id === callId))) await store.presented(callId, input, sessionId, root, at);
+  // Filed under the session that presented it, which may be a helper's.
+  const owner = Object.values(useArtifacts.getState().bySession).flat().find((a) => a.id === callId)?.sessionId ?? sessionId;
+  const viewer = useChat.getState().activeId ?? owner;
+  useArtifacts.getState().show(viewer, callId);
+  if (owner !== viewer) useArtifacts.getState().select(owner, callId);
 }
 
 /** Show a file the user asked for from the chat (a tool row, Context's changes). */

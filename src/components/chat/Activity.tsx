@@ -60,7 +60,8 @@ import { useAgentName } from "../../state/teammates";
 import { Loader, stepNow, type Retry } from "./Working";
 import { useDoing } from "../../state/tiers";
 import { ErrorBlock, ProseBox, ToolBody } from "./ToolBody";
-import { ImageStrip } from "./ImageStrip";
+import { PresentChips } from "./PresentChip";
+import { isPresentTool } from "../../state/artifacts";
 import { browserSteps, type BrowserStep } from "../../lib/browserSteps";
 import { CopyButton, FileIcon, PathLabel, Section, ThreadSession, ToolBoundary, useOpenFile } from "./ToolParts";
 
@@ -68,6 +69,7 @@ type ReasonBlock = Extract<Block, { kind: "reasoning" }>;
 
 const ease = [0.22, 1, 0.36, 1] as const;
 const isSubagent = (b: Block): b is ToolBlock => b.kind === "tool" && toolKind(b.name) === "subagent";
+const isPresent = (b: Block): b is ToolBlock => b.kind === "tool" && isPresentTool(b.name);
 const isLive = (b: ToolBlock) => b.status === "running" || b.status === "streaming";
 
 /**
@@ -75,13 +77,19 @@ const isLive = (b: ToolBlock) => b.status === "running" || b.status === "streami
  * into one line ("Worked 55s") that opens into a tree of rows; while the run
  * is the live end of a turn, that line is the turn's status ("Reading
  * Thread.tsx…"). Subagents stand on their own, in order, since they run long
- * and have a conversation of their own to open.
+ * and have a conversation of their own to open. What the agent presented
+ * stands on its own too, as chips that open it in the panel: it's the point of
+ * the run, not a step in it.
  */
 export const ActivityGroup = memo(function ActivityGroup({ blocks, live, retry }: { blocks: Block[]; live: boolean; retry?: Retry }) {
   const segments = useMemo(() => {
-    const out: ({ kind: "tools"; blocks: Block[]; key: string } | { kind: "agent"; b: ToolBlock })[] = [];
+    const out: ({ kind: "tools"; blocks: Block[]; key: string } | { kind: "agent"; b: ToolBlock } | { kind: "present"; blocks: ToolBlock[]; key: string })[] = [];
     for (const b of blocks) {
-      if (isSubagent(b)) out.push({ kind: "agent", b });
+      if (isPresent(b)) {
+        const last = out.at(-1);
+        if (last?.kind === "present") last.blocks.push(b);
+        else out.push({ kind: "present", blocks: [b], key: b.key });
+      } else if (isSubagent(b)) out.push({ kind: "agent", b });
       else {
         const last = out.at(-1);
         if (last?.kind === "tools") last.blocks.push(b);
@@ -93,7 +101,19 @@ export const ActivityGroup = memo(function ActivityGroup({ blocks, live, retry }
   return (
     <div className="my-1.5">
       {segments.map((s, i) =>
-        s.kind === "agent" ? <SubagentRow key={s.b.key} b={s.b} /> : <ToolRun key={s.key} blocks={s.blocks} live={live && i === segments.length - 1} retry={retry} />,
+        s.kind === "agent" ? (
+          <SubagentRow key={s.b.key} b={s.b} />
+        ) : s.kind === "present" ? (
+          <PresentChips key={s.key} blocks={s.blocks} />
+        ) : (
+          <ToolRun key={s.key} blocks={s.blocks} live={live && i === segments.length - 1} retry={retry} />
+        ),
+      )}
+      {/* Still going after showing something: the status line is the run's to carry. */}
+      {live && segments.at(-1)?.kind === "present" && (
+        <div className="flex h-7 items-center text-[13px] text-muted">
+          <Loader doing={stepNow(blocks)} retry={retry} />
+        </div>
       )}
     </div>
   );
@@ -175,8 +195,6 @@ const ToolRun = memo(function ToolRun({ blocks, live, retry }: { blocks: Block[]
           </motion.div>
         )}
       </AnimatePresence>
-      {/* Images it looked at stay in view when the run folds. */}
-      <ImageStrip blocks={blocks} />
     </div>
   );
 });

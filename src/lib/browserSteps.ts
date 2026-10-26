@@ -161,13 +161,3 @@ export function browserSteps(blocks: Block[], prior: string[] = []): { b: ToolBl
   }
   return out;
 }
-
-/** Shell commands that act on the machine's screen: the browser CLI, or desktop tools. */
-const SCREEN = /(?:^|[^\w-])(?:otto-browser|xdotool|wmctrl|xdg-open|scrot|gnome-screenshot|xwd|xclip|xsel|google-chrome(?:-stable)?|chromium(?:-browser)?|firefox)(?=\s|$)|\bDISPLAY=|\bimport\s+-window\b/;
-
-/** Whether a block is the agent working on the screen (so there's something to watch). */
-export function usesScreen(b: Block): boolean {
-  if (b.kind !== "tool") return false;
-  const cmd = commandOf(b);
-  return !!cmd && SCREEN.test(cmd);
-}

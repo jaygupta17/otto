@@ -29,9 +29,8 @@ import {
   type ToolBlock,
 } from "../../lib/opencode/tools";
 import { AgentClock } from "../ui/AgentClock";
-import { useArtifacts } from "../../state/artifacts";
+import { showPresented } from "../../state/artifacts";
 import { useChat } from "../../state/chat";
-import { useUI } from "../../state/ui";
 import { Markdown } from "./Markdown";
 import { useMemory } from "../../state/memory";
 import { useTeammates } from "../../state/teammates";
@@ -752,21 +751,7 @@ function PresentBody({ b, input }: { b: ToolBlock; input: Json }) {
   const root = useSessionRoot();
   const thread = useContext(ThreadSession);
   const sid = thread ?? useChat((s) => s.activeId);
-  const show = () => {
-    if (!sid) return;
-    const store = useArtifacts.getState();
-    // A helper's presentation is filed under its own session, which the chat shows.
-    const art = store.bySession[sid]?.find((a) => a.id === b.id) ?? Object.values(store.bySession).flat().find((a) => a.id === b.id);
-    if (!art) {
-      // The recorder hasn't reached this call yet (a phone that just opened the
-      // session): record it now, then show it.
-      void store.presented(b.id, input, sid, root, b.started);
-      useUI.getState().openPanel("artifact");
-      return;
-    }
-    store.select(sid, art.id);
-    useUI.getState().openPanel("artifact");
-  };
+  const show = () => sid && void showPresented(b.id, input, sid, root, b.started);
   return (
     <>
       <div className="flex min-w-0 items-center gap-2 text-[12px]">
@@ -837,7 +822,7 @@ function Args({ input }: { input: Json }) {
   );
 }
 
-/** Files a tool returned. (Images it could show sit under the run, in the chat; see ImageStrip.) */
+/** Files a tool returned. Anything worth looking at is the agent's to `present`. */
 function Attachments({ b }: { b: ToolBlock }) {
   const files = (b.files ?? []).filter((f) => !(f.mime.startsWith("image/") && /^(data:|https?:)/.test(f.uri)));
   if (!files.length) return null;

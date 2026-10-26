@@ -9,7 +9,9 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 ### Added
 
 - **The dock.** The panel's navigation is a vertical column of five icons at the window's right edge, and it never moves: Artifact, Screen, Terminal, Context and Memory open to the left of it, and clicking the icon you're on closes the panel. One control, one place, both directions — the button that opens is the button that closes. Hover an icon for its name and shortcut (⌘⇧A, ⌘⇧B, ⌃\`, ⌘⇧I, ⌘⇧M); ⌘⇧\\ still shows or hides the panel.
-- **Artifacts.** Agents have a new `present` tool: they show a file, a page, a URL or a bit of markup in the panel instead of describing it. Images fit the panel, HTML and URLs are framed (sandboxed), text and PDFs read like a file, and anything else is a name, a size and a save button. The list holds what this conversation has shown, newest first.
+- **Artifacts.** Agents have a new `present` tool: they show a file, a page, a URL or a bit of markup in the panel instead of describing it. Images fit the panel, HTML and URLs are framed (sandboxed), text and PDFs read like a file, and anything else is a name, a size and a save button.
+- Each presentation is a chip in the chat. Click it and the artifact opens at the panel's full size, with a back button to the list of everything this conversation has shown (with thumbnails for images). Copy its path, save a copy, or open a URL in your browser from its header.
+- Agents are told when and how to present: once it's ready and checked, with a title you'll recognise, and a sentence on what to look at.
 - A dot on the Artifact icon (or the phone's `…`) when something has been shown that you haven't looked at.
 
 ### Changed
@@ -23,6 +25,7 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 ### Removed
 
 - The Files surface and its file tree. Agents show what matters with `present`; there's no filesystem to browse.
+- Screenshots and the agent's screen no longer show up inline in chat. What's worth seeing, the agent presents.
 - The chat header's panel button, the panel's expand and close buttons, and the surface menu.
 
 ## [0.19.1] - 2026-10-26

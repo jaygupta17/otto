@@ -1,56 +1,12 @@
 import { AnimatePresence, animate, motion, useMotionValue, useReducedMotion, useTransform } from "motion/react";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
-import { memo, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { useUI } from "../../state/ui";
 import { useHistoryEntry } from "../../lib/back";
 import { useFocusTrap, useLayer } from "../../lib/layers";
 import { EDGE, axisOf, ofHint, resist, settle, type Axis } from "../../lib/pager";
-import type { Block } from "../../lib/opencode/projection";
 import { IconButton } from "../ui/Button";
-
-type Shot = { key: string; src: string; name: string };
-
-/** Images the agent's tools brought back (a file it read, a screenshot), inline. */
-export function imagesOf(blocks: Block[]): Shot[] {
-  const out: Shot[] = [];
-  for (const b of blocks) {
-    if (b.kind !== "tool") continue;
-    (b.files ?? []).forEach((f, i) => {
-      // Only what the browser can show as-is; a bare path would need a fetch from the machine.
-      if (f.mime.startsWith("image/") && /^(data:|https?:)/.test(f.uri)) out.push({ key: `${b.key}:${i}`, src: f.uri, name: f.name?.split("/").pop() || "Image" });
-    });
-  }
-  return out;
-}
-
-/** What the agent looked at: thumbnails under its run; one opens full size. */
-export const ImageStrip = memo(function ImageStrip({ blocks }: { blocks: Block[] }) {
-  const shots = useMemo(() => imagesOf(blocks), [blocks]);
-  const [open, setOpen] = useState<number | null>(null);
-  if (!shots.length) return null;
-  return (
-    <>
-      <div className="my-1.5 flex flex-wrap gap-2">
-        {shots.map((s, i) => (
-          <button
-            key={s.key}
-            onClick={() => setOpen(i)}
-            title={s.name}
-            aria-label={`View ${s.name}`}
-            className="group relative block max-w-full overflow-hidden rounded-lg border border-line bg-sunken transition-colors hover:border-line-strong"
-          >
-            <img src={s.src} alt={s.name} loading="lazy" decoding="async" className="block max-h-[180px] max-w-[min(100%,320px)] object-contain" />
-            <span className="pointer-events-none absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/60 to-transparent px-2 pt-4 pb-1 text-left text-[11px] text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
-              {s.name}
-            </span>
-          </button>
-        ))}
-      </div>
-      <ImageViewer images={shots} index={open} onClose={() => setOpen(null)} />
-    </>
-  );
-});
 
 export type ViewerImage = { src: string; name: string };
 

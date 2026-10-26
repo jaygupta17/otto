@@ -6,7 +6,7 @@ import type { UserFile } from "../../lib/opencode/projection";
 import { useAttachments, type Pending } from "../../state/attachments";
 import { useChat } from "../../state/chat";
 import { Spinner } from "../ui/AgentClock";
-import { ImageViewer } from "./ImageStrip";
+import { ImageViewer } from "./ImageViewer";
 import { useOpenFile, useSessionRoot } from "./ToolParts";
 
 export function FileIcon({ mime, name, size = 16 }: { mime: string; name: string; size?: number }) {
