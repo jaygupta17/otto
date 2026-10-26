@@ -8,6 +8,8 @@
         "@boxd-sh/sdk": "0.2.11",
         "@fontsource-variable/geist": "^5.3.0",
         "@tauri-apps/api": "2",
+        "@tauri-apps/plugin-dialog": "2",
+        "@tauri-apps/plugin-fs": "2",
         "@tauri-apps/plugin-http": "2",
         "@tauri-apps/plugin-notification": "2",
         "@tauri-apps/plugin-opener": "2",
@@ -270,6 +272,10 @@
     "@tauri-apps/cli-win32-ia32-msvc": ["@tauri-apps/cli-win32-ia32-msvc@2.12.1", "", { "os": "win32", "cpu": "ia32" }, "sha512-baNZRBfepAJ5qNFRMwzgBk94xQmkcmTZrNDjZjnzrq2vAaTC3NAhallb/zo3hyoCGQlMS13sdovktrg46NZz6Q=="],
 
     "@tauri-apps/cli-win32-x64-msvc": ["@tauri-apps/cli-win32-x64-msvc@2.12.1", "", { "os": "win32", "cpu": "x64" }, "sha512-dIFaKslrzcbesb+bBh+E1R9km241pHyj32w6D9FPtvQeYpRUFbiCLEa/2S+S0UnIytfxepp4P+X8IerGqnXeYg=="],
+
+    "@tauri-apps/plugin-dialog": ["@tauri-apps/plugin-dialog@2.8.3", "", { "dependencies": { "@tauri-apps/api": "^2.12.0" } }, "sha512-Hd/yBfk2R5v2MFrz/0VArSXeh8xKLLXGunqSiTtcHKn1zNZwaKujuA0VSwUvNfwC4hDoF1PveS+gBDNe3nHspw=="],
+
+    "@tauri-apps/plugin-fs": ["@tauri-apps/plugin-fs@2.7.1", "", { "dependencies": { "@tauri-apps/api": "^2.12.0" } }, "sha512-4TBVjpi/q8PuNzjpkAc2iBGXMTLjOrAyfTiiOL8ORaJCZJRG3tjzmQ4sqs2CMG75FvLyRkOkERfP7AyY4iBNwQ=="],
 
     "@tauri-apps/plugin-http": ["@tauri-apps/plugin-http@2.8.1", "", { "dependencies": { "@tauri-apps/api": "^2.12.0" } }, "sha512-+idkxq+v3dU/X9HIWgPXPUnemE7aNW4l3/Oowxm2e6EqPkPW0CmZq80UV5JjMLdgEeLj505dcbb6FQgHUUZdjg=="],
 

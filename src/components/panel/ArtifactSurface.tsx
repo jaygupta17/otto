@@ -22,7 +22,7 @@ import { basename, timeAgo } from "../../lib/format";
 import { fileSize, localAddress, type ArtifactKind } from "../../lib/artifacts";
 import { isPreviewable } from "../../lib/linkPreview";
 import { previewUrl } from "../../lib/preview";
-import { openExternal } from "../../lib/platform";
+import { isTauri, openExternal } from "../../lib/platform";
 import type { OpenCode } from "../../lib/opencode/client";
 import { Button, IconButton } from "../ui/Button";
 import { Spinner } from "../ui/AgentClock";
@@ -302,10 +302,23 @@ async function saveFile(client: OpenCode, path: string, root: string | null) {
       toast({ tone: "error", title: "Too big to save from here", body: `${fileSize(r.size)}. Copy it off the machine from the terminal instead.` });
       return;
     }
+    const name = basename(path);
+    // A webview has no download manager: WKWebView and Android ignore an
+    // anchor to a blob. In the app, ask where to put it and write it there;
+    // in a browser, the anchor still downloads the way it always did.
+    if (isTauri) {
+      const { save } = await import("@tauri-apps/plugin-dialog");
+      const dest = await save({ title: "Save a copy", defaultPath: name });
+      if (!dest) return; // the dialog was closed
+      const { writeFile } = await import("@tauri-apps/plugin-fs");
+      await writeFile(dest, r.bytes);
+      toast({ tone: "ok", title: "Saved", body: name });
+      return;
+    }
     const href = URL.createObjectURL(new Blob([r.bytes as BlobPart], { type: r.mime || "application/octet-stream" }));
     const link = document.createElement("a");
     link.href = href;
-    link.download = basename(path);
+    link.download = name;
     link.click();
     setTimeout(() => URL.revokeObjectURL(href), 10_000);
   } catch (e) {
