@@ -234,7 +234,7 @@ export function absolutePath(root: string, p: string) {
 }
 
 /** Collapse `.`/`..` and duplicate separators so containment can be compared. */
-function normalizeAbs(p: string): string {
+export function normalizePath(p: string): string {
   const drive = /^[A-Za-z]:/.exec(p)?.[0] ?? "";
   const up: string[] = [];
   for (const seg of p.slice(drive.length).split(/[\\/]+/)) {
@@ -253,8 +253,8 @@ function normalizeAbs(p: string): string {
  */
 export function insideRoot(root: string, path: string): boolean {
   if (!root) return false;
-  const r = normalizeAbs(root).replace(/\/+$/, "");
-  const p = normalizeAbs(path);
+  const r = normalizePath(root).replace(/\/+$/, "");
+  const p = normalizePath(path);
   return r === "/" ? p.startsWith("/") : p === r || p.startsWith(`${r}/`);
 }
 
@@ -268,7 +268,7 @@ export function insideRoot(root: string, path: string): boolean {
  * code spans) doesn't crowd out the rest of the window's checks.
  */
 export function checkFile(client: FsClient, root: string, path: string, budget: () => boolean = budgeted): Promise<boolean> {
-  const abs = normalizeAbs(absolutePath(root, path).replace(/[.,;!?]+$/, ""));
+  const abs = normalizePath(absolutePath(root, path).replace(/[.,;!?]+$/, ""));
   const dir = abs.slice(0, abs.lastIndexOf("/")) || "/";
   if (!insideRoot(root, abs) || !insideRoot(root, dir)) return Promise.resolve(false);
   const hit = cacheGet(fileCache, abs);

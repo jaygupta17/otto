@@ -20,7 +20,6 @@ import { DAYTONA_BILLING_URL } from "../../lib/providers/daytona";
 import { useWorkspaces } from "../../state/workspaces";
 import { kbd } from "../../hooks/useShortcuts";
 import { SessionHistory } from "../chat/SessionHistory";
-import { PanelToggle } from "../panel/SidePanel";
 import { Bird } from "../ui/Bird";
 import { useTeammate } from "../../state/teammates";
 import type { Teammate } from "../../lib/teammates";
@@ -54,7 +53,6 @@ export function Home({ compact = false }: { compact?: boolean }) {
         )}
         <div className="flex-1" data-tauri-drag-region />
         <SessionHistory sessionId={null} />
-        <PanelToggle />
       </header>
       <div className="scroll-quiet relative min-h-0 flex-1 overflow-y-auto px-5">
         {/* Compact home has no recent list, so the prompt block can

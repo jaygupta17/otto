@@ -84,7 +84,7 @@ export function MemorySurface(_props: { root: string | null }) {
         </>
       }
     >
-      <PanelTitle surface="memory" />
+      <PanelTitle label="Memory" />
     </PanelHeader>
   );
 

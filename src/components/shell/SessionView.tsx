@@ -5,7 +5,6 @@ import { useUI } from "../../state/ui";
 import { Thread } from "../chat/Thread";
 import { Composer, Perch, usePerched } from "../chat/Composer";
 import { SessionHistory } from "../chat/SessionHistory";
-import { PanelToggle } from "../panel/SidePanel";
 import { AgentPicker } from "../chat/Pickers";
 import { IconButton } from "../ui/Button";
 import { basename, money } from "../../lib/format";
@@ -68,7 +67,6 @@ export function SessionView({ sessionId }: { sessionId: string }) {
         />
         <div className="h-full min-w-0 flex-1" data-tauri-drag-region />
         <SessionHistory sessionId={sessionId} />
-        <PanelToggle />
       </header>
 
       <Thread sessionId={sessionId} bottomInset={inset + rise} />

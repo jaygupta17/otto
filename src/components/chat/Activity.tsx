@@ -12,6 +12,7 @@ import {
   FilePlus2,
   FolderSearch,
   Globe,
+  Image as ImageIcon,
   Link2,
   ListChecks,
   MessageCircleQuestion,
@@ -213,6 +214,8 @@ function iconFor(b: ToolBlock, size = 15): ReactNode {
       return <Sparkles size={size} />;
     case "todo":
       return <ListChecks size={size} />;
+    case "present":
+      return <ImageIcon size={size} />;
     default:
       return <Wrench size={size} />;
   }

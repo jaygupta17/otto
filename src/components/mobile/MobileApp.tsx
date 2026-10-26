@@ -1,5 +1,5 @@
 import { AnimatePresence, motion, useDragControls } from "motion/react";
-import { ChevronDown, FolderTree, MoreHorizontal, Plus, Search, SquarePen, Trash2, Pencil, Check, Settings } from "lucide-react";
+import { ChevronDown, MoreHorizontal, Plus, Search, SquarePen, Trash2, Pencil, Check, Settings } from "lucide-react";
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { SessionInfo } from "@opencode/client";
 import { startingSession, useChat } from "../../state/chat";
@@ -18,6 +18,7 @@ import { BackButton, Sheet } from "../ui/Sheet";
 import { InboxButton } from "../shell/Inbox";
 import { UpdatePill } from "../shell/UpdateControls";
 import { PanelChrome, SURFACES, SurfaceBody } from "../panel/SidePanel";
+import { useArtifacts } from "../../state/artifacts";
 import { Popover, MenuItem } from "../ui/Popover";
 import { AgentClock } from "../ui/AgentClock";
 import { BackgroundStrip, InboxTray } from "../chat/SessionExtras";
@@ -32,8 +33,6 @@ import { EmptyState } from "../ui/EmptyState";
 import { Sky } from "../ui/Hero";
 import { useFace } from "../../state/face";
 import { Pip, connectionTone } from "../ui/Pip";
-import { FilesPanel } from "../files/FilesPanel";
-import { EditorBody } from "../files/Editor";
 import { SchedulesView } from "../schedules/SchedulesView";
 import { WorkspaceIcon, statusText } from "../shell/Sidebar";
 import { useBackgroundLine, useDoing, useOfferedAgents, useSessionTiers } from "../../state/tiers";
@@ -382,21 +381,19 @@ function SessionScreen({ sessionId }: { sessionId: string }) {
   const status = useConnection((s) => s.status);
   const drag = useDragControls();
   const [menu, setMenu] = useState(false);
-  const [files, setFiles] = useState(false);
   const [tool, setTool] = useState<PanelSurface | null>(null);
-  const closeFiles = () => {
-    const ui = useUI.getState();
-    for (const f of ui.editorFiles) ui.closeEditorFile(f);
-  };
-  // Links tapped in chat or a terminal open in the Browser page.
-  const browserN = useUI((s) => s.browserRequest?.n);
-  const seenN = useRef(browserN);
+  // Something asked for the artifact page: a path tapped in chat, a context
+  // file, or a localhost link (the dock's place on a phone is this sheet).
+  const artN = useArtifacts((s) => s.request);
+  const fresh = useArtifacts((s) => s.fresh);
+  const showFresh = fresh > 0 && tool !== "artifact";
+  const seenArt = useRef(artN);
   useEffect(() => {
-    if (browserN !== seenN.current) {
-      seenN.current = browserN;
-      setTool("browser");
+    if (artN !== seenArt.current) {
+      seenArt.current = artN;
+      setTool("artifact");
     }
-  }, [browserN]);
+  }, [artN]);
   // So does taking control of the agent's screen (a handoff card's button).
   const takenN = useComputer((s) => s.opened);
   const seenTaken = useRef(takenN);
@@ -406,7 +403,6 @@ function SessionScreen({ sessionId }: { sessionId: string }) {
       setTool("browser");
     }
   }, [takenN]);
-  const activeFile = useUI((s) => s.activeFile);
   const moreRef = useRef<HTMLButtonElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
   const [inset, setInset] = useState(120);
@@ -456,15 +452,16 @@ function SessionScreen({ sessionId }: { sessionId: string }) {
             />
           </div>
           <SessionHistory sessionId={sessionId} phone />
-          <button ref={moreRef} onClick={() => setMenu(true)} className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-ink transition-colors active:bg-hover" aria-label="More">
+          <button ref={moreRef} onClick={() => setMenu(true)} className="relative grid h-11 w-11 shrink-0 place-items-center rounded-full text-ink transition-colors active:bg-hover" aria-label="More">
             <MoreHorizontal size={22} />
+            {/* Something was shown and you haven't looked: the phone's version of the dock's pip. */}
+            {showFresh && <Pip tone="new" label="New artifact" className="absolute top-2.5 right-2.5" />}
           </button>
         </div>
       </header>
       <Popover open={menu} onClose={() => setMenu(false)} anchor={moreRef.current} placement="bottom-end" width={220}>
         <div role="menu" className="p-1.5">
-          <MenuItem icon={<FolderTree size={15} />} label="Files" onClick={() => (setMenu(false), setFiles(true))} />
-          {SURFACES.filter((x) => x.id !== "files").map((x) => (
+          {SURFACES.map((x) => (
             <MenuItem key={x.id} icon={x.icon(15)} label={x.label} onClick={() => (setMenu(false), setTool(x.id))} />
           ))}
           <div className="my-1 h-px bg-line" />
@@ -496,19 +493,14 @@ function SessionScreen({ sessionId }: { sessionId: string }) {
         </div>
       </div>
 
-      {/* Pages stack: a file opened from Files goes back to Files. A phone has no tabs, so back closes them all. */}
-      <Sheet open={files} onClose={() => setFiles(false)} compact title={basename(session?.location.directory ?? "") || "Files"}>
-        <div className="h-sheet">{session && <FilesPanel root={session.location.directory} bare />}</div>
-      </Sheet>
+      {/* A phone has no dock: the session's menu is where its surfaces are, and
+          they page in over the chat like every other screen. */}
       <Sheet open={!!tool} onClose={() => setTool(null)} compact bare>
         <div className="flex h-sheet flex-col">
-          <PanelChrome value={{ docked: false, onClose: () => setTool(null) }}>
+          <PanelChrome value={{ docked: false }}>
             {tool && <SurfaceBody surface={tool} root={session?.location.directory ?? null} sessionId={sessionId} />}
           </PanelChrome>
         </div>
-      </Sheet>
-      <Sheet open={!!activeFile} onClose={closeFiles} compact title={activeFile ? basename(activeFile) : undefined}>
-        <div className="flex h-sheet flex-col">{session && activeFile && <EditorBody root={session.location.directory} />}</div>
       </Sheet>
     </motion.div>
   );

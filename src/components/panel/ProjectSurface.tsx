@@ -2,6 +2,10 @@
  * Project knowledge: the instruction files the agent reads at the start of
  * every session (AGENTS.md, and CLAUDE.md for projects that use it). Read,
  * edit, or have the agent write one.
+ *
+ * Intentionally unregistered: this surface is not in the dock (`SURFACES` in
+ * SidePanel.tsx) and can't be opened from anywhere in the app. It is kept on
+ * disk, working, for when it gets a place again.
  */
 import { BookOpen, Eye, Pencil, Plus, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -137,7 +141,7 @@ export function ProjectSurface({ root }: { root: string | null }) {
         )
       }
     >
-      <PanelTitle surface="project" detail={root ? basename(root) : undefined} />
+      <PanelTitle label="Project" detail={root ? basename(root) : undefined} />
     </PanelHeader>
   );
 

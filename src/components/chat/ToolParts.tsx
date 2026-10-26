@@ -7,7 +7,7 @@
 import { Check, ChevronRight, Copy, FileCode2, FileText, Columns2, Rows2, SquareArrowOutUpRight } from "lucide-react";
 import { Component, createContext, memo, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useChat } from "../../state/chat";
-import { useUI } from "../../state/ui";
+import { showFile } from "../../state/artifacts";
 import { parseDiff, type DiffLine } from "../../lib/opencode/tools";
 import { HIGHLIGHT_LIMIT, highlight, langFromPath } from "./highlight";
 
@@ -23,10 +23,10 @@ export function useSessionRoot() {
   return useChat((s) => (sid ? s.sessions[sid]?.location.directory : null) ?? (s.activeId ? s.sessions[s.activeId]?.location.directory : null) ?? s.homeDir ?? "");
 }
 
+/** Open a path from a tool row: it becomes an artifact and the panel shows it. */
 export function useOpenFile() {
-  const openInEditor = useUI((s) => s.openInEditor);
   const root = useSessionRoot();
-  return (p: string, line?: number) => openInEditor(absolute(root, p), line);
+  return (p: string, line?: number) => showFile(root, absolute(root, p), line);
 }
 
 const absolute = (root: string, p: string) => (p.startsWith("/") || /^[A-Za-z]:[\\/]/.test(p) ? p : `${root.replace(/\/$/, "")}/${p.replace(/^\.\//, "")}`);
