@@ -10,6 +10,11 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 - The agent's screen fits where you watch it. On a phone, in a narrow panel or full screen, Otto shapes the agent's Chrome window to the space you have and shows just that browser at a readable size, instead of the whole desktop shrunk to fit. The button next to full screen switches back to the whole desktop, and Otto remembers your choice. Boat machines pick up the updated browser tools the next time you connect.
 
+### Fixed
+
+- A teammate working in the background keeps its line above the composer however long ago it was started. It used to drop out once its handoff was a few turns back, or after coming back to the app reconnected, even though it was still running.
+- A teammate's own command no longer counts as a second thing running in the background. One teammate running `bun test` reads "Scout working in the background", not "2 running in the background", above the composer and in the session list.
+
 ## [0.18.0] - 2026-10-25
 
 ### Added

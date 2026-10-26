@@ -51,6 +51,8 @@ interface State {
   parents: Record<string, string>;
   /** Subagent session → the agent doing it, so a teammate shows as busy while it works for another. */
   delegated: Record<string, string>;
+  /** Subagent session → what it was handed and when, from the server: stands in for the call that started it when that call isn't loaded. */
+  subagents: Record<string, { title?: string; started: number }>;
   agents: AgentInfo[];
   models: ModelInfo[];
   /** Why the last catalog refresh failed, if it did. Shown quietly; never toasted automatically. */
@@ -174,6 +176,7 @@ export const useChat = create<State>((set, get) => ({
   forms: {},
   parents: {},
   delegated: {},
+  subagents: {},
   agents: [],
   models: [],
   defaultModel: null,
@@ -309,6 +312,8 @@ export const useChat = create<State>((set, get) => ({
   reset() {
     queue = [];
     pendingWhileLoading.clear();
+    // A new connection knows none of the subagents yet: let it ask again.
+    asked.clear();
     if (catalogEventTimer) clearTimeout(catalogEventTimer);
     catalogEventTimer = undefined;
     catalogGeneration++;
@@ -325,7 +330,7 @@ export const useChat = create<State>((set, get) => ({
     // Whatever was typed here was captured with this workspace's key: land it
     // now, before the store is cleared and rehydrated for another machine.
     flushPrefs();
-    set({ client: null, sessions: {}, sessionsLoaded: false, sessionsError: undefined, busy: {}, retrying: {}, unread: {}, timelines: {}, permissions: {}, forms: {}, parents: {}, delegated: {}, agents: [], models: [], catalogError: undefined, defaultModel: null, homeDir: null, activeId: null, pickedModel: null, pickedAgent: null, projectDir: null, drafts: {} });
+    set({ client: null, sessions: {}, sessionsLoaded: false, sessionsError: undefined, busy: {}, retrying: {}, unread: {}, timelines: {}, permissions: {}, forms: {}, parents: {}, delegated: {}, subagents: {}, agents: [], models: [], catalogError: undefined, defaultModel: null, homeDir: null, activeId: null, pickedModel: null, pickedAgent: null, projectDir: null, drafts: {} });
   },
 
   async bootstrap(client) {
@@ -1501,19 +1506,24 @@ const asked = new Set<string>();
 /**
  * Ask the server who owns sessions we only know from an ask or a run (e.g.
  * after a restart mid-subagent), up through a subagent's own subagents until
- * a chat we know.
+ * a chat we know. A subagent's own record comes along: who it is and what it
+ * was handed, for when the call that started it isn't loaded.
  */
-function learnParents(ids: string[]) {
-  const { client, sessions, parents } = useChat.getState();
+export function learnParents(ids: string[]) {
+  const { client, sessions, parents, subagents } = useChat.getState();
   if (!client) return;
   for (const id of new Set(ids)) {
-    if (!id || sessions[id] || parents[id] || asked.has(id)) continue;
+    if (!id || sessions[id] || (parents[id] && subagents[id]) || asked.has(id)) continue;
     asked.add(id);
     void client
       .session(id)
       .then((s) => {
-        if (!s.parentID) return;
-        useChat.setState((x) => ({ parents: { ...x.parents, [id]: s.parentID! } }));
+        if (!s.parentID || useChat.getState().client !== client) return;
+        useChat.setState((x) => ({
+          parents: { ...x.parents, [id]: s.parentID! },
+          subagents: { ...x.subagents, [id]: { title: s.title, started: s.time.created } },
+          delegated: s.agent && !x.delegated[id] ? { ...x.delegated, [id]: s.agent } : x.delegated,
+        }));
         learnParents([s.parentID]);
       })
       .catch(() => asked.delete(id));
