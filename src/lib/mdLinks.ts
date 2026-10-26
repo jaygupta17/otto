@@ -51,13 +51,14 @@ export function parsePathToken(raw: string): PathTarget | null {
 
 /**
  * A markdown link target that is a local path rather than a URL. Lenient on
- * shape (`Makefile` has no extension); the existence check decides.
+ * shape (`Makefile` has no extension); the existence check decides. No scheme
+ * check here: a URL is already refused below (it carries `:` or `#` before any
+ * line suffix), while a root-level path with a line suffix (`x.md:1`) only
+ * looks like a scheme.
  */
 export function pathFromHref(href: string): PathTarget | null {
   const t = href.trim();
   if (!t || t.startsWith("#") || t.startsWith("?") || t.startsWith("//")) return null;
-  // A scheme means a URL (or Windows drive `C:\`); those stay links.
-  if (/^[A-Za-z][A-Za-z0-9+.-]*:/.test(t) && !/^[A-Za-z]:[\\/]/.test(t)) return null;
   const target = parsePathToken(t);
   return target ?? (/[:#\\]/.test(t) || t.endsWith("/") ? null : { path: t.replace(/[.,;!?]+$/, ""), line: undefined });
 }
@@ -220,7 +221,11 @@ export function makeBudget(max: number, windowMs: number): () => boolean {
   };
 }
 
-const budgeted = makeBudget(60, 10_000);
+/** Listings per window, then the rest of the window's tokens stay plain text.
+ * Charged per listing (see `checkFile`), so this is the ceiling on filesystem
+ * RPCs a message can cause: 120 covers a message full of code spans and prose
+ * paths at once without either starving the other. */
+const budgeted = makeBudget(120, 10_000);
 
 const baseName = (p: string) => p.replace(/\/+$/, "").split("/").pop() ?? p;
 
@@ -256,21 +261,38 @@ export function insideRoot(root: string, path: string): boolean {
 /**
  * Whether `path` names a file (not a directory) under `root`. Directory
  * listings are cached per folder, so a message full of paths in one folder
- * costs one request. Paths outside `root` are refused outright, and checks
- * beyond the budget (`makeBudget`) simply report false.
+ * costs one request. Paths outside `root` are refused outright, and when a
+ * listing would be needed beyond the budget (`makeBudget`) the check simply
+ * reports false. The budget bounds *listings*, not questions: one the caches
+ * can already answer is free, so a message with many paths (in prose or in
+ * code spans) doesn't crowd out the rest of the window's checks.
  */
-export function checkFile(client: FsClient, root: string, path: string): Promise<boolean> {
+export function checkFile(client: FsClient, root: string, path: string, budget: () => boolean = budgeted): Promise<boolean> {
   const abs = normalizeAbs(absolutePath(root, path).replace(/[.,;!?]+$/, ""));
   const dir = abs.slice(0, abs.lastIndexOf("/")) || "/";
-  if (!insideRoot(root, abs) || !insideRoot(root, dir) || !budgeted()) return Promise.resolve(false);
+  if (!insideRoot(root, abs) || !insideRoot(root, dir)) return Promise.resolve(false);
   const hit = cacheGet(fileCache, abs);
   if (hit) return hit.v;
-  const ok = (async () => {
-    const entry = cacheGet(dirCache, dir) ?? cacheSet(dirCache, dir, listDir(client, dir, root));
-    return (await entry.v)?.some((e) => e.type === "file" && baseName(e.path) === baseName(abs)) ?? false;
-  })();
+  let entry = cacheGet(dirCache, dir);
+  if (!entry) {
+    if (!budget()) return Promise.resolve(false);
+    entry = cacheSet(dirCache, dir, listDir(client, dir, root));
+  }
+  const ok = entry.v.then((l) => l?.some((e) => e.type === "file" && baseName(e.path) === baseName(abs)) ?? false);
   cacheSet(fileCache, abs, ok);
   return ok;
+}
+
+/**
+ * Whether an inline code span names a file. The whole (trimmed) content must
+ * parse as a path (`pathFromHref`), and `checkFile` must say that file exists
+ * inside the root. Everything else — `e.g.`, `v1.2.3`, `npm install`, a
+ * partial path still streaming in — stays literal code. There is no denylist:
+ * existence is the discriminator.
+ */
+export function codeSpanFile(client: FsClient, root: string, text: string, budget?: () => boolean): Promise<boolean> {
+  const target = pathFromHref(text);
+  return target ? checkFile(client, root, target.path, budget) : Promise.resolve(false);
 }
 
 async function listDir(client: FsClient, dir: string, root: string) {

@@ -2,21 +2,21 @@
  * GitHub-style affordances for what a message points at: URLs get a compact
  * preview card (title, domain, favicon, Open Graph when the page offers it and
  * the user has turned on link previews — it fetches from their machine, so it
- * is opt-in), and local file paths get a link that opens the file. A path is only linked
- * once it resolves to a file; otherwise it stays plain text. A paragraph that
- * is just one link or path grows into a card, with the file's own preview
- * (`files/Preview`) one tap away.
+ * is opt-in), and local file paths get an inline chip that opens the file. A
+ * path is only chipped once it resolves to a file; otherwise it stays plain
+ * text. A paragraph that is just one URL grows into a card; a path never does —
+ * the chip is the one treatment, alone on a line or mid-sentence.
  */
-import { Eye, Globe, EyeOff } from "lucide-react";
+import { Globe } from "lucide-react";
 import { memo, useEffect, useState, type ReactNode } from "react";
 import { useChat } from "../../state/chat";
 import { useUI } from "../../state/ui";
-import { absolutePath, checkFile, pathFromHref } from "../../lib/mdLinks";
+import { absolutePath, codeSpanFile, pathFromHref } from "../../lib/mdLinks";
 import { faviconGuess, isPreviewable, linkMeta, type LinkMeta } from "../../lib/linkPreview";
 import { openLink } from "../../lib/preview";
 import { FileIcon, PathLabel, useOpenFile, useSessionRoot } from "./ToolParts";
 
-/** Resolve an href to a file target, and whether that file exists. */
+/** Resolve an href (or code span content) to a file target, and whether that file exists. */
 function useFileTarget(href: string) {
   const client = useChat((s) => s.client);
   const root = useSessionRoot();
@@ -30,30 +30,36 @@ function useFileTarget(href: string) {
     setExists(false);
     // Debounced: while a reply streams the path is still growing, and each
     // settled shape only needs one check (cached inside `checkFile`).
-    if (!client || !root || !path) return;
+    if (!client || !root) return;
     let live = true;
     const timer = setTimeout(() => {
-      checkFile(client, root, path).then((v) => live && setExists(v));
+      codeSpanFile(client, root, href).then((v) => live && setExists(v));
     }, 250);
     return () => {
       live = false;
       clearTimeout(timer);
     };
-  }, [client, root, path]);
+  }, [client, root, href]);
   return { target, path, line, abs, exists, open };
 }
 
-/** A path in message text: plain until it resolves, then a link to the file. */
-export function FileLink({ href, children }: { href: string; children?: ReactNode }) {
-  const { path, line, exists, open } = useFileTarget(href);
-  if (!path || !exists) return <>{children}</>;
+/**
+ * The one treatment for a resolved file path, wherever it appears: the file's
+ * icon and its path on the line highlight inline code wears, sitting in the
+ * sentence like inline code does — no row of its own, no extra line height.
+ * The line suffix (`x.md:12`) stays visible; it is where the tap goes. The tap
+ * target is grown by a hit-area extender (44pt on a coarse pointer), never by
+ * padding. Long paths truncate the way `PathLabel` does everywhere: the name
+ * always shows, the directory gives way.
+ */
+function PathChip({ path, line, abs, open }: { path: string; line?: number; abs: string | null; open: (p: string, line?: number) => void }) {
   const go = () => open(path, line);
   return (
     <a
       role="button"
       tabIndex={0}
-      className="cursor-pointer"
-      title={`${path}${line ? `:${line}` : ""}`}
+      className="relative cursor-pointer no-underline after:absolute after:-inset-1 after:content-[''] [@media(pointer:coarse)]:after:-inset-x-2 [@media(pointer:coarse)]:after:-inset-y-3.5"
+      title={`${abs ?? path}${line ? `:${line}` : ""}`}
       onClick={(e) => {
         e.preventDefault();
         go();
@@ -65,56 +71,34 @@ export function FileLink({ href, children }: { href: string; children?: ReactNod
         }
       }}
     >
-      {children}
+      <code className="inline-flex max-w-full items-baseline gap-1 rounded-md leading-[normal] hover:shadow-[inset_0_0_0_1px_var(--info)]">
+        <FileIcon path={path} size={12} />
+        <span className="inline-flex min-w-0 items-baseline">
+          <PathLabel path={abs ?? path} />
+          {line != null && <span className="shrink-0 text-faint">{`:${line}`}</span>}
+        </span>
+      </code>
     </a>
   );
 }
 
-/** A paragraph holding just a file path: the row opens it, the button previews it. */
-export function FileCard({ href }: { href: string }) {
+/** A path in message text: plain until it resolves, then a chip that opens the file. */
+export function FileLink({ href, children }: { href: string; children?: ReactNode }) {
   const { path, line, abs, exists, open } = useFileTarget(href);
-  const root = useSessionRoot();
-  const [show, setShow] = useState(false);
-  const [Body, setBody] = useState<null | ((props: { path: string; root: string }) => ReactNode)>(null);
-  useEffect(() => {
-    if (!show || Body) return;
-    let live = true;
-    // The preview views load only when asked for.
-    void import("../files/FilesPanel").then((m) => live && setBody(() => m.FileBody));
-    return () => {
-      live = false;
-    };
-  }, [show, Body]);
+  if (!path || !exists) return <>{children}</>;
+  return <PathChip path={path} line={line} abs={abs} open={open} />;
+}
 
-  if (!path || !exists) return <FileLink href={href}>{href}</FileLink>;
-  return (
-    <div className="my-3 overflow-hidden rounded-2xl hairline">
-      <div className="flex items-center gap-2 px-3 py-2 [@media(pointer:coarse)]:min-h-11">
-        <FileIcon path={path} size={14} />
-        <button
-          type="button"
-          className="min-w-0 flex-1 text-left [@media(pointer:coarse)]:min-h-11"
-          title={`${path}${line ? `:${line}` : ""}`}
-          onClick={() => open(path, line)}
-        >
-          <PathLabel path={abs ?? path} className="font-mono text-[12px]" />
-        </button>
-        <button
-          type="button"
-          className="flex h-7 shrink-0 items-center gap-1 rounded-md px-2 text-[12px] text-muted hover:bg-hover hover:text-ink [@media(pointer:coarse)]:min-h-11"
-          onClick={() => setShow((v) => !v)}
-        >
-          {show ? <EyeOff size={12} /> : <Eye size={12} />}
-          {show ? "Hide preview" : "Show preview"}
-        </button>
-      </div>
-      {show && Body && abs && (
-        <div className="flex h-[420px] flex-col border-t border-line">
-          <Body path={abs} root={root} />
-        </div>
-      )}
-    </div>
-  );
+/**
+ * Inline code. Backticks name things, so when the whole span is a path to a
+ * real file in the workspace it becomes the same chip — still code, still on
+ * the line — and everything else (`e.g.`, commands, partial paths mid-stream)
+ * stays literal code.
+ */
+export function InlineCode({ text, children }: { text: string; children?: ReactNode }) {
+  const { path, line, abs, exists, open } = useFileTarget(text);
+  if (!path || !exists) return <code>{children}</code>;
+  return <PathChip path={path} line={line} abs={abs} open={open} />;
 }
 
 /** An image URL from a page is only ever loaded when it passes `isPreviewable`. */
