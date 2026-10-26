@@ -6,6 +6,8 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-10-26
+
 ### Changed
 
 - The agent's screen fits where you watch it. On a phone, in a narrow panel or full screen, Otto shapes the agent's Chrome window to the space you have and shows just that browser at a readable size, instead of the whole desktop shrunk to fit. The button next to full screen switches back to the whole desktop, and Otto remembers your choice. Boat machines pick up the updated browser tools the next time you connect.
@@ -407,7 +409,8 @@ First public release.
 - Scheduled tasks that run on the agent machine.
 - Project file browser with syntax highlighting.
 
-[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.18.0...HEAD
+[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.19.0...HEAD
+[0.19.0]: https://github.com/jaygupta17/otto/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/jaygupta17/otto/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/jaygupta17/otto/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/jaygupta17/otto/compare/v0.15.0...v0.16.0
