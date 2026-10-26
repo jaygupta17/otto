@@ -13,7 +13,7 @@ import { useTrafficLights } from "../../hooks/useChrome";
 import { useFocusTrap, useLayer } from "../../lib/layers";
 import { useChat } from "../../state/chat";
 import { useComputer, useHandoff } from "../../state/computer";
-import { AgentTab, ControlBar, ScreenFrame, useLiveTarget, useScreenStream } from "./LiveScreen";
+import { AgentTab, ControlBar, FitScreen, useLiveTarget, useScreenStream } from "./LiveScreen";
 
 export function ScreenFocus() {
   const focus = useComputer((s) => s.focus);
@@ -54,9 +54,8 @@ function FocusView() {
         <ControlBar handoff={mine ?? any} sessionId={sessionId} onReload={stream.reload} loading={stream.load.state === "loading"} tall />
       </div>
       <AgentTab active />
-      {/* Sized as a container so the screen fits either way at 16:9. */}
-      <div tabIndex={-1} data-autofocus className="flex min-h-0 flex-1 items-center bg-black pb-[var(--safe-b)] outline-none [container-type:size]">
-        <ScreenFrame stream={stream} control={control} sessionId={sessionId} maxHeight="100cqh" />
+      <div tabIndex={-1} data-autofocus className="flex min-h-0 flex-1 flex-col bg-black pb-[var(--safe-b)] outline-none">
+        <FitScreen stream={stream} control={control} sessionId={sessionId} className="w-full flex-1" />
       </div>
     </motion.div>
   );
