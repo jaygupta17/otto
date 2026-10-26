@@ -6,6 +6,8 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-10-26
+
 ### Added
 
 - **The dock.** The panel's navigation is a vertical column of five icons at the window's right edge, and it never moves: Artifact, Screen, Terminal, Context and Memory open to the left of it, and clicking the icon you're on closes the panel. One control, one place, both directions — the button that opens is the button that closes. Hover an icon for its name and shortcut (⌘⇧A, ⌘⇧B, ⌃\`, ⌘⇧I, ⌘⇧M); ⌘⇧\\ still shows or hides the panel.
@@ -448,7 +450,8 @@ First public release.
 - Scheduled tasks that run on the agent machine.
 - Project file browser with syntax highlighting.
 
-[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.19.1...HEAD
+[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.20.0...HEAD
+[0.20.0]: https://github.com/jaygupta17/otto/compare/v0.19.1...v0.20.0
 [0.19.1]: https://github.com/jaygupta17/otto/compare/v0.18.0...v0.19.1
 [0.19.0]: https://github.com/jaygupta17/otto/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/jaygupta17/otto/compare/v0.17.0...v0.18.0
