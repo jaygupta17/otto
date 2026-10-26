@@ -6,6 +6,8 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 ## [Unreleased]
 
+## [0.20.2] - 2026-10-26
+
 The same update as 0.20.1, rebuilt: 0.20.1's release build stopped on a plugin version check, so nothing was published.
 
 ### Changed
@@ -478,7 +480,8 @@ First public release.
 - Scheduled tasks that run on the agent machine.
 - Project file browser with syntax highlighting.
 
-[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.20.1...HEAD
+[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.20.2...HEAD
+[0.20.2]: https://github.com/jaygupta17/otto/compare/v0.20.1...v0.20.2
 [0.20.1]: https://github.com/jaygupta17/otto/compare/v0.20.0...v0.20.1
 [0.20.0]: https://github.com/jaygupta17/otto/compare/v0.19.1...v0.20.0
 [0.19.1]: https://github.com/jaygupta17/otto/compare/v0.18.0...v0.19.1
