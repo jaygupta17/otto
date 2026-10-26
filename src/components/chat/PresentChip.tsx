@@ -1,15 +1,17 @@
 /**
  * What an agent showed you, as it sits in the thread: a chip per `present`
- * call. The artifact itself lives in the panel, which has the room; the chip
- * says what it is and opens it there, full size, on a click.
+ * call, gathered under the turn's final words. The artifact itself lives in
+ * the panel, which has the room; the chip says what it is and opens it there,
+ * full size, on a click.
  */
 import { AlertTriangle, ArrowUpRight, CodeXml, Download, FileText, Globe, Image as ImageIcon } from "lucide-react";
-import { useContext, type ReactNode } from "react";
+import { useContext, useMemo, type ReactNode } from "react";
 import { classify, kindOfPath, parsePresent, titleFor, type ArtifactKind } from "../../lib/artifacts";
 import { basename } from "../../lib/format";
+import type { Block } from "../../lib/opencode/projection";
 import { inputOf, toolFailed, type ToolBlock } from "../../lib/opencode/tools";
 import { useChat } from "../../state/chat";
-import { showPresented } from "../../state/artifacts";
+import { isPresentTool, showPresented } from "../../state/artifacts";
 import { ThreadSession, useSessionRoot } from "./ToolParts";
 
 const ICON: Record<ArtifactKind, ReactNode> = {
@@ -32,7 +34,7 @@ function describe(input: Record<string, unknown>): { kind: ArtifactKind; title: 
   return { kind, title, where: where && where !== title ? where : null };
 }
 
-/** A run of consecutive presentations, side by side, wrapping when there are many. */
+/** A row of presentations, side by side, wrapping when there are many. */
 export function PresentChips({ blocks }: { blocks: ToolBlock[] }) {
   return (
     <div className="my-1.5 flex flex-wrap gap-1.5">
@@ -41,6 +43,25 @@ export function PresentChips({ blocks }: { blocks: ToolBlock[] }) {
       ))}
     </div>
   );
+}
+
+/**
+ * What a turn presented, under its final words: the run above says how it
+ * worked, these say what there is to look at. One chip per source, its last
+ * presentation winning, in the order it was first shown.
+ */
+export function TurnArtifacts({ blocks }: { blocks: Block[] }) {
+  const shown = useMemo(() => {
+    const by = new Map<string, ToolBlock>();
+    for (const b of blocks) {
+      if (b.kind !== "tool" || !isPresentTool(b.name)) continue;
+      const source = inputOf(b).source;
+      by.set(typeof source === "string" && source.trim() ? source.trim() : b.key, b);
+    }
+    return [...by.values()];
+  }, [blocks]);
+  if (!shown.length) return null;
+  return <PresentChips blocks={shown} />;
 }
 
 function PresentChip({ b }: { b: ToolBlock }) {

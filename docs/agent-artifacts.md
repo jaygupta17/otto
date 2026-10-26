@@ -32,6 +32,8 @@ where it is drawn, so the rules live in one place.
    (`src/state/artifacts.ts`), once per call id.
 4. The Artifact surface (`src/components/panel/ArtifactSurface.tsx`) shows the
    session's list, newest first, and renders the selected one.
+5. The chat answers with a chip per presentation, under the turn's final words
+   (`src/components/chat/PresentChip.tsx`); a click opens that artifact.
 
 A call is recorded when its input has arrived and it hasn't failed. Nothing is
 persisted: the list is what this conversation showed.

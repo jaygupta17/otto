@@ -8,7 +8,7 @@ import { revertIndex, useChat } from "../../state/chat";
 import { useUI } from "../../state/ui";
 import { Markdown } from "./Markdown";
 import { ActivityGroup, SubagentReport } from "./Activity";
-import { ChangedFiles } from "./ChangedFiles";
+import { TurnArtifacts } from "./PresentChip";
 import { isStopError, toolKind } from "../../lib/opencode/tools";
 import { ThreadSession } from "./ToolParts";
 import { MessageAttachments } from "./Attachments";
@@ -530,7 +530,7 @@ const Turn = memo(function Turn({ msgs, live, start, retry, sessionId, forkBefor
         if (s.kind === "subagent") return <SubagentReport key={s.key} msg={s.msg} />;
         return <ErrorCard key={s.key} text={s.text} />;
       })}
-      {!live && <ChangedFiles blocks={blocks} />}
+      {!live && <TurnArtifacts blocks={blocks} />}
       {live ? (
         !headed && (!writing || retry) && <Working doing={doing} retry={retry} />
       ) : (
