@@ -17,6 +17,7 @@ import { PROVIDER_NAME } from "../lib/providers/names";
 import { reviveLocal } from "../lib/providers/local";
 import { BoatError, isBillingError } from "../lib/providers/boat";
 import { prepareSchedules, scheduleLocalUrl } from "../lib/schedulesSetup";
+import { preparePresent } from "../lib/presentSetup";
 import { secrets } from "../lib/secrets";
 import { readTeammates } from "../lib/teammates";
 import { isCloud, secretKeys, useWorkspaces, type Workspace } from "./workspaces";
@@ -180,7 +181,7 @@ export const useConnection = create<State>((set, get) => ({
       // machine that can't take the files still connects.
       void booted
         .then(() => (stale() ? undefined : prepareAutomation(client, password, info)))
-        .catch((e) => console.warn("schedules:", e));
+        .catch((e) => console.warn("agent tools:", e));
 
       stream = startEventStream(client, {
         onEvent: (e) => {
@@ -233,13 +234,21 @@ export const useConnection = create<State>((set, get) => ({
 }));
 
 /**
- * Install the agent schedule tool on a fresh connection, unless the user
- * turned agent schedules off on this machine. `info` is from `client.info()`,
- * so the runner's URL is built from the server's own first address.
+ * Install Otto's agent tools on a fresh connection: the `present` tool (which
+ * shows artifacts, changes nothing, and so is always on), and the schedule
+ * tool unless the user turned agent schedules off on this machine. `info` is
+ * from `client.info()`, so the runner's URL is built from the server's own
+ * first address. Neither failure is fatal: a machine that can't take the files
+ * still connects.
  */
 async function prepareAutomation(client: OpenCode, password: string, info: ServerInfo | null) {
-  if ((await readTeammates(client)).schedules === "off") return;
-  await prepareSchedules(client, { password, localUrl: scheduleLocalUrl(info) });
+  const schedules = (async () => {
+    if ((await readTeammates(client)).schedules === "off") return;
+    await prepareSchedules(client, { password, localUrl: scheduleLocalUrl(info) });
+  })();
+  const [present, timed] = await Promise.allSettled([preparePresent(client), schedules]);
+  if (present.status === "rejected") console.warn("present:", present.reason);
+  if (timed.status === "rejected") console.warn("schedules:", timed.reason);
 }
 
 /** One quiet sentence for the store; the UI shows it, nothing toasts it. */

@@ -33,6 +33,7 @@ export type ToolKind =
   | "todo"
   | "session"
   | "memory"
+  | "present"
   | "other";
 
 /** `opencode.session_rename:2` → `session_rename`; lowercased, last namespace segment, no dedup suffix. */
@@ -71,6 +72,7 @@ const KINDS: Record<string, ToolKind> = {
   session_rename: "session",
   session_move: "session",
   models: "session",
+  present: "present",
 };
 
 export function toolKind(name?: string): ToolKind {
@@ -88,7 +90,7 @@ export function toolKind(name?: string): ToolKind {
 }
 
 /** Coarse groups for the "Edited 2 files · ran 3 commands" summary. */
-export type ToolCategory = "read" | "edit" | "search" | "run" | "web" | "task" | "think" | "memory" | "other";
+export type ToolCategory = "read" | "edit" | "search" | "run" | "web" | "task" | "think" | "memory" | "show" | "other";
 
 export function toolCategory(name: string): ToolCategory {
   switch (toolKind(name)) {
@@ -115,6 +117,8 @@ export function toolCategory(name: string): ToolCategory {
       return "think";
     case "memory":
       return "memory";
+    case "present":
+      return "show";
     default:
       return "other";
   }
@@ -492,6 +496,11 @@ export function toolLabel(b: ToolBlock): { verb: string; target: string; path?: 
       const named = [...counts].slice(0, 3).map(([t, n]) => (n > 1 ? `${normalizeToolName(t)} ×${n}` : normalizeToolName(t)));
       return { verb: "Ran script", target: named.join(", ") + (counts.size > 3 ? ` +${counts.size - 3}` : "") };
     }
+    case "present": {
+      // What it showed, named the way the artifact list names it.
+      const source = str(input.source) ?? "";
+      return { verb: done ? "Presented" : "Present", target: str(input.title) ?? (source.startsWith("<") ? "Markup" : base(source)), path: source && !source.startsWith("<") && !/^https?:\/\//i.test(source) ? source : undefined };
+    }
     case "todo":
       return { verb: "Updated plan", target: "" };
     case "session": {
@@ -548,6 +557,8 @@ export function toolDoing(b: ToolBlock): string {
       // An app at work says itself ("Using Gmail"); other code is just a script.
       return /^(Using|Waiting) /.test(verb) ? say(verb) : "Running a script";
     }
+    case "present":
+      return say("Showing");
     case "todo":
       return "Planning";
     case "session":
@@ -570,6 +581,7 @@ const PHRASE: Record<ToolCategory, [string, string]> = {
   task: ["delegated", "task"],
   think: ["planned", "step"],
   memory: ["used memory", "time"],
+  show: ["showed", "artifact"],
   other: ["used", "tool"],
 };
 
@@ -605,7 +617,7 @@ export function summarizeTools(blocks: Block[]): string {
     } else if (b.kind === "reasoning") thoughts += 1;
   }
   if (edited.size) counts.set("edit", edited.size);
-  const order: ToolCategory[] = ["edit", "read", "search", "run", "web", "task", "think", "memory", "other"];
+  const order: ToolCategory[] = ["edit", "read", "search", "run", "web", "task", "think", "memory", "show", "other"];
   const parts: string[] = [];
   if (thoughts) parts.push(`thought ${thoughts === 1 ? "once" : `${thoughts} times`}`);
   if (browser) parts.push(`used the browser${browser === 1 ? "" : ` (${browser} steps)`}`);

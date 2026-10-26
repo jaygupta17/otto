@@ -6,6 +6,7 @@ import { Sidebar } from "./Sidebar";
 import { Home } from "./Home";
 import { SessionView } from "./SessionView";
 import { SidePanel } from "../panel/SidePanel";
+import { Dock } from "../panel/Dock";
 import { SchedulesView } from "../schedules/SchedulesView";
 import { useShortcuts } from "../../hooks/useShortcuts";
 
@@ -14,9 +15,10 @@ const ease = { type: "tween", duration: 0.22, ease: [0.22, 1, 0.36, 1] } as cons
 
 /**
  * Desktop / tablet layout:
- *   sidebar · chat · [tools panel]
+ *   sidebar · chat · [tools panel] · dock
  * Regions sit flush to the window edges, split by hairlines, each a flat
- * solid surface (styles.css → Materials).
+ * solid surface (styles.css → Materials). The dock is the rightmost column
+ * and never moves; the panel opens and closes to its left.
  */
 export function AppShell({ compact = false }: { compact?: boolean }) {
   const sidebarOpen = useUI((s) => s.sidebarOpen);
@@ -24,7 +26,6 @@ export function AppShell({ compact = false }: { compact?: boolean }) {
   const activeId = useChat((s) => s.activeId);
   const view = useUI((s) => s.view);
   const root = useChat((s) => (s.activeId ? s.sessions[s.activeId]?.location.directory : null) ?? s.projectDir ?? s.homeDir);
-  const rowRef = useRef<HTMLDivElement>(null);
   // A session started from home takes home's place: same key, so it swaps in
   // without a fade (which would blank the screen between prompt and message).
   const starting = useChat(startingSession);
@@ -43,7 +44,7 @@ export function AppShell({ compact = false }: { compact?: boolean }) {
         </div>
       </motion.aside>
 
-      <div ref={rowRef} className="relative z-[1] flex h-full min-w-0 flex-1">
+      <div className="relative z-[1] flex h-full min-w-0 flex-1">
         <main className="surface-panel relative h-full min-w-0 flex-1 overflow-hidden">
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
@@ -60,7 +61,8 @@ export function AppShell({ compact = false }: { compact?: boolean }) {
           </AnimatePresence>
         </main>
 
-        <SidePanel root={root} sessionId={activeId} rowRef={rowRef} />
+        <SidePanel root={root} sessionId={activeId} />
+        <Dock />
       </div>
     </div>
   );

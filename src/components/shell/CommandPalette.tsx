@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "motion/react";
-import { AlarmClock, Bot, Cloud, CornerDownLeft, FolderTree, Keyboard, MessageSquare, Moon, PanelLeft, Plus, Search, Settings, Square, SquarePen, Sun, Monitor, Gauge, Undo2, Redo2, GitFork, Layers, SquareTerminal, Globe, BookOpen, Bookmark } from "lucide-react";
+import { AlarmClock, Bot, Cloud, CornerDownLeft, Image as ImageIcon, Keyboard, MessageSquare, Moon, PanelLeft, Plus, Search, Settings, Square, SquarePen, Sun, Monitor, Gauge, Undo2, Redo2, GitFork, Layers, SquareTerminal, Bookmark } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { sortedSessions, useChat } from "../../state/chat";
@@ -83,12 +83,11 @@ export function CommandPalette() {
       { id: "new", group: "Actions", label: "New session", keys: "⌘N", icon: <SquarePen size={15} />, run: close(() => chat.open(null)) },
       { id: "scheduled", group: "Actions", label: "Scheduled tasks", icon: <AlarmClock size={15} />, run: close(() => ui.setView("schedules")) },
       { id: "sidebar", group: "Actions", label: "Toggle sidebar", keys: "⌘B", icon: <PanelLeft size={15} />, run: close(() => ui.toggleSidebar()) },
-      { id: "p-files", group: "Panels", label: "Files", keys: "⌘⇧E", icon: <FolderTree size={15} />, run: close(() => ui.togglePanel("files")) },
+      { id: "p-artifact", group: "Panels", label: "Artifact", keys: "⌘⇧A", icon: <ImageIcon size={15} />, run: close(() => ui.togglePanel("artifact")) },
       { id: "p-term", group: "Panels", label: "Terminal", keys: "⌃`", icon: <SquareTerminal size={15} />, run: close(() => ui.togglePanel("terminal")) },
       { id: "p-term-new", group: "Panels", label: "New terminal", icon: <SquareTerminal size={15} />, run: close(() => { ui.openPanel("terminal"); void useTerminals.getState().create(currentDir() ?? undefined); }) },
-      { id: "p-browser", group: "Panels", label: "Browser", keys: "⌘⇧B", icon: <Globe size={15} />, run: close(() => ui.togglePanel("browser")) },
+      { id: "p-browser", group: "Panels", label: "The agent's screen", keys: "⌘⇧B", icon: <Monitor size={15} />, run: close(() => ui.togglePanel("browser")) },
       { id: "p-context", group: "Panels", label: "Context and changes", keys: "⌘⇧I", icon: <Gauge size={15} />, run: close(() => ui.togglePanel("context")) },
-      { id: "p-project", group: "Panels", label: "Project instructions", keys: "⌘⇧J", icon: <BookOpen size={15} />, run: close(() => ui.togglePanel("project")) },
       { id: "p-memory", group: "Panels", label: "Memory", keys: "⌘⇧M", icon: <Bookmark size={15} />, run: close(() => ui.togglePanel("memory")) },
       // A model with one effort level has nothing to cycle: the command would only toast.
       ...(canEffort ? [{ id: "effort", group: "Actions" as const, label: "Cycle thinking effort", keys: "⌃T", icon: <Gauge size={15} />, run: close(cycleEffort) }] : []),

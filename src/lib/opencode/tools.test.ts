@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { ToolBlock } from "./projection";
-import { subagentOf, toolDoing } from "./tools";
+import { subagentOf, summarizeTools, toolDoing, toolKind, toolLabel } from "./tools";
 
 const call = (name: string, input: Record<string, unknown>) => ({ kind: "tool", key: `tool:${name}`, id: name, name, status: "running", input, started: 0 }) as unknown as ToolBlock;
 
@@ -28,5 +28,31 @@ describe("subagentOf", () => {
     expect(subagentOf({ ...started, status: "completed" }).background).toBe(true);
     expect(subagentOf({ ...started, status: "completed", metadata: { sessionID: "ses_kid", status: "completed" } }).background).toBe(false);
     expect(subagentOf(call("subagent", { agent: "scout", background: true })).background).toBe(true);
+  });
+});
+
+describe("present", () => {
+  test("is its own kind, not a plugin tool we don't know", () => {
+    expect(toolKind("present")).toBe("present");
+    expect(toolKind("otto.present")).toBe("present");
+    expect(toolKind("present_file")).toBe("other");
+  });
+
+  test("the step says what was shown", () => {
+    expect(toolDoing(call("present", { source: "out/cover.png" }))).toBe("Showing cover.png");
+    const done = { ...call("present", { source: "out/cover.png" }), status: "completed" } as ToolBlock;
+    expect(toolLabel(done)).toMatchObject({ verb: "Presented", target: "cover.png", path: "out/cover.png" });
+  });
+
+  test("a title wins, and markup has no path", () => {
+    const done = { ...call("present", { source: "<h1>hi</h1>", title: "Cover" }), status: "completed" } as ToolBlock;
+    expect(toolLabel(done)).toMatchObject({ verb: "Presented", target: "Cover", path: undefined });
+  });
+});
+
+describe("what a run says it did", () => {
+  test("a presentation counts as an artifact, not an unknown tool", () => {
+    const done = { ...call("present", { source: "out/cover.png" }), status: "completed" } as ToolBlock;
+    expect(summarizeTools([done])).toBe("Showed 1 artifact");
   });
 });

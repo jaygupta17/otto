@@ -6,6 +6,25 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 ## [Unreleased]
 
+### Added
+
+- **The dock.** The panel's navigation is a vertical column of five icons at the window's right edge, and it never moves: Artifact, Screen, Terminal, Context and Memory open to the left of it, and clicking the icon you're on closes the panel. One control, one place, both directions — the button that opens is the button that closes. Hover an icon for its name and shortcut (⌘⇧A, ⌘⇧B, ⌃\`, ⌘⇧I, ⌘⇧M); ⌘⇧\\ still shows or hides the panel.
+- **Artifacts.** Agents have a new `present` tool: they show a file, a page, a URL or a bit of markup in the panel instead of describing it. Images fit the panel, HTML and URLs are framed (sandboxed), text and PDFs read like a file, and anything else is a name, a size and a save button. The list holds what this conversation has shown, newest first.
+- A dot on the Artifact icon (or the phone's `…`) when something has been shown that you haven't looked at.
+
+### Changed
+
+- The panel keeps one width for every surface, remembered, instead of resizing as you switch.
+- A surface's header is now just its name and its own controls. Expand, close and the surface menu are gone: the dock does all three.
+- The panel is no longer "expanded over the chat": drag its edge for more room.
+- Browser is the agent's screen only. Previewing a page you want to see is an artifact now.
+- Clicking a file path in chat, a change in Context, or a localhost link opens it in Artifact.
+
+### Removed
+
+- The Files surface and its file tree. Agents show what matters with `present`; there's no filesystem to browse.
+- The chat header's panel button, the panel's expand and close buttons, and the surface menu.
+
 ## [0.19.1] - 2026-10-26
 
 ### Changed

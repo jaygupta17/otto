@@ -27,7 +27,7 @@ It runs on macOS, Windows, Linux, iOS and Android, built with [Tauri 2](https://
 - **Connect your apps.** Gmail, Calendar, Slack, Notion, GitHub and more through [Composio](https://composio.dev), with per-app permissions.
 - **Let them remember you.** Teammates keep notes about you and your work, and you can read and edit them.
 - **Schedule work.** A morning summary on weekdays, dependency updates every night. Schedules are cron jobs on the agent machine, so they run with Otto closed.
-- **See what they see.** A side panel with the project's files (with image and markdown previews), terminals that run on the agent machine, a browser preview and, on Boat, the agent's own screen, which you can take control of.
+- **See what they made.** Agents show a page, a screenshot, a report or a URL in a panel beside the chat — images fit the space, pages are framed, files read like files — instead of describing them. The same panel holds terminals that run on the agent machine and, on Boat, the agent's own screen, which you can take control of.
 - **Share into Otto.** Attach files to a message, or share from any Android app.
 
 <img src="assets/readme/summary.webp" alt="Juno's summary: who did what, the files that changed and the tests that pass" />
@@ -147,8 +147,8 @@ See [RELEASING.md](RELEASING.md) for the full flow. The [Release workflow](.gith
 
 ```
 src/
-  components/         UI: shell, chat, panel (files, terminal, browser), settings,
-                      schedules, onboarding, mobile, share
+  components/         UI: shell, chat, panel (dock, artifacts, terminal, screen),
+                      settings, schedules, onboarding, mobile, share
   lib/opencode/       OpenCode v2 client, event stream, timeline projection, config files
   lib/providers/      Boat, boxd, E2B, Daytona, this computer, and the setup/repair flow
   lib/flock/          The teammates' birds
@@ -156,6 +156,7 @@ src/
   lib/memory.ts       What teammates remember about you
   lib/composio.ts     Connected apps
   lib/schedules.ts    Scheduled tasks (cron + runner script on the agent machine)
+  lib/artifacts.ts    What an agent's `present` call is, and how it may be shown
   lib/permissions.ts  Agent permission rules editor model
   state/              Zustand stores (connection, chat, workspaces, teammates, ui, ...)
 src-tauri/            Rust side: plugins, keychain, local server, app config, icons

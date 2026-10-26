@@ -10,6 +10,7 @@ import { initUpdates } from "./state/updates";
 import { initShare } from "./state/share";
 import { initViewport } from "./lib/viewport";
 import { useCompact, useOsReducedMotion } from "./hooks/useMedia";
+import { usePresentRecorder } from "./hooks/usePresentRecorder";
 import { Onboarding } from "./components/onboarding/Onboarding";
 import { AppShell } from "./components/shell/AppShell";
 import { MobileApp } from "./components/mobile/MobileApp";
@@ -36,6 +37,8 @@ export default function App() {
   const addOpen = useUI((s) => s.addWorkspaceOpen);
   const setAdd = useUI((s) => s.setAddWorkspace);
   const [booted, setBooted] = useState(false);
+  // The agent's `present` calls become the session's artifacts (lib/artifacts.ts).
+  usePresentRecorder();
 
   useEffect(() => {
     initViewport();

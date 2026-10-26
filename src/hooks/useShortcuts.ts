@@ -8,7 +8,7 @@ import { layerOpen } from "../lib/layers";
 /** ⌘ on macOS, Ctrl elsewhere. */
 export const isMod = (e: KeyboardEvent | React.KeyboardEvent) => (isMac() ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey);
 
-/** Mac-style key label ("⌘⇧E") as this platform spells it ("Ctrl+Shift+E" off macOS). */
+/** Mac-style key label ("⌘⇧A") as this platform spells it ("Ctrl+Shift+A" off macOS). */
 export function kbd(keys: string): string {
   if (isMac()) return keys;
   return keys
@@ -58,16 +58,15 @@ export const SHORTCUTS: Shortcut[] = [
   { keys: "Enter", label: "While working: steer or queue", group: "Composer" },
   { keys: "Esc", label: "Stop, or leave the composer", group: "Composer" },
   { keys: "⌘B", label: "Toggle sidebar", group: "Panels" },
-  { keys: "⌘⇧E", label: "Files", group: "Panels" },
+  { keys: "⌘⇧A", label: "Artifact", group: "Panels" },
   { keys: "⌃`", label: "Terminal", group: "Panels" },
-  { keys: "⌘⇧B", label: "Browser", group: "Panels" },
+  { keys: "⌘⇧B", label: "The agent's screen", group: "Panels" },
   { keys: "⌘⇧I", label: "Context and changes", group: "Panels" },
-  { keys: "⌘⇧J", label: "Project instructions", group: "Panels" },
   { keys: "⌘⇧M", label: "Memory", group: "Panels" },
   { keys: "⌘⇧\\", label: "Show or hide the panel", group: "Panels" },
 ];
 
-const PANEL_KEYS: Record<string, PanelSurface> = { e: "files", b: "browser", i: "context", j: "project", m: "memory" };
+const PANEL_KEYS: Record<string, PanelSurface> = { a: "artifact", b: "browser", i: "context", m: "memory" };
 
 export function useShortcuts() {
   useEffect(() => {

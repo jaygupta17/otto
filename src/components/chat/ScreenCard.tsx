@@ -3,6 +3,7 @@ import { memo, useMemo, useState } from "react";
 import { browserSteps, shortUrl } from "../../lib/browserSteps";
 import type { Block } from "../../lib/opencode/projection";
 import { useComputer } from "../../state/computer";
+import { useUI } from "../../state/ui";
 import { AgentClock } from "../ui/AgentClock";
 import { Button, IconButton } from "../ui/Button";
 import { FocusButton, OnScreenNote, ScreenFrame, useLiveTarget, useScreenStream } from "../panel/LiveScreen";
@@ -57,7 +58,7 @@ export const ScreenCard = memo(function ScreenCard({ blocks, live, sessionId }: 
               <div className="flex items-center gap-2 text-[12px] text-white/60">
                 <PanelRight size={13} /> Showing in the panel
               </div>
-              <Button size="sm" variant="glass" onClick={() => useComputer.getState().setView("preview")}>
+              <Button size="sm" variant="glass" onClick={() => useUI.getState().closePanel()}>
                 Watch here
               </Button>
             </div>

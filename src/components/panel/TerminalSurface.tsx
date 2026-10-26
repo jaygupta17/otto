@@ -42,7 +42,7 @@ export function TerminalSurface({ root }: { root: string | null }) {
       >
         <div className="no-drag scroll-quiet flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto" role="tablist" aria-label="Terminals">
           {tabs.length === 0 && (
-            <PanelTitle surface="terminal" />
+            <PanelTitle label="Terminal" />
           )}
           {tabs.map((t) => {
             const on = t.id === activeId;

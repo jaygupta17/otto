@@ -19,7 +19,6 @@ import { Popover, MenuItem } from "../ui/Popover";
 import { ModelSelect } from "../settings/ModelSelect";
 import { Hint } from "../ui/Tooltip";
 import { Sheet } from "../ui/Sheet";
-import { PanelToggle } from "../panel/SidePanel";
 import { kbd } from "../../hooks/useShortcuts";
 import { PageTitle, TopBar, useBigTitle } from "../ui/Hero";
 import { Pip } from "../ui/Pip";
@@ -100,8 +99,7 @@ export function SchedulesView({ compact = false }: { compact?: boolean }) {
             </IconButton>
           )}
           <div className="flex-1" data-tauri-drag-region />
-          <PanelToggle />
-        </header>
+          </header>
       )}
       <div data-scroll-root onScroll={compact ? onScroll : undefined} className={`scroll-quiet relative min-h-0 flex-1 overflow-y-auto ${compact ? "safe-top" : ""}`}>
         {compact && (

@@ -1,6 +1,6 @@
 /**
- * The agent's screen, as the Browser panel shows it: which view is up, and
- * whether the person or the agent is driving.
+ * The agent's screen, as the Browser panel shows it, and whether the person or
+ * the agent is driving.
  *
  * Watching is the default; the live view ignores input until the person
  * takes control. Taking control while the agent is mid-run pauses it (an
@@ -12,14 +12,10 @@ import { asksFor, useChat, type FormLite } from "./chat";
 import { useUI } from "./ui";
 import { asHandoff, handoffAnswer, type Handoff } from "../lib/handoff";
 
-export type BrowserView = "preview" | "screen";
-
 const RESUME =
   "I took over the screen for a moment and I'm done. Things may have changed, so look again first (`otto-browser read` or `otto-browser tabs` for the browser) and then carry on with the task.";
 
 interface ComputerState {
-  view: BrowserView;
-  setView(v: BrowserView): void;
   /** The person is driving the live view. */
   control: boolean;
   /** The session paused when the person took control mid-run. */
@@ -61,10 +57,6 @@ export function useHandoff(sessionId: string | null | undefined): Handoff | null
 }
 
 export const useComputer = create<ComputerState>((set, get) => ({
-  view: "preview",
-  setView(view) {
-    set({ view });
-  },
   control: false,
   paused: null,
   opened: 0,
@@ -78,7 +70,7 @@ export const useComputer = create<ComputerState>((set, get) => ({
   },
 
   showScreen() {
-    set({ view: "screen", opened: get().opened + 1 });
+    set({ opened: get().opened + 1 });
     useUI.getState().openPanel("browser");
   },
 
@@ -86,7 +78,7 @@ export const useComputer = create<ComputerState>((set, get) => ({
     const ui = useUI.getState();
     // Driving gets the whole window. On a computer the panel opens behind it, so leaving full screen keeps the screen
     // in view; the phone goes back to the chat, where the screen card picks the stream up.
-    set({ view: "screen", control: true, focus: true });
+    set({ control: true, focus: true });
     ui.openPanel("browser");
     const chat = useChat.getState();
     const sid = sessionId ?? chat.activeId;

@@ -2,7 +2,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { ArrowRightToLine, ArrowUpRight, ChevronDown, CornerDownRight, FileDiff as FileDiffIcon, Gauge, Layers, Square, SquarePen, SquareTerminal, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { learnParents, revertIndex, useChat } from "../../state/chat";
-import { useUI } from "../../state/ui";
+import { showFile } from "../../state/artifacts";
 import { useExtensions } from "../../state/extensions";
 import { useMemory } from "../../state/memory";
 import { freshThread } from "../../lib/actions";
@@ -459,7 +459,7 @@ export function Changes({ sessionId, onOpen, fill = false }: { sessionId: string
             <button
               key={f.file}
               onClick={() => {
-                if (f.status !== "deleted") useUI.getState().openInEditor(f.file.startsWith("/") ? f.file : `${root.replace(/\/$/, "")}/${f.file}`);
+                if (f.status !== "deleted") showFile(root, f.file.startsWith("/") ? f.file : `${root.replace(/\/$/, "")}/${f.file}`);
                 onOpen?.();
               }}
               className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[12px] hover:bg-hover"

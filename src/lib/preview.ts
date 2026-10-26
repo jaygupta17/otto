@@ -9,10 +9,11 @@
  *   custom         the same host as the agent server, on that port
  */
 import { useWorkspaces, secretKeys, type Workspace } from "../state/workspaces";
+import { useChat } from "../state/chat";
+import { useArtifacts } from "../state/artifacts";
 import { secrets } from "./secrets";
 import { OPENCODE_PORT } from "./providers/boat";
 import { openExternal } from "./platform";
-import { useUI } from "../state/ui";
 
 const cache = new Map<string, string>();
 
@@ -81,60 +82,16 @@ export async function previewUrl(port: number): Promise<string> {
   return url;
 }
 
-/** Resolve a typed address: local URLs go through the provider, others pass through. */
-export async function resolveAddress(raw: string): Promise<string> {
-  const t = raw.trim();
-  if (/^\d{2,5}$/.test(t)) return previewUrl(Number(t));
-  const local = localPort(t);
-  if (local) {
-    const st = useWorkspaces.getState();
-    const ws = st.workspaces.find((w) => w.id === st.activeId);
-    if (ws && agentIsLocal(ws)) return /^\w+:\/\//.test(t) ? t : `http://${t}`;
-    return (await previewUrl(local.port)) + local.rest;
-  }
-  if (/^\w+:\/\//.test(t)) return t;
-  return /\s/.test(t) || !/\./.test(t) ? `https://duckduckgo.com/?q=${encodeURIComponent(t)}` : `https://${t}`;
-}
-
-/** Ports with something listening on the agent machine (minus Otto's own). */
-export const IGNORED_PORTS = new Set([OPENCODE_PORT, 49983, 22, 53]);
-
-function agentPort() {
-  const st = useWorkspaces.getState();
-  const ws = st.workspaces.find((w) => w.id === st.activeId);
-  try {
-    return ws ? Number(new URL(ws.baseUrl).port) || null : null;
-  } catch {
-    return null;
-  }
-}
-
-export function parseListening(out: string): number[] {
-  const ports = new Set<number>();
-  for (const line of out.split("\n")) {
-    // ss: "LISTEN 0 511 *:5173 *:*"  /  netstat: "tcp 0 0 0.0.0.0:3000 0.0.0.0:* LISTEN"
-    const cols = line.trim().split(/\s+/);
-    for (const c of cols) {
-      const m = c.match(/[:.](\d{2,5})$/);
-      if (m && /^(\*|0\.0\.0\.0|127\.0\.0\.1|\[?::\]?|\[::1\]|\[::ffff:[\d.]+\])[:.]/.test(c)) {
-        const p = Number(m[1]);
-        // Skip system ports, the OS's ephemeral range, and the agent itself.
-        if (p >= 1024 && p < 32768 && !IGNORED_PORTS.has(p) && p !== agentPort()) ports.add(p);
-        break;
-      }
-    }
-  }
-  return [...ports].sort((a, b) => a - b);
-}
-
-export const LISTEN_COMMAND =
-  'if [ "$(uname)" = Darwin ]; then netstat -an -p tcp; else ss -ltn 2>/dev/null || netstat -ltn 2>/dev/null; fi | grep -i listen | head -80';
-
 /**
- * Open a link from chat or a terminal. `localhost` links point at the agent
- * machine, so they open in the browser panel; anything else opens outside.
+ * Open a link from chat, a link card, or a terminal. `localhost` links point
+ * at the agent machine, so they become an artifact (the Artifact surface goes
+ * through the provider's port forwarding to frame them); anything else opens
+ * outside the app.
  */
 export function openLink(href: string) {
-  if (localPort(href)) useUI.getState().openInBrowser(href);
-  else void openExternal(href);
+  if (localPort(href)) {
+    const sid = useChat.getState().activeId;
+    if (sid) return useArtifacts.getState().showUrl(sid, href);
+  }
+  void openExternal(href);
 }

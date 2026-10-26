@@ -16,46 +16,28 @@
 import type { OpenCode } from "./opencode/client";
 import { readGlobalConfig, updateGlobalConfig, type GlobalConfig } from "./opencode/config";
 import type { PermissionRule } from "./permissions";
+import { readHome, toolPackageJson, toolPluginDir, toolPluginInstalled, withToolPlugin, withoutToolPlugin, writeIfChanged } from "./agentTools";
 
 export const SCHEDULE_PLUGIN_ID = "otto.schedules";
 /** Under `<home>/.otto`. */
 export const SCHEDULE_PLUGIN_DIR = "agent-tool/otto-schedule";
+/** The folder's name, as `agentTools` sees it. */
+const SCHEDULE_PLUGIN_NAME = "otto-schedule";
 export const SCHEDULE_PLUGIN_FILE = "index.js";
 export const SCHEDULE_TOOL = "otto_schedule";
 
-type PluginEntry = string | { package?: string; options?: Record<string, unknown> };
-
-/** An entry for the folder Otto installs this plugin into. */
-const isScheduleEntry = (e: PluginEntry) => {
-  const spec = typeof e === "string" ? e : e?.package;
-  if (typeof spec !== "string") return false;
-  const path = spec.replace(/^file:\/\//, "").replace(/\/+$/, "");
-  return /(^|\/)agent-tool\/otto-schedule$/.test(path);
-};
-
 /** One entry, pointing at the installed folder, under the key OpenCode 2 reads. */
 export function withSchedulePlugin(cfg: GlobalConfig, dir: string): GlobalConfig {
-  const next = withoutSchedulePlugin(cfg);
-  const plugins = Array.isArray(next.plugins) ? (next.plugins as PluginEntry[]) : [];
-  return { ...next, plugins: [...plugins, { package: `file://${dir}`, options: {} }] };
+  return withToolPlugin(cfg, dir, SCHEDULE_PLUGIN_NAME);
 }
 
 /** Drops every copy, including an old entry under the v1 `plugin` key. */
 export function withoutSchedulePlugin(cfg: GlobalConfig): GlobalConfig {
-  const next = { ...cfg };
-  for (const key of ["plugins", "plugin"] as const) {
-    const list = next[key];
-    if (!Array.isArray(list)) continue;
-    const kept = (list as PluginEntry[]).filter((e) => !isScheduleEntry(e));
-    if (kept.length) next[key] = kept;
-    else delete next[key];
-  }
-  return next;
+  return withoutToolPlugin(cfg, SCHEDULE_PLUGIN_NAME);
 }
 
 export function schedulePluginInstalled(cfg: GlobalConfig, dir: string): boolean {
-  const entries = [cfg.plugins, cfg.plugin].flatMap((l) => (Array.isArray(l) ? (l as PluginEntry[]) : [])).filter(isScheduleEntry);
-  return entries.length === 1 && typeof entries[0] === "object" && (entries[0] as { package?: string }).package === `file://${dir}`;
+  return toolPluginInstalled(cfg, dir, SCHEDULE_PLUGIN_NAME);
 }
 
 /**
@@ -80,7 +62,7 @@ export function withSchedulePermissions(cfg: GlobalConfig): GlobalConfig {
 }
 
 export function schedulePluginPackageJson(): string {
-  return JSON.stringify({ name: "otto-schedule", version: "1.0.0", private: true, type: "module", exports: `./${SCHEDULE_PLUGIN_FILE}` }, null, 2) + "\n";
+  return toolPackageJson(SCHEDULE_PLUGIN_NAME);
 }
 
 let source: string | null = null;
@@ -90,25 +72,9 @@ export function schedulePluginSource(): string {
   return source;
 }
 
-async function homeDir(client: OpenCode): Promise<string> {
-  const r = await client.exec(`printf '%s\\n' "\${OTTO_HOME:-$HOME}"`);
-  const home = r.output.trim().split("\n")[0];
-  if (!home) throw new Error("The server didn't report a home folder.");
-  return home;
-}
-
 let dirCache = new WeakMap<OpenCode, string>();
 export function schedulePluginDir(home: string): string {
-  return `${home.replace(/\/$/, "")}/.otto/${SCHEDULE_PLUGIN_DIR}`;
-}
-
-async function writeIfChanged(client: OpenCode, path: string, body: string) {
-  try {
-    if ((await client.readFile(path)) === body) return;
-  } catch (e) {
-    if ((e as { status?: number }).status !== 404) throw e;
-  }
-  await client.writeFile(path, body);
+  return toolPluginDir(home, SCHEDULE_PLUGIN_NAME);
 }
 
 const installed = new WeakMap<OpenCode, Promise<string>>();
@@ -122,7 +88,7 @@ export function ensureSchedulePlugin(client: OpenCode): Promise<string> {
   const hit = installed.get(client);
   if (hit) return hit;
   const pending = (async () => {
-    const dir = schedulePluginDir(await homeDir(client));
+    const dir = schedulePluginDir(await readHome(client));
     dirCache.set(client, dir);
     await writeIfChanged(client, `${dir}/package.json`, schedulePluginPackageJson());
     await writeIfChanged(client, `${dir}/${SCHEDULE_PLUGIN_FILE}`, schedulePluginSource());

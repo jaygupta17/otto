@@ -4,8 +4,8 @@
  * by file, the answers to a question. Arguments are only ever shown as
  * labelled fields, for tools we don't know.
  */
-import { AlertTriangle, Bookmark, Check, Circle, CircleDot, CircleX, ExternalLink, FileWarning } from "lucide-react";
-import { memo, useMemo, useState } from "react";
+import { AlertTriangle, Bookmark, Check, Circle, CircleDot, CircleX, ExternalLink, FileWarning, Image as ImageIcon } from "lucide-react";
+import { memo, useContext, useMemo, useState } from "react";
 import {
   asJson,
   diagnosticsFor,
@@ -29,12 +29,15 @@ import {
   type ToolBlock,
 } from "../../lib/opencode/tools";
 import { AgentClock } from "../ui/AgentClock";
+import { useArtifacts } from "../../state/artifacts";
+import { useChat } from "../../state/chat";
+import { useUI } from "../../state/ui";
 import { Markdown } from "./Markdown";
 import { useMemory } from "../../state/memory";
 import { useTeammates } from "../../state/teammates";
 import type { Teammate } from "../../lib/teammates";
 import { AgentMark } from "../ui/Bird";
-import { Code, CopyButton, DiffView, FileIcon, OpenButton, OutputView, PathLabel, ScrollBox, Section, SplitToggle, langOf, useOpenFile, useSplitDiff } from "./ToolParts";
+import { Code, CopyButton, DiffView, FileIcon, OpenButton, OutputView, PathLabel, ScrollBox, Section, SplitToggle, ThreadSession, langOf, useOpenFile, useSessionRoot, useSplitDiff } from "./ToolParts";
 
 type Json = Record<string, unknown>;
 const str = (v: unknown) => (typeof v === "string" && v.trim() ? v : undefined);
@@ -78,6 +81,8 @@ function KindBody({ b, input }: { b: ToolBlock; input: Json }) {
       return <ExecuteBody b={b} input={input} />;
     case "todo":
       return <TodoBody input={input} />;
+    case "present":
+      return <PresentBody b={b} input={input} />;
     default:
       return <GenericBody b={b} input={input} />;
   }
@@ -729,6 +734,55 @@ function TodoBody({ input }: { input: Json }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// present
+// ---------------------------------------------------------------------------
+
+/**
+ * What the agent showed, and a way back to it. The artifact itself lives in
+ * the panel (it has the room); this is the receipt in the thread: what it was,
+ * where it came from, and the button that puts it back on screen.
+ */
+function PresentBody({ b, input }: { b: ToolBlock; input: Json }) {
+  const source = str(input.source) ?? "";
+  const title = str(input.title);
+  const root = useSessionRoot();
+  const thread = useContext(ThreadSession);
+  const sid = thread ?? useChat((s) => s.activeId);
+  const show = () => {
+    if (!sid) return;
+    const store = useArtifacts.getState();
+    // A helper's presentation is filed under its own session, which the chat shows.
+    const art = store.bySession[sid]?.find((a) => a.id === b.id) ?? Object.values(store.bySession).flat().find((a) => a.id === b.id);
+    if (!art) {
+      // The recorder hasn't reached this call yet (a phone that just opened the
+      // session): record it now, then show it.
+      void store.presented(b.id, input, sid, root, b.started);
+      useUI.getState().openPanel("artifact");
+      return;
+    }
+    store.select(sid, art.id);
+    useUI.getState().openPanel("artifact");
+  };
+  return (
+    <>
+      <div className="flex min-w-0 items-center gap-2 text-[12px]">
+        <ImageIcon size={13} className="shrink-0 text-muted" />
+        <span className="min-w-0 flex-1 truncate text-ink-2">{title || (source.startsWith("<") ? "Markup" : source)}</span>
+        {source && !source.startsWith("<") && <span className="hidden shrink-0 font-mono text-[11px] text-faint sm:inline">{source.length > 48 ? `${source.slice(0, 48)}…` : source}</span>}
+        {live(b) ? (
+          <span className="shrink-0 text-faint">Showing…</span>
+        ) : (
+          <button onClick={show} className="flex shrink-0 items-center gap-1.5 text-muted hover:text-ink hover:underline">
+            <ImageIcon size={12} /> Show
+          </button>
+        )}
+      </div>
+      {b.error && <ErrorBlock text={b.error} />}
+    </>
   );
 }
 
