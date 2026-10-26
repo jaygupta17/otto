@@ -13,6 +13,7 @@ any model can drive it.
   otto-browser type <ref> <text> [--replace] [--enter]
   otto-browser press <key>         Enter, Tab, Escape, ArrowDown...
   otto-browser tabs | tab <n>
+  otto-browser fit [<w> <h> | max]  shape Chrome's window to the viewer; prints JSON
 
 Installed by Otto. State lives in ~/.otto/browser.json.
 """
@@ -400,7 +401,122 @@ def cmd_tab(args):
     print(render(st, snapshot(st)))
 
 
-COMMANDS = {"open": cmd_open, "go": cmd_go, "read": cmd_read, "click": cmd_click, "type": cmd_type, "press": cmd_press, "tabs": cmd_tabs, "tab": cmd_tab}
+# ---------------------------------------------------------------- Fit
+
+# The narrowest window worth showing: Chrome won't go much below it anyway.
+FIT_MIN_W = 500
+# How large a viewer should see the page: its CSS px per desktop px, at most.
+FIT_SCALE = 0.85
+# Within this of the target, leave the window alone (no reflow for a pixel or two).
+FIT_SLACK = 24
+
+
+def run(*argv):
+    try:
+        return subprocess.run(list(argv), capture_output=True, text=True, timeout=10).stdout
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def desktop():
+    """The screen's size and the work area (the screen less any panels) as (w, h), (x, y, w, h)."""
+    for line in run("wmctrl", "-d").splitlines():
+        parts = line.split()
+        if "*" not in parts[:2] or "DG:" not in parts:
+            continue
+        sw, sh = map(int, parts[parts.index("DG:") + 1].split("x"))
+        area = (0, 0, sw, sh)
+        if "WA:" in parts:
+            i = parts.index("WA:")
+            ax, ay = map(int, parts[i + 1].split(","))
+            aw, ah = map(int, parts[i + 2].split("x"))
+            area = (ax, ay, aw, ah)
+        return (sw, sh), area
+    for line in run("xdpyinfo").splitlines():
+        if "dimensions:" in line:
+            sw, sh = map(int, line.split()[1].split("x"))
+            return (sw, sh), (0, 0, sw, sh)
+    raise Fail("Couldn't read the screen size (no wmctrl or xdpyinfo).")
+
+
+def chrome_window():
+    """Chrome's main window on the desktop as {id, x, y, w, h}, or None when it isn't up."""
+    if not endpoint():
+        return None
+    pids = set(pgrep("-x", "chrome"))
+    want = load().get("window_id")
+    found = []
+    for line in run("wmctrl", "-lpG").splitlines():
+        parts = line.split(None, 8)
+        if len(parts) < 7 or parts[1] == "-1":
+            continue
+        try:
+            wid, pid, x, y, w, h = int(parts[0], 16), int(parts[2]), *map(int, parts[3:7])
+        except ValueError:
+            continue
+        if pid in pids and w > 1 and h > 1:
+            found.append({"id": wid, "x": x, "y": y, "w": w, "h": h})
+    if not found:
+        return None
+    win = next((f for f in found if want is not None and f["id"] == int(want)), None) or max(found, key=lambda f: f["w"] * f["h"])
+    # wmctrl's x/y can be the frame's under some window managers; xwininfo has the client's.
+    out = run("xwininfo", "-id", hex(win["id"]))
+    for key, name in (("x", "Absolute upper-left X:"), ("y", "Absolute upper-left Y:"), ("w", "Width:"), ("h", "Height:")):
+        for line in out.splitlines():
+            if line.strip().startswith(name):
+                try:
+                    win[key] = int(line.split(":")[1])
+                except ValueError:
+                    pass
+    return win
+
+
+def fit_target(vw, vh, area):
+    """The window for a vw x vh viewer: None to maximize (a wide viewer), else (x, y, w, h), centred in the work area."""
+    ax, ay, aw, ah = area
+    ratio = vw / vh
+    if ratio >= 0.8 * aw / ah:
+        return None
+    w = max(FIT_MIN_W, round(vw / FIT_SCALE))
+    h = round(w / ratio)
+    if h > ah:
+        h = ah
+        w = max(FIT_MIN_W, round(h * ratio))
+    w = min(w, aw)
+    return ax + (aw - w) // 2, ay + (ah - h) // 2, w, h
+
+
+def cmd_fit(args):
+    """Shape Chrome to the viewer (`fit W H`), maximize it (`fit max`), or just report (`fit`)."""
+    (sw, sh), area = desktop()
+    win = chrome_window()
+    if win and args:
+        if args[0] == "max":
+            want = None
+        else:
+            try:
+                vw, vh = int(args[0]), int(args[1])
+            except (IndexError, ValueError):
+                raise Fail("usage: otto-browser fit [<w> <h> | max]")
+            if vw < 1 or vh < 1:
+                raise Fail("usage: otto-browser fit [<w> <h> | max]")
+            want = fit_target(vw, vh, area)
+        wid = hex(win["id"])
+        if want is None:
+            ax, ay, aw, ah = area
+            if win["w"] < aw - FIT_SLACK or win["h"] < ah - 2 * FIT_SLACK:
+                run("wmctrl", "-i", "-r", wid, "-b", "add,maximized_vert,maximized_horz")
+                time.sleep(0.3)
+                win = chrome_window() or win
+        elif abs(win["w"] - want[2]) > FIT_SLACK or abs(win["h"] - want[3]) > FIT_SLACK:
+            run("wmctrl", "-i", "-r", wid, "-b", "remove,maximized_vert,maximized_horz")
+            run("wmctrl", "-i", "-r", wid, "-e", "0,%d,%d,%d,%d" % want)
+            time.sleep(0.3)
+            win = chrome_window() or win
+    print(json.dumps({"screen": {"w": sw, "h": sh}, "window": win}))
+
+
+COMMANDS = {"open": cmd_open, "go": cmd_go, "read": cmd_read, "click": cmd_click, "type": cmd_type, "press": cmd_press, "tabs": cmd_tabs, "tab": cmd_tab, "fit": cmd_fit}
 
 
 def main(argv):

@@ -21,7 +21,7 @@ import OTTO_BROWSER from "./otto-browser.py?raw";
 
 export { OTTO_BROWSER };
 /** Bumped when the CLI or the skill changes, so connected machines get the new one. */
-export const BROWSER_KIT_VERSION = 2;
+export const BROWSER_KIT_VERSION = 3;
 const BIN = "~/.local/bin/otto-browser";
 
 /** The header that marks a `question` as a handoff. Otto keys its Take control card on it. */
@@ -50,6 +50,8 @@ This machine has Chrome on its desktop. The person can watch it live in Otto and
 Pages print as one line per element. Actionable ones start with a ref, like \`[p3:12] link "Sign in"\`. Every command that changes the page prints it again; refs from older output stop working.
 
 If you can see images and need to check the layout, \`get_window_state\` in the computer tools shows exactly what the person sees.
+
+Chrome's window may be narrow, shaped to the person's phone or panel while they watch. Leave its size alone; pages read the same.
 
 ## Hand off to the person
 

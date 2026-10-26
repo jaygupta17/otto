@@ -117,6 +117,9 @@ interface UIState {
    */
   linkPreviews: boolean;
   setLinkPreviews(v: boolean): void;
+  /** The agent's screen shows just its Chrome, shaped to the view (lib/screenFit.ts), not the whole desktop. */
+  screenFit: boolean;
+  setScreenFit(v: boolean): void;
   setTheme(t: ThemePref): void;
   toggleSidebar(v?: boolean): void;
   openSettings(tab?: UIState["settingsTab"]): void;
@@ -287,6 +290,11 @@ export const useUI = create<UIState>((set, get) => ({
     set({ linkPreviews: v });
     void kv.set("ui.linkPreviews", v);
   },
+  screenFit: true,
+  setScreenFit(v) {
+    set({ screenFit: v });
+    void kv.set("ui.screenFit", v);
+  },
 
   setTheme(theme) {
     try {
@@ -343,6 +351,7 @@ export async function initUI() {
   if ((await kv.get<boolean>("ui.homeCompact")) === false) useUI.setState({ homeCompact: false });
   if ((await kv.get<boolean>("ui.showThinking")) === false) useUI.setState({ showThinking: false });
   if ((await kv.get<boolean>("ui.linkPreviews")) === true) useUI.setState({ linkPreviews: true });
+  if ((await kv.get<boolean>("ui.screenFit")) === false) useUI.setState({ screenFit: false });
   const reduce = await kv.get<boolean>("ui.reduceMotion");
   if (typeof reduce === "boolean") useUI.setState({ reduceMotion: reduce });
   applyMotion();

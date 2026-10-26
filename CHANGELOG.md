@@ -6,6 +6,10 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 ## [Unreleased]
 
+### Changed
+
+- The agent's screen fits where you watch it. On a phone, in a narrow panel or full screen, Otto shapes the agent's Chrome window to the space you have and shows just that browser at a readable size, instead of the whole desktop shrunk to fit. The button next to full screen switches back to the whole desktop, and Otto remembers your choice. Boat machines pick up the updated browser tools the next time you connect.
+
 ## [0.18.0] - 2026-10-25
 
 ### Added

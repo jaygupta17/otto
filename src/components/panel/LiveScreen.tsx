@@ -8,9 +8,13 @@
  * is watch-only until the person takes control; a glass pane over the stream
  * swallows input until then (double-click, or tap then confirm on touch; see
  * ScreenFrame).
+ *
+ * On a phone or in a narrow panel the whole desktop would be tiny, so by
+ * default the view shapes Chrome's window to the space it has and shows just
+ * that (FitScreen, lib/screenFit.ts). "Whole desktop" puts it back.
  */
-import { AlertTriangle, AppWindow, Globe, Hand, Maximize, Minimize, MonitorPlay, RefreshCw } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { AlertTriangle, AppWindow, Globe, Hand, Maximize, Minimize, Monitor, MonitorPlay, RefreshCw } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useChat } from "../../state/chat";
 import { useComputer, useHandoff } from "../../state/computer";
 import { useUI } from "../../state/ui";
@@ -22,6 +26,7 @@ import { useTouch } from "../../hooks/useMedia";
 import { Button, IconButton } from "../ui/Button";
 import { AgentClock, Spinner } from "../ui/AgentClock";
 import { browserSteps, shortUrl } from "../../lib/browserSteps";
+import { cropLayout, fitCommand, parseFit, type Rect, type ScreenGeometry } from "../../lib/screenFit";
 import { PanelEmpty } from "./SidePanel";
 import { Pip } from "../ui/Pip";
 
@@ -142,7 +147,8 @@ export function dblclickTakes(coarsePointer: boolean, sinceNonMouseMs: number | 
 }
 
 /**
- * The stream itself, at the screen's 16:9 so there are no black bars. Watch
+ * The stream itself, at the screen's 16:9 so there are no black bars, or
+ * cropped to Chrome's window and filling its parent (`crop`). Watch
  * only (a glass pane takes the input) unless `control`. Taking control:
  * double-click on a mouse; on touch and the keyboard a tap (or Enter) only
  * arms a "Take control" button, and that button takes control — an
@@ -154,6 +160,7 @@ export function ScreenFrame({
   sessionId,
   className = "",
   maxHeight,
+  crop,
 }: {
   stream: ReturnType<typeof useScreenStream>;
   control: boolean;
@@ -161,6 +168,8 @@ export function ScreenFrame({
   className?: string;
   /** Cap on the height (CSS length); the width follows at 16:9. */
   maxHeight?: string;
+  /** Show only this part of the stream (see cropLayout). Changing it never reloads the stream. */
+  crop?: { clip: Rect; frame: Rect } | null;
 }) {
   const { load, nonce, reload } = stream;
   const frame = useRef<HTMLIFrameElement>(null);
@@ -205,8 +214,8 @@ export function ScreenFrame({
   };
   return (
     <div
-      className={`relative mx-auto aspect-video w-full overflow-hidden bg-black ${control ? "ring-2 ring-info ring-inset" : ""} ${className}`}
-      style={maxHeight ? { maxWidth: `calc(${maxHeight} * 16 / 9)` } : undefined}
+      className={`relative overflow-hidden bg-black ${crop ? "h-full w-full" : "mx-auto aspect-video w-full"} ${control ? "ring-2 ring-info ring-inset" : ""} ${className}`}
+      style={maxHeight && !crop ? { maxWidth: `calc(${maxHeight} * 16 / 9)` } : undefined}
       onPointerDown={(e) => {
         armKeyHeld.current = false;
         if (e.pointerType !== "mouse") nonMouseAt.current = performance.now();
@@ -220,17 +229,21 @@ export function ScreenFrame({
         }
       }}
     >
-      {load.state === "ready" && (
-        <iframe
-          ref={frame}
-          key={`${load.url}:${nonce}`}
-          src={load.url}
-          title="The agent's screen"
-          className="absolute inset-0 h-full w-full border-0"
-          allow="autoplay; fullscreen; clipboard-read; clipboard-write"
-          tabIndex={control ? 0 : -1}
-        />
-      )}
+      {/* Always the same elements, cropped or not, so a new crop moves the stream instead of reloading it. */}
+      <div className="absolute overflow-hidden" style={crop ? box(crop.clip) : { inset: 0 }}>
+        {load.state === "ready" && (
+          <iframe
+            ref={frame}
+            key={`${load.url}:${nonce}`}
+            src={load.url}
+            title="The agent's screen"
+            className="absolute border-0"
+            style={crop ? box(crop.frame) : { inset: 0, width: "100%", height: "100%" }}
+            allow="autoplay; fullscreen; clipboard-read; clipboard-write"
+            tabIndex={control ? 0 : -1}
+          />
+        )}
+      </div>
       {load.state === "loading" && (
         <div className="absolute inset-0 grid place-items-center">
           <div className="flex items-center gap-2 text-[12px] text-white/70">
@@ -319,6 +332,104 @@ export function ScreenFrame({
   );
 }
 
+const box = (r: Rect) => ({ left: r.x, top: r.y, width: r.w, height: r.h });
+
+/** An element's size, kept current. */
+function useSize(ref: RefObject<HTMLElement | null>) {
+  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => {
+      const w = Math.round(e.contentRect.width);
+      const h = Math.round(e.contentRect.height);
+      setSize((s) => (s && s.w === w && s.h === h ? s : { w, h }));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ref]);
+  return size;
+}
+
+/**
+ * Chrome's place on the agent's desktop, with its window shaped like `box`
+ * (or maximized for "Whole desktop"). Null until known, and always null for
+ * "Whole desktop". It shapes once per size and checks every few seconds, so
+ * a Chrome the agent opens or restarts (maximized) gets shaped too.
+ */
+export function useChromeFit(box: { w: number; h: number } | null): ScreenGeometry | null {
+  const client = useChat((s) => s.client);
+  const fit = useUI((s) => s.screenFit);
+  const [geo, setGeo] = useState<ScreenGeometry | null>(null);
+  // In steps, so dragging the panel's edge doesn't reflow the agent's page at every pixel.
+  const w = box ? Math.round(box.w / 16) * 16 : 0;
+  const h = box ? Math.round(box.h / 16) * 16 : 0;
+  useEffect(() => {
+    if (!client || (fit && (!w || !h))) return;
+    let gone = false;
+    let busy = false;
+    // The window last shaped: a different one is a Chrome that came up since.
+    let shaped: number | null = null;
+    const run = async (size?: readonly [number, number] | "max") => {
+      if (busy) return;
+      busy = true;
+      try {
+        const g = parseFit((await client.exec(fitCommand(size), { timeoutMs: 15_000 })).output);
+        if (gone || !g) return;
+        if (size) shaped = g.window?.id ?? null;
+        setGeo(g);
+        return g;
+      } catch {
+        // Keep the last geometry; the next check tries again.
+      } finally {
+        busy = false;
+      }
+    };
+    const shape = () => run(fit ? [w, h] : "max");
+    // Let a resize settle before Chrome reflows the page.
+    const first = setTimeout(() => void shape(), 400);
+    const poll = fit
+      ? setInterval(() => {
+          void run().then((g) => {
+            if (g?.window && g.window.id !== shaped) void shape();
+          });
+        }, 5000)
+      : undefined;
+    return () => {
+      gone = true;
+      clearTimeout(first);
+      clearInterval(poll);
+    };
+  }, [client, fit, w, h]);
+  return fit ? geo : null;
+}
+
+/**
+ * The stream in all the space it's given: Chrome alone, shaped to that space,
+ * or the whole desktop at 16:9 while Chrome isn't up (or for "Whole desktop").
+ */
+export function FitScreen({ stream, control, sessionId, className = "" }: { stream: ReturnType<typeof useScreenStream>; control: boolean; sessionId: string | null; className?: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const size = useSize(ref);
+  const geo = useChromeFit(size);
+  const crop = geo && size ? cropLayout(geo, size) : null;
+  return (
+    <div ref={ref} className={`flex min-h-0 items-center bg-black [container-type:size] ${className}`}>
+      <ScreenFrame stream={stream} control={control} sessionId={sessionId} maxHeight="100cqh" crop={crop} />
+    </div>
+  );
+}
+
+/** Show just the agent's Chrome, fitted to the view, or the whole desktop. */
+export function FitButton({ size = 28 }: { size?: number }) {
+  const fit = useUI((s) => s.screenFit);
+  return (
+    <IconButton label={fit ? "Show the whole desktop" : "Fit the browser to this view"} size={size} onClick={() => useUI.getState().setScreenFit(!fit)}>
+      {fit ? <Monitor size={13} /> : <AppWindow size={13} />}
+    </IconButton>
+  );
+}
+
 export function LiveScreen({ active }: { active: boolean }) {
   const control = useComputer((s) => s.control);
   const sessionId = useChat((s) => s.activeId);
@@ -329,6 +440,7 @@ export function LiveScreen({ active }: { active: boolean }) {
   const focus = useComputer((s) => s.focus);
   const playing = active && !focus;
   const stream = useScreenStream(playing);
+  const fit = useUI((s) => s.screenFit);
 
   // ...and while this one is up, the chat's inline view steps aside.
   useEffect(() => {
@@ -351,15 +463,21 @@ export function LiveScreen({ active }: { active: boolean }) {
     <div className="flex min-h-0 flex-1 flex-col">
       <ControlBar handoff={handoff} sessionId={sessionId} onReload={stream.reload} loading={stream.load.state === "loading"} />
       <AgentTab active={playing} />
-      {active && (
-        <div className="shrink-0 bg-black">
-          {focus ? (
+      {active &&
+        (focus ? (
+          <div className="shrink-0 bg-black">
             <OnScreenNote />
-          ) : (
-            <ScreenFrame stream={stream} control={control} sessionId={sessionId} maxHeight="70vh" />
-          )}
-        </div>
-      )}
+          </div>
+        ) : (
+          // Fitted, the browser takes most of the height and the steps keep a strip.
+          // One element either way, so switching doesn't reload the stream.
+          <FitScreen
+            stream={stream}
+            control={control}
+            sessionId={sessionId}
+            className={fit ? "min-h-[240px] flex-[3]" : "aspect-video max-h-[70vh] shrink-0"}
+          />
+        ))}
       <StepLog sessionId={sessionId} />
     </div>
   );
@@ -431,6 +549,7 @@ export function ControlBar({
           </div>
         </div>
         <div className="mt-2 flex flex-wrap items-center justify-end gap-1.5">
+          <FitButton />
           <FocusButton />
           <Button size="sm" variant="ghost" disabled={sending} onClick={() => run(() => useComputer.getState().cancelHandoff(handoff))}>
             Cancel
@@ -458,6 +577,7 @@ export function ControlBar({
       <IconButton label="Reconnect the stream" size={28} onClick={onReload} disabled={loading}>
         <RefreshCw size={13} />
       </IconButton>
+      <FitButton />
       <FocusButton />
       {control ? (
         <Button size="sm" variant="primary" disabled={sending} onClick={back} title={paused ? "Give the screen back and let the agent carry on" : "Give the screen back"}>
