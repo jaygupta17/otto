@@ -8,7 +8,7 @@
  * the chip is the one treatment, alone on a line or mid-sentence.
  */
 import { Globe } from "lucide-react";
-import { memo, useEffect, useState, type ReactNode } from "react";
+import { Children, createContext, isValidElement, memo, useContext, useEffect, useState, type ReactNode } from "react";
 import { useChat } from "../../state/chat";
 import { useUI } from "../../state/ui";
 import { absolutePath, codeSpanFile, pathFromHref } from "../../lib/mdLinks";
@@ -82,11 +82,43 @@ function PathChip({ path, line, abs, open }: { path: string; line?: number; abs:
   );
 }
 
-/** A path in message text: plain until it resolves, then a chip that opens the file. */
+/**
+ * Inside a link. A code span there is part of the link's label, so it stays
+ * code: a chip is an anchor of its own, and anchors don't nest.
+ */
+export const InLink = createContext(false);
+
+/** The plain text of a link's label, however it was marked up. */
+function textOf(node: ReactNode): string {
+  return Children.toArray(node)
+    .map((c) => (typeof c === "string" || typeof c === "number" ? String(c) : isValidElement<{ children?: ReactNode }>(c) ? textOf(c.props.children) : ""))
+    .join("");
+}
+
+/**
+ * A path in message text: plain until it resolves, then something that opens
+ * the file. A bare path (or a link whose label is just that path) is the chip;
+ * a link the agent gave its own words (`[the config](src/x.ts)`) keeps them,
+ * as a link that opens the file.
+ */
 export function FileLink({ href, children }: { href: string; children?: ReactNode }) {
   const { path, line, abs, exists, open } = useFileTarget(href);
-  if (!path || !exists) return <>{children}</>;
-  return <PathChip path={path} line={line} abs={abs} open={open} />;
+  if (!path || !exists) return <InLink.Provider value>{children}</InLink.Provider>;
+  const label = textOf(children).trim().replace(/^`|`$/g, "");
+  const labelled = label && label !== href.trim() && pathFromHref(label)?.path !== path;
+  if (!labelled) return <PathChip path={path} line={line} abs={abs} open={open} />;
+  return (
+    <a
+      href={href}
+      title={`${abs ?? path}${line ? `:${line}` : ""}`}
+      onClick={(e) => {
+        e.preventDefault();
+        open(path, line);
+      }}
+    >
+      <InLink.Provider value>{children}</InLink.Provider>
+    </a>
+  );
 }
 
 /**
@@ -96,6 +128,12 @@ export function FileLink({ href, children }: { href: string; children?: ReactNod
  * stays literal code.
  */
 export function InlineCode({ text, children }: { text: string; children?: ReactNode }) {
+  const inLink = useContext(InLink);
+  if (inLink) return <code>{children}</code>;
+  return <CodeChip text={text}>{children}</CodeChip>;
+}
+
+function CodeChip({ text, children }: { text: string; children?: ReactNode }) {
   const { path, line, abs, exists, open } = useFileTarget(text);
   if (!path || !exists) return <code>{children}</code>;
   return <PathChip path={path} line={line} abs={abs} open={open} />;
