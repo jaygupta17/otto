@@ -6,7 +6,7 @@ import { openLink } from "../../lib/preview";
 import { CONNECT_LINK } from "../../lib/composio";
 import { ConnectChip } from "./ConnectChip";
 import { isPathHref, pathFromHref, rehypeFileLinks, soleLink } from "../../lib/mdLinks";
-import { FileLink, InlineCode, LinkCard } from "./LinkParts";
+import { FileLink, InLink, InlineCode, LinkCard } from "./LinkParts";
 
 const plugins = [remarkGfm];
 const rehypePlugins = [rehypeFileLinks];
@@ -48,7 +48,9 @@ function makeComponents(streaming: boolean): Components {
     a: ({ href, children }) =>
       // An app's connect link (Composio) reads as a button that follows the sign-in.
       href && CONNECT_LINK.test(href) ? (
-        <ConnectChip href={href}>{children}</ConnectChip>
+        <ConnectChip href={href}>
+          <InLink.Provider value>{children}</InLink.Provider>
+        </ConnectChip>
       ) : href && pathFromHref(href) ? (
         <FileLink href={href}>{children}</FileLink>
       ) : (
@@ -59,7 +61,7 @@ function makeComponents(streaming: boolean): Components {
             if (href) openLink(href);
           }}
         >
-          {children}
+          <InLink.Provider value>{children}</InLink.Provider>
         </a>
       ),
   };

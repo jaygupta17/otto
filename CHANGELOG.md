@@ -28,6 +28,11 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 - Screenshots and the agent's screen no longer show up inline in chat. What's worth seeing, the agent presents.
 - The chat header's panel button, the panel's expand and close buttons, and the surface menu.
 
+### Fixed
+
+- A link to a file that the agent gave its own words (`[the config](src/x.ts)`) keeps those words, and opens the file, instead of turning into the path chip.
+- A file path in backticks inside a link stays part of that link instead of becoming a second link nested inside it.
+
 ## [0.19.1] - 2026-10-26
 
 ### Changed
