@@ -325,3 +325,35 @@ describe("stopping a run with messages still waiting", () => {
     useAttachments.getState().clear("ses");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Which sessions are running, after a (re)connect.
+// ---------------------------------------------------------------------------
+
+describe("running snapshot", () => {
+  test("an event for one session while the snapshot is in flight doesn't throw away the rest", async () => {
+    const raf = globalThis.requestAnimationFrame;
+    const caf = globalThis.cancelAnimationFrame;
+    globalThis.requestAnimationFrame ??= ((cb: FrameRequestCallback) => setTimeout(() => cb(0), 0)) as unknown as typeof requestAnimationFrame;
+    globalThis.cancelAnimationFrame ??= ((id: number) => clearTimeout(id)) as typeof cancelAnimationFrame;
+    let answer: (ids: string[]) => void = () => {};
+    const client = { ...bootClient([]), activeSessions: () => new Promise<string[]>((r) => (answer = r)) } as unknown as OpenCode;
+    try {
+      // `fin` is a teammate's session: its finishing alerts nobody.
+      useChat.setState({ client, busy: { fin: true }, parents: { fin: "lead" } });
+      const synced = useChat.getState().syncOnConnect();
+      // While it's asked for: another chat starts, and one ends.
+      useChat.getState().ingest({ type: "session.execution.started", data: { sessionID: "other" } } as never);
+      useChat.getState().ingest({ type: "session.execution.succeeded", data: { sessionID: "fin" } } as never);
+      await new Promise((r) => setTimeout(r, 150));
+      // The server's answer predates both events.
+      answer(["teammate", "fin"]);
+      await synced;
+      // The long-running teammate the snapshot knows about counts, and the events win for their own sessions.
+      expect(useChat.getState().busy).toEqual({ teammate: true, other: true });
+    } finally {
+      globalThis.requestAnimationFrame = raf;
+      globalThis.cancelAnimationFrame = caf;
+    }
+  });
+});

@@ -65,14 +65,10 @@ async function open(browser, sid) {
   await page.goto(APP);
   // Settled: its row in the sidebar, its conversation loaded, the shell list read.
   await page.locator('[aria-current="true"]').first().waitFor({ timeout: 30000 });
-  await page.waitForFunction(
-    async (sid) => {
-      const { useChat } = await import("/src/state/chat.ts");
-      return !!useChat.getState().timelines[sid]?.loaded;
-    },
-    sid,
-    { timeout: 30000, polling: 250 },
-  );
+  for (let end = Date.now() + 30000; !(await store(page, "/src/state/chat.ts", (m, sid) => !!m.useChat.getState().timelines[sid]?.loaded, sid)); ) {
+    if (Date.now() > end) throw new Error(`${sid} never loaded`);
+    await page.waitForTimeout(250);
+  }
   await page.waitForTimeout(2500); // the strip waits SETTLE_MS before showing anything
   return { context, page };
 }
@@ -90,18 +86,27 @@ async function look(page) {
   const row = page.locator('[aria-current="true"]').first();
   const sidebar = (await row.count()) ? (await row.innerText()).replace(/\s+/g, " ").trim() : "";
   // The store, for the record: the same module instance the app runs (Vite serves it once).
-  const state = await page.evaluate(async () => {
-    const { useChat } = await import("/src/state/chat.ts");
-    const { useShells } = await import("/src/state/shells.ts");
-    const s = useChat.getState();
-    return {
-      busy: Object.keys(s.busy).filter((k) => s.busy[k]),
-      parents: s.parents,
-      loaded: Object.fromEntries(Object.entries(s.timelines).map(([k, t]) => [k, t.messages?.length ?? 0])),
-      shells: Object.values(useShells.getState().byId).filter((x) => x.status === "running").map((x) => `${x.sessionID}: ${x.command}`),
-    };
+  const chat = await store(page, "/src/state/chat.ts", (m) => {
+    const s = m.useChat.getState();
+    return { busy: Object.keys(s.busy).filter((k) => s.busy[k]), parents: s.parents, loaded: Object.fromEntries(Object.entries(s.timelines).map(([k, t]) => [k, t.messages?.length ?? 0])) };
   });
+  const shells = await store(page, "/src/state/shells.ts", (m) => Object.values(m.useShells.getState().byId).filter((x) => x.status === "running").map((x) => `${x.sessionID}: ${x.command}`));
+  const state = { ...chat, shells };
   return { teammates, commands, text, sidebar, state };
+}
+
+/**
+ * Import one of the app's own modules in the page. After a hot update Vite
+ * serves the app `chat.ts?t=…`; a bare import would load a second, empty copy.
+ */
+async function store(page, file, fn, arg) {
+  return page.evaluate(
+    async ([file, fn, arg]) => {
+      const url = performance.getEntriesByType("resource").map((e) => e.name).findLast((n) => new URL(n).pathname === file) ?? file;
+      return new Function("m", "arg", `return (${fn})(m, arg)`)(await import(url), arg);
+    },
+    [file, fn.toString(), arg],
+  );
 }
 
 const shot = (page, name) => page.screenshot({ path: path.join(SHOTS, `${name}.png`) });
@@ -225,7 +230,7 @@ const scenarios = {
     await page.waitForTimeout(2500);
     const before = await look(page);
     // What coming back to the app after a while does (App.tsx: visibilitychange -> wake(true)): drop the stream and reconnect.
-    await page.evaluate(async () => (await import("/src/state/connection.ts")).useConnection.getState().wake(true));
+    await store(page, "/src/state/connection.ts", (m) => void m.useConnection.getState().wake(true));
     await page.waitForTimeout(6000);
     const saw = await look(page);
     await shot(page, "s9");

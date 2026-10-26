@@ -147,6 +147,10 @@ let askGeneration = 0;
 let sessionGeneration = 0;
 /** Bumped whenever busy changes locally (a send, an event) and on reset; an older snapshot must not overwrite it. */
 let busyGeneration = 0;
+/** Session → the generation its busy last changed at locally. A snapshot asked for before that keeps the local value for that session only. */
+const busyChangedAt = new Map<string, number>();
+/** The generation of the last reset: a snapshot asked for before it belongs to another connection. */
+let busyResetAt = 0;
 /** Bumped on reset; a timeline read still in flight must not land in a new workspace's store. */
 let timelineGeneration = 0;
 /** The open session saved for this workspace (in `chat.prefs`); restored once the session list can confirm it exists. */
@@ -319,7 +323,8 @@ export const useChat = create<State>((set, get) => ({
     catalogGeneration++;
     askGeneration++;
     sessionGeneration++;
-    busyGeneration++;
+    busyResetAt = ++busyGeneration;
+    busyChangedAt.clear();
     timelineGeneration++;
     // Persistence is handed to the next connection's bootstrap; until it has
     // read this workspace's prefs, a write would clobber them with defaults.
@@ -457,10 +462,10 @@ export const useChat = create<State>((set, get) => ({
     // The config may have changed while the stream was down (an agent or
     // teammate removed elsewhere); the generation guard keeps this ordered.
     void get().refreshCatalog();
-    // Runs that started or ended while the stream was down. The snapshot is
-    // dropped if a send or an event changes busy while it is in flight: that
-    // local view is newer, and applying the snapshot would clear a run that
-    // just started (or keep one that just finished) until the next resync.
+    // Runs that started or ended while the stream was down. A session a send
+    // or an event changed while this is in flight keeps that newer local
+    // view: the snapshot would clear a run that just started (or keep one
+    // that just finished) until the next resync.
     client
       .activeSessions()
       .then((ids) => applyActiveSessions(client, busyGen, ids))
@@ -671,7 +676,7 @@ export const useChat = create<State>((set, get) => ({
             files: atts.filter((a) => viewable(a.mime) && opts?.previews?.[a.path]).map((a) => ({ uri: opts!.previews![a.path], name: a.name, mime: a.mime })),
           }
         : {};
-      busyGeneration++;
+      busyChangedAt.set(id, ++busyGeneration);
       // A new session takes the screen in one step, its message already in it
       // and the draft gone with the home screen, so nothing jumps in between.
       set((st) => {
@@ -701,7 +706,7 @@ export const useChat = create<State>((set, get) => ({
     } catch (e) {
       const id = sid;
       if (id) {
-        busyGeneration++;
+        busyChangedAt.set(id, ++busyGeneration);
         set((st) => {
           const t = st.timelines[id];
           return {
@@ -924,10 +929,18 @@ function syncAsks(client: OpenCode) {
     .catch(() => {});
 }
 
-/** Apply an active-run snapshot unless a send or event changed busy since it was requested. */
+/** Apply an active-run snapshot, except to sessions a send or an event changed since it was requested. */
 function applyActiveSessions(client: OpenCode, gen: number, ids: string[]) {
-  if (gen !== busyGeneration || useChat.getState().client !== client) return;
-  useChat.setState({ busy: Object.fromEntries(ids.map((id) => [id, true])) });
+  if (gen < busyResetAt || useChat.getState().client !== client) return;
+  // Per session, not all or nothing: with other chats working, some event
+  // lands during almost every fetch, and dropping the whole snapshot left a
+  // long-running teammate (no events until it ends) never marked as running.
+  const running = new Set(ids);
+  useChat.setState((s) => {
+    const busy: Record<string, boolean> = {};
+    for (const id of new Set([...Object.keys(s.busy), ...ids])) if ((busyChangedAt.get(id) ?? 0) > gen ? s.busy[id] : running.has(id)) busy[id] = true;
+    return { busy };
+  });
   // A subagent still running after a restart: find the chat it belongs to, so that chat shows as working.
   learnParents(ids);
 }
@@ -1149,6 +1162,7 @@ function flush() {
   const rootID = (id: string) => rootSession(parents, id);
   const titleOf = (id?: string) => (id && sessions[rootID(id)]?.title) || "Untitled session";
   const unknown: string[] = [];
+  const busyChanged: string[] = [];
 
   const mut = <K extends keyof typeof touched>(k: K) => {
     if (!touched[k]) {
@@ -1256,6 +1270,7 @@ function flush() {
         if (sid) {
           mut("busy");
           busy[sid] = true;
+          busyChanged.push(sid);
           if (sessions[sid]) {
             mut("sessions");
             sessions[sid] = { ...sessions[sid], time: { ...sessions[sid].time, updated: e.created ?? Date.now() } };
@@ -1268,6 +1283,7 @@ function flush() {
         if (sid) {
           mut("busy");
           busy[sid] = false;
+          busyChanged.push(sid);
           mut("retrying");
           retrying[sid] = undefined;
           finished.push(sid);
@@ -1313,6 +1329,7 @@ function flush() {
           if (status.type === "busy" || status.type === "retry") {
             mut("busy");
             busy[sid] = true;
+            busyChanged.push(sid);
             if (!sessions[sid] && !parents[sid]) unknown.push(sid);
           }
         }
@@ -1387,8 +1404,8 @@ function flush() {
   if (touched.parents) patch.parents = parents;
   if (touched.delegated) patch.delegated = delegated;
   useChat.setState(patch);
-  // A run snapshot requested before this event must not override it.
-  if (touched.busy) busyGeneration++;
+  // A run snapshot requested before this event must not override it for these sessions.
+  for (const sid of busyChanged) busyChangedAt.set(sid, ++busyGeneration);
   if (unknown.length) learnParents(unknown);
   for (const id of finished) scheduleReconcile(id);
   if (alerts.length) dispatchAlerts(alerts);
