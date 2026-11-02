@@ -15,6 +15,10 @@ import type {
   LocationPublicInfo,
   PermissionReply,
   IntegrationInfo,
+  IntegrationAttempt,
+  IntegrationAttemptStatus,
+  IntegrationCommandAttempt,
+  IntegrationCommandAttemptStatus,
   CommandInfo,
 } from "@opencode/client";
 import { httpFetch } from "../platform";
@@ -28,8 +32,15 @@ export type {
   LocationPublicInfo,
   PermissionReply,
   IntegrationInfo,
+  IntegrationAttempt,
+  IntegrationAttemptStatus,
+  IntegrationCommandAttempt,
+  IntegrationCommandAttemptStatus,
   CommandInfo,
 };
+
+/** Form answers as the integration endpoints take them. */
+export type IntegrationAnswer = Record<string, string | number | boolean | string[]>;
 
 /** Boat's HTTPS proxy, and the cookie it reads the access token from. */
 const BOAT_PROXY = /\.on\.(boat|ascii)\.dev$/;
@@ -191,8 +202,44 @@ export class OpenCode {
     const r = await this.request<{ data: IntegrationInfo[] } | IntegrationInfo[]>("GET", "/api/integration");
     return Array.isArray(r) ? r : r.data;
   }
-  connectKey(integrationID: string, key: string) {
-    return this.request<unknown>("POST", `/api/integration/${encodeURIComponent(integrationID)}/connect/key`, { body: { key } });
+  connectKey(integrationID: string, key: string, answer?: IntegrationAnswer) {
+    return this.request<unknown>("POST", `/api/integration/${encodeURIComponent(integrationID)}/connect/key`, { body: { key, answer } });
+  }
+  /** Start an OAuth sign-in. `url` opens on the agent machine unless the flow is a device code. */
+  async connectOauth(integrationID: string, methodID: string, answer?: IntegrationAnswer): Promise<IntegrationAttempt> {
+    const r = await this.request<{ data: IntegrationAttempt } | IntegrationAttempt>("POST", `/api/integration/${encodeURIComponent(integrationID)}/connect/oauth`, { body: { methodID, answer } });
+    return "data" in r ? r.data : r;
+  }
+  async oauthStatus(integrationID: string, attemptID: string): Promise<IntegrationAttemptStatus> {
+    const r = await this.request<{ data: IntegrationAttemptStatus } | IntegrationAttemptStatus>("GET", `/api/integration/${encodeURIComponent(integrationID)}/connect/oauth/${encodeURIComponent(attemptID)}`);
+    return "data" in r ? r.data : r;
+  }
+  /** Browser-mode flows only: hand back the code the browser showed. */
+  async completeOauth(integrationID: string, attemptID: string, code?: string) {
+    await this.request<void>("POST", `/api/integration/${encodeURIComponent(integrationID)}/connect/oauth/${encodeURIComponent(attemptID)}/complete`, { body: code ? { code } : {} });
+  }
+  async cancelOauth(integrationID: string, attemptID: string) {
+    await this.request<void>("DELETE", `/api/integration/${encodeURIComponent(integrationID)}/connect/oauth/${encodeURIComponent(attemptID)}`);
+  }
+  /** Credentials already on the machine (a Claude Code login, an AWS profile): validated, not asked for. */
+  async connectExternal(integrationID: string, methodID: string, answer?: IntegrationAnswer) {
+    await this.request<void>("POST", `/api/integration/${encodeURIComponent(integrationID)}/connect/external`, { body: { methodID, answer } });
+  }
+  /** Run the provider's own login command on the agent machine. */
+  async connectCommand(integrationID: string, methodID: string): Promise<IntegrationCommandAttempt> {
+    const r = await this.request<{ data: IntegrationCommandAttempt } | IntegrationCommandAttempt>("POST", `/api/integration/${encodeURIComponent(integrationID)}/connect/command`, { body: { methodID } });
+    return "data" in r ? r.data : r;
+  }
+  async commandStatus(integrationID: string, attemptID: string): Promise<IntegrationCommandAttemptStatus> {
+    const r = await this.request<{ data: IntegrationCommandAttemptStatus } | IntegrationCommandAttemptStatus>("GET", `/api/integration/${encodeURIComponent(integrationID)}/connect/command/${encodeURIComponent(attemptID)}`);
+    return "data" in r ? r.data : r;
+  }
+  async cancelCommand(integrationID: string, attemptID: string) {
+    await this.request<void>("DELETE", `/api/integration/${encodeURIComponent(integrationID)}/connect/command/${encodeURIComponent(attemptID)}`);
+  }
+  /** Forget a saved credential. Env-only connections have no id and can't be removed here. */
+  removeCredential(credentialID: string) {
+    return this.request<void>("DELETE", `/api/credential/${encodeURIComponent(credentialID)}`);
   }
   async commands(directory?: string): Promise<CommandInfo[]> {
     const r = await this.request<{ data: CommandInfo[] } | CommandInfo[]>("GET", "/api/command", { query: locQuery(directory) });
