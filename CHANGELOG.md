@@ -6,6 +6,16 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 ## [Unreleased]
 
+### Added
+
+- **Each teammate's own memory.** A teammate's notes live in `memory/<name>_context.md`, and only that teammate's sessions get them — the lead's file in the lead's sessions, a subagent's in its own. Teammates used to share one `context.md`, so they read it and wrote over each other. That file stays, for what everyone should know about you, and only the lead changes it. Memory lists the per-agent files under "Agent contexts".
+- Teammates are told how to use what they remember: as a reference shelf, not a script — use a saved fact when it changes the answer, and don't drag an unrelated old note into new work or mention it just to show they remember.
+
+### Changed
+
+- Otto targets OpenCode 2.2.5 (it was built against 2.1.2). No client code had to change; the type package and the local dev server moved, and a new contract check runs Otto's own client against a real server before the UI tests.
+- Memory's editor now says "Shared context", and each teammate's file shows its own line count against the same 40-line guideline.
+
 ## [0.20.2] - 2026-10-26
 
 The same update as 0.20.1, rebuilt: 0.20.1's release build stopped on a plugin version check, so nothing was published.
