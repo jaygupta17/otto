@@ -42,17 +42,30 @@ export function withoutToolPlugin(cfg: GlobalConfig, name: string): GlobalConfig
   return next;
 }
 
-/** One entry, pointing at the installed folder, under the key OpenCode 2 reads. */
-export function withToolPlugin(cfg: GlobalConfig, dir: string, name: string): GlobalConfig {
+/**
+ * One entry, pointing at the installed folder, under the key OpenCode 2 reads.
+ * `options` reaches the plugin as `ctx.options`; it is how a plugin learns
+ * something only the app knows, such as where the memory folder is.
+ */
+export function withToolPlugin(cfg: GlobalConfig, dir: string, name: string, options: Record<string, unknown> = {}): GlobalConfig {
   const next = withoutToolPlugin(cfg, name);
   const plugins = Array.isArray(next.plugins) ? (next.plugins as PluginEntry[]) : [];
-  return { ...next, plugins: [...plugins, { package: `file://${dir}`, options: {} }] };
+  return { ...next, plugins: [...plugins, { package: `file://${dir}`, options }] };
 }
 
 /** Exactly one entry, and it is this folder (an older copy elsewhere counts as not installed). */
 export function toolPluginInstalled(cfg: GlobalConfig, dir: string, name: string): boolean {
   const mine = entries(cfg).filter((e) => isToolEntry(e, name));
   return mine.length === 1 && entryPath(mine[0]) === dir.replace(/\/+$/, "");
+}
+
+/** The options on the one entry for this tool; `null` when it isn't installed exactly once. */
+export function toolPluginOptions(cfg: GlobalConfig, name: string): Record<string, unknown> | null {
+  const mine = entries(cfg).filter((e) => isToolEntry(e, name));
+  if (mine.length !== 1) return null;
+  const entry = mine[0];
+  if (typeof entry === "string") return {};
+  return entry.options && typeof entry.options === "object" ? entry.options : {};
 }
 
 export async function readHome(client: OpenCode): Promise<string> {

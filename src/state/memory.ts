@@ -93,8 +93,8 @@ export const useMemory = create<State>((set, get) => ({
       await get().load();
       toast(
         on
-          ? { tone: "ok", title: "Memory is on", body: `Teammates keep notes in ${root || "the memory folder"}. context.md is added to every new session.` }
-          : { tone: "ok", title: "Memory is off", body: "The folder and its files stay; context.md is no longer injected into new sessions." },
+          ? { tone: "ok", title: "Memory is on", body: `Teammates keep notes in ${root || "the memory folder"}. context.md is added to every new session, and each teammate's own file to theirs.` }
+          : { tone: "ok", title: "Memory is off", body: "The folder and its files stay; nothing is injected into new sessions." },
       );
       return true;
     } catch (e) {

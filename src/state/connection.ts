@@ -18,6 +18,7 @@ import { reviveLocal } from "../lib/providers/local";
 import { BoatError, isBillingError } from "../lib/providers/boat";
 import { prepareSchedules, scheduleLocalUrl } from "../lib/schedulesSetup";
 import { preparePresent } from "../lib/presentSetup";
+import { prepareMemory } from "../lib/memorySetup";
 import { secrets } from "../lib/secrets";
 import { readTeammates } from "../lib/teammates";
 import { isCloud, secretKeys, useWorkspaces, type Workspace } from "./workspaces";
@@ -235,19 +236,20 @@ export const useConnection = create<State>((set, get) => ({
 
 /**
  * Install Otto's agent tools on a fresh connection: the `present` tool (which
- * shows artifacts, changes nothing, and so is always on), and the schedule
- * tool unless the user turned agent schedules off on this machine. `info` is
- * from `client.info()`, so the runner's URL is built from the server's own
- * first address. Neither failure is fatal: a machine that can't take the files
- * still connects.
+ * shows artifacts, changes nothing, and so is always on), the schedule tool
+ * unless the user turned agent schedules off on this machine, and the memory
+ * plugin when memory is on. `info` is from `client.info()`, so the runner's URL
+ * is built from the server's own first address. None of these failures is
+ * fatal: a machine that can't take the files still connects.
  */
 async function prepareAutomation(client: OpenCode, password: string, info: ServerInfo | null) {
   const schedules = (async () => {
     if ((await readTeammates(client)).schedules === "off") return;
     await prepareSchedules(client, { password, localUrl: scheduleLocalUrl(info) });
   })();
-  const [present, timed] = await Promise.allSettled([preparePresent(client), schedules]);
+  const [present, memory, timed] = await Promise.allSettled([preparePresent(client), prepareMemory(client), schedules]);
   if (present.status === "rejected") console.warn("present:", present.reason);
+  if (memory.status === "rejected") console.warn("memory:", memory.reason);
   if (timed.status === "rejected") console.warn("schedules:", timed.reason);
 }
 
