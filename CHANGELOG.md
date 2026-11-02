@@ -6,6 +6,8 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-11-02
+
 ### Added
 
 - **Each teammate's own memory.** A teammate's notes live in `memory/<name>_context.md`, and only that teammate's sessions get them — the lead's file in the lead's sessions, a subagent's in its own. Teammates used to share one `context.md`, so they read it and wrote over each other. That file stays, for what everyone should know about you, and only the lead changes it. Memory lists the per-agent files under "Agent contexts".
@@ -490,7 +492,8 @@ First public release.
 - Scheduled tasks that run on the agent machine.
 - Project file browser with syntax highlighting.
 
-[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.20.2...HEAD
+[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.21.0...HEAD
+[0.21.0]: https://github.com/jaygupta17/otto/compare/v0.20.2...v0.21.0
 [0.20.2]: https://github.com/jaygupta17/otto/compare/v0.20.1...v0.20.2
 [0.20.1]: https://github.com/jaygupta17/otto/compare/v0.20.0...v0.20.1
 [0.20.0]: https://github.com/jaygupta17/otto/compare/v0.19.1...v0.20.0
