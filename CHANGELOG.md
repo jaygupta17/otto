@@ -6,6 +6,8 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-11-02
+
 ### Added
 
 - **Sign in to a provider, not just paste a key.** The Providers tab now offers every way the agent server advertises: API key, a browser or device-code sign-in (ChatGPT, GitHub Copilot, SuperGrok, GitLab, Poe, OpenCode Console, DigitalOcean, Snowflake), a credential already on the agent machine (Claude Code login, AWS profile, Google Vertex), or the provider's own login command. The device code is shown and copyable, a sign-in can be cancelled, and a stale one ends on its own. Providers that only accept a sign-in — Claude Code and GitHub Copilot — now appear at all.
@@ -501,7 +503,8 @@ First public release.
 - Scheduled tasks that run on the agent machine.
 - Project file browser with syntax highlighting.
 
-[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.21.0...HEAD
+[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.22.0...HEAD
+[0.22.0]: https://github.com/jaygupta17/otto/compare/v0.21.0...v0.22.0
 [0.21.0]: https://github.com/jaygupta17/otto/compare/v0.20.2...v0.21.0
 [0.20.2]: https://github.com/jaygupta17/otto/compare/v0.20.1...v0.20.2
 [0.20.1]: https://github.com/jaygupta17/otto/compare/v0.20.0...v0.20.1
