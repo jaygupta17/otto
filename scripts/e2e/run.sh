@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
-# End-to-end checks of background work in the real UI: a throwaway OpenCode
-# server (its own HOME, config and data under .dev/e2e) on a scripted model,
-# the app from `vite`, and Playwright driving both.
+# End-to-end checks against a real OpenCode server: a throwaway server (its own
+# HOME, config and data under .dev/e2e) on a scripted model, then
+#   1. scripts/e2e/contract.ts — Otto's own client modules against that server
+#      (version, catalog, prompts, streaming, files, config, plugins, terminals,
+#      permissions), then
+#   2. scripts/e2e/background.cjs — the app from `vite` under Playwright, for the
+#      background-teammate and background-command UI.
 #
-#   scripts/e2e/run.sh                 every scenario
-#   scripts/e2e/run.sh s2 s9           only those (by name prefix)
+#   scripts/e2e/run.sh                 everything
+#   scripts/e2e/run.sh s2 s9           only those UI scenarios (by name prefix)
+#   CONTRACT=0 scripts/e2e/run.sh      skip the client contract checks
 #
 # Needs: bun, node with Playwright, and an OpenCode v2 binary: $OPENCODE_BIN,
 # else .dev/oc/package/bin/opencode, else `opencode` on PATH.
@@ -56,4 +61,15 @@ wait_for "http://127.0.0.1:$LLM_PORT/v1/models"
 wait_for -u opencode:pw "http://127.0.0.1:$OC_PORT/api/info"
 wait_for "http://localhost:$APP_PORT"
 
-OC_URL=http://127.0.0.1:$OC_PORT APP_URL=http://localhost:$APP_PORT SHOTS=$E2E/shots node scripts/e2e/background.cjs "$@"
+# Otto's client against this server, before the UI part: every shape the app
+# reads is checked here first, so a UI failure below is the UI's. Either
+# failing fails the run; both still get to report.
+STATUS=0
+if [ "${CONTRACT:-1}" = 1 ]; then
+  echo "— client contract —"
+  OC_URL="http://127.0.0.1:$OC_PORT" OC_PASSWORD=pw WORKDIR="$E2E/work" HOME_DIR="$E2E/home" bun scripts/e2e/contract.ts || STATUS=1
+  echo
+fi
+
+OC_URL=http://127.0.0.1:$OC_PORT APP_URL=http://localhost:$APP_PORT SHOTS=$E2E/shots node scripts/e2e/background.cjs "$@" || STATUS=1
+exit $STATUS

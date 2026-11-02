@@ -5,7 +5,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PORT="${PORT:-4917}"
 BIN="$ROOT/.dev/opencode"
-OC_VERSION=2.1.0
+OC_VERSION=2.2.5
 if [ ! -x "$BIN" ] || ! "$BIN" --version 2>/dev/null | grep -q "v$OC_VERSION"; then
   mkdir -p "$ROOT/.dev"
   arch=$([ "$(uname -m)" = "arm64" ] && echo arm64 || echo x64)
