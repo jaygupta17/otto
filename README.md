@@ -154,6 +154,7 @@ src/
   lib/flock/          The teammates' birds
   lib/teammates.ts    Teammates: roles, personalities, the starter team and hire gallery
   lib/memory.ts       What teammates remember about you
+  lib/memoryPlugin.ts The plugin that injects each teammate's own notes
   lib/composio.ts     Connected apps
   lib/schedules.ts    Scheduled tasks (cron + runner script on the agent machine)
   lib/artifacts.ts    What an agent's `present` call is, and how it may be shown

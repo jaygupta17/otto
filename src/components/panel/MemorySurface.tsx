@@ -1,15 +1,18 @@
 /**
  * Memory: the markdown teammates keep on this machine. `context.md` is
- * injected into every new session, so it sits at the top in an editor; the
- * rest of the folder is a small index, and any file opens here to edit.
- * Nothing is hidden: this is the same folder the agents read and write.
+ * injected into every new session, so it sits at the top in an editor; each
+ * teammate's own `<id>_context.md` is injected into that teammate's sessions
+ * only and gets a row of its own. The rest of the folder is a small index, and
+ * any file opens here to edit. Nothing is hidden: this is the same folder the
+ * agents read and write.
  */
 import { AlertTriangle, ArrowLeft, FileText, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useChat } from "../../state/chat";
 import { useMemory } from "../../state/memory";
+import { useTeammates } from "../../state/teammates";
 import { prettyPath, timeAgo } from "../../lib/format";
-import { CONTEXT_LINE_LIMIT, lineCount, type MemoryFile, type MemoryKind } from "../../lib/memory";
+import { CONTEXT_LINE_LIMIT, lineCount, memoryFileName, memoryRelPath, type MemoryFile, type MemoryKind } from "../../lib/memory";
 import { Toggle } from "../settings/common";
 import { Button, IconButton } from "../ui/Button";
 import { Spinner } from "../ui/AgentClock";
@@ -17,27 +20,11 @@ import { Hint } from "../ui/Tooltip";
 import { PanelEmpty, PanelHeader, PanelTitle, useSurfaceVisible } from "./SidePanel";
 
 const KIND_LABEL: Record<Exclude<MemoryKind, "context" | "other">, string> = {
+  "agent-context": "Agent context",
   daily: "Daily",
   project: "Project",
   learning: "Learning",
   agent: "Agent",
-};
-
-const relPath = (f: MemoryFile) => {
-  switch (f.kind) {
-    case "daily":
-      return `daily/${f.name}.md`;
-    case "project":
-      return `projects/${f.name}.md`;
-    case "learning":
-      return `learnings/${f.name}.md`;
-    case "agent":
-      return `agents/${f.name}.md`;
-    case "context":
-      return "context.md";
-    default:
-      return f.name;
-  }
 };
 
 const todayStamp = () => {
@@ -55,6 +42,7 @@ export function MemorySurface(_props: { root: string | null }) {
   const active = useMemory((s) => s.active);
   const loading = useMemory((s) => s.loading);
   const error = useMemory((s) => s.error);
+  const roster = useTeammates((s) => s.byId);
   const [busy, setBusy] = useState(false);
 
   // Load on show, and again whenever the panel comes back.
@@ -114,7 +102,10 @@ export function MemorySurface(_props: { root: string | null }) {
   const projects = byName((files ?? []).filter((f) => f.kind === "project"));
   const learnings = byName((files ?? []).filter((f) => f.kind === "learning"));
   const agents = byName((files ?? []).filter((f) => f.kind === "agent"));
-  const notes = daily.length + projects.length + learnings.length + agents.length;
+  // A teammate's own injected file, under the name the user knows them by.
+  const mateName = (id: string) => roster?.[id]?.name ?? id;
+  const agentContexts = (files ?? []).filter((f) => f.kind === "agent-context").sort((a, b) => mateName(a.name).localeCompare(mateName(b.name)));
+  const notes = daily.length + projects.length + learnings.length + agents.length + agentContexts.length;
 
   return (
     <>
@@ -122,7 +113,7 @@ export function MemorySurface(_props: { root: string | null }) {
       <div className="scroll-quiet min-h-0 flex-1 overflow-y-auto">
         {!installed && (
           <div className="flex items-center gap-3 border-b border-line px-4 py-2.5 text-[12px] text-muted">
-            <span className="min-w-0 flex-1">Memory is off. context.md isn't injected into new sessions; the files below stay.</span>
+            <span className="min-w-0 flex-1">Memory is off. Nothing is injected into new sessions; the files below stay.</span>
             <Button size="sm" disabled={busy} onClick={() => void toggle(true)}>
               {busy ? <Spinner size={12} /> : "Turn on"}
             </Button>
@@ -140,6 +131,9 @@ export function MemorySurface(_props: { root: string | null }) {
           </div>
         ) : (
           <div className="px-3 pt-1 pb-4">
+            <Section title="Agent contexts" hint="injected into that teammate's sessions">
+              {agentContexts.length ? agentContexts.map((f) => <Row key={f.path} file={f} label={mateName(f.name)} />) : <EmptyRow text="Each teammate gets one when they have something worth keeping." />}
+            </Section>
             <Section title="Today" hint="one line per event">
               {today.length ? today.map((f) => <Row key={f.path} file={f} />) : <div className="px-2 py-2 text-[12px] text-faint">Nothing yet today.</div>}
             </Section>
@@ -183,18 +177,16 @@ function EmptyRow({ text }: { text: string }) {
   return <li className="px-2 py-1 text-[12px] text-faint">{text}</li>;
 }
 
-function Row({ file }: { file: MemoryFile }) {
+function Row({ file, label }: { file: MemoryFile; label?: string }) {
   return (
     <li>
       <button
         onClick={() => void useMemory.getState().read(file.path)}
+        title={label ? memoryRelPath(file) : undefined}
         className="group flex w-full items-center gap-2.5 rounded-lg border border-transparent px-2 py-2 text-left transition-colors hover:border-line hover:bg-hover/60"
       >
         <FileText size={14} className="shrink-0 text-faint group-hover:text-muted" />
-        <span className="min-w-0 flex-1 truncate text-[13px] text-ink-2 group-hover:text-ink">
-          {file.name}
-          {file.kind !== "daily" && <span className="text-faint">.md</span>}
-        </span>
+        <span className="min-w-0 flex-1 truncate text-[13px] text-ink-2 group-hover:text-ink">{label ?? memoryFileName(file)}</span>
         <span className="shrink-0 text-[11px] text-faint" title={new Date(file.modified).toLocaleString()}>
           {timeAgo(file.modified)}
         </span>
@@ -220,7 +212,7 @@ function ContextEditor({ initial }: { initial: string }) {
   return (
     <section className="border-b border-line px-3 py-3">
       <div className="flex items-baseline gap-2">
-        <h3 className="self-center text-[13px] font-medium text-ink">Current context</h3>
+        <h3 className="self-center text-[13px] font-medium text-ink">Shared context</h3>
         <Hint className="self-center">{`Added to every new session. Rewrite it to say what matters now; keep it under ${CONTEXT_LINE_LIMIT} lines.`}</Hint>
         <span className={`ml-auto inline-flex items-center gap-1 text-[11px] tabular-nums ${long ? "text-danger" : "text-faint"}`}>
           {long && <AlertTriangle size={11} />}
@@ -271,6 +263,9 @@ function FileEditor({ path, file, onBack }: { path: string; file: MemoryFile | u
   }, [path]);
 
   const lines = text === null ? 0 : lineCount(text);
+  // A teammate's injected file carries the same 40-line convention as context.md.
+  const injected = file?.kind === "agent-context";
+  const long = injected && lines > CONTEXT_LINE_LIMIT;
   const dirty = text !== null && text !== saved;
   const save = async () => {
     if (text === null) return;
@@ -303,14 +298,17 @@ function FileEditor({ path, file, onBack }: { path: string; file: MemoryFile | u
         </IconButton>
         <div className="min-w-0 flex-1">
           <div className="truncate text-[13px] font-medium text-ink">
-            {file ? `${file.name}${file.kind === "daily" ? "" : ".md"}` : path.split("/").pop()}
+            {file ? memoryFileName(file) : path.split("/").pop()}
             {file && <span className="ml-1.5 font-normal text-faint">{KIND_LABEL[file.kind as Exclude<MemoryKind, "context" | "other">]}</span>}
           </div>
           <div className="truncate font-mono text-[11px] text-faint" title={path}>
-            {file ? relPath(file) : prettyPath(path)}
+            {file ? memoryRelPath(file) : prettyPath(path)}
           </div>
         </div>
-        <span className="shrink-0 pr-1 text-[11px] text-faint font-mono tabular-nums">{lines} lines</span>
+        <span className={`shrink-0 pr-1 text-[11px] font-mono tabular-nums ${long ? "text-danger" : "text-faint"}`}>
+          {lines}
+          {injected ? ` / ${CONTEXT_LINE_LIMIT}` : ""} lines
+        </span>
       </div>
       <textarea
         value={text}

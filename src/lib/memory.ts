@@ -1,12 +1,16 @@
 /**
- * Teammate memory: plain markdown in the OpenCode config folder, not a
- * plugin. One file, `memory/context.md`, is added to OpenCode's global
- * `instructions` so every new session starts with it; the rest is read on
- * demand through the tools agents already have (read, write, edit, grep).
+ * Teammate memory: plain markdown in the OpenCode config folder. The shared
+ * `memory/context.md` is added to OpenCode's global `instructions`, so every
+ * new session starts with it; each teammate's own `<id>_context.md` is
+ * injected into that agent's sessions by a generated plugin (see
+ * `memoryPlugin.ts`), so agents stop overwriting one file between them. The
+ * rest is read on demand through the tools agents already have (read, write,
+ * edit, grep).
  *
  * Layout, under the global config directory (usually ~/.config/opencode):
  *   memory/
- *     context.md              the only injected file; kept under 40 lines
+ *     context.md              shared, injected everywhere; kept under 40 lines
+ *     <agent-id>_context.md   that agent's own notes, injected into its sessions
  *     daily/YYYY-MM-DD.md     append-only, one line per event
  *     projects/<project>.md   state, decisions, open threads
  *     learnings/<topic>.md    durable, non-obvious findings
@@ -15,10 +19,11 @@
  * Otto owns the injection line and the folder's shape; the files themselves
  * belong to the agents and the user, and the Memory panel edits the same
  * files. Nothing here ever deletes a memory: turning memory off removes the
- * instruction and the old plugin, and leaves every file where it is.
+ * instruction and the plugin, and leaves every file where it is.
  */
 import type { OpenCode } from "./opencode/client";
 import { configLocation, sh, updateGlobalConfig, type GlobalConfig } from "./opencode/config";
+import { AGENT_CONTEXT_SUFFIX, ensureMemoryPlugin, removeMemoryPlugin } from "./memoryPlugin";
 
 // ---------------------------------------------------------------------------
 // Layout
@@ -234,7 +239,7 @@ export function resolveMemoryPath(root: string, path: string): string {
 // Files
 // ---------------------------------------------------------------------------
 
-export type MemoryKind = "context" | "daily" | "project" | "learning" | "agent" | "other";
+export type MemoryKind = "context" | "agent-context" | "daily" | "project" | "learning" | "agent" | "other";
 
 export interface MemoryFile {
   kind: MemoryKind;
@@ -258,6 +263,9 @@ export interface MemoryState {
 export function classifyMemoryPath(relative: string): { kind: MemoryKind; name: string } {
   const clean = relative.replace(/^\.?\//, "");
   if (clean === CONTEXT_FILE) return { kind: "context", name: "context" };
+  // A teammate's own injected file sits at the root: `<agent-id>_context.md`.
+  const mine = /^([A-Za-z0-9][A-Za-z0-9._-]*)_context\.md$/.exec(clean);
+  if (mine) return { kind: "agent-context", name: mine[1] };
   const [dir, ...rest] = clean.split("/");
   const file = rest.join("/");
   const name = file.replace(/\.md$/i, "");
@@ -273,6 +281,41 @@ export function classifyMemoryPath(relative: string): { kind: MemoryKind; name: 
       return { kind: "agent", name };
     default:
       return { kind: "other", name: clean };
+  }
+}
+
+/** The file's name as the panel shows it: "context.md", "2026-10-22", "juno_context.md". */
+export function memoryFileName(file: Pick<MemoryFile, "kind" | "name">): string {
+  switch (file.kind) {
+    case "context":
+      return CONTEXT_FILE;
+    case "agent-context":
+      return `${file.name}${AGENT_CONTEXT_SUFFIX}`;
+    case "daily":
+    case "other":
+      return file.name;
+    default:
+      return `${file.name}.md`;
+  }
+}
+
+/** Where a file sits under the memory root, as the panel shows it. */
+export function memoryRelPath(file: Pick<MemoryFile, "kind" | "name">): string {
+  switch (file.kind) {
+    case "context":
+      return CONTEXT_FILE;
+    case "agent-context":
+      return `${file.name}${AGENT_CONTEXT_SUFFIX}`;
+    case "daily":
+      return `daily/${file.name}.md`;
+    case "project":
+      return `projects/${file.name}.md`;
+    case "learning":
+      return `learnings/${file.name}.md`;
+    case "agent":
+      return `agents/${file.name}.md`;
+    default:
+      return file.name;
   }
 }
 
@@ -389,20 +432,25 @@ export function ensureProjectFile(client: OpenCode, name: string): Promise<strin
 
 /**
  * Turns memory on: creates the folder and a starter context.md (only when
- * missing), adds the absolute context path to the global instructions, and
- * removes the old plugin. Safe to call on every save; it never duplicates
- * anything and never touches a file that already has content.
+ * missing), adds the absolute context path to the global instructions, installs
+ * the plugin that injects each agent's own notes, and removes the old plugin.
+ * Safe to call on every save; it never duplicates anything and never touches a
+ * file that already has content.
  */
 export async function installMemory(client: OpenCode): Promise<MemoryPaths> {
   const paths = await memoryPaths(client);
   await client.exec(`mkdir -p ${[paths.daily, paths.projects, paths.learnings, paths.agents].map(sh).join(" ")}`, { timeoutMs: 20_000 });
   const existing = await readText(client, paths.context);
   if (existing === null || !existing.trim()) await client.writeFile(paths.context, contextTemplate());
+  // The plugin carries the memory root, so an install after the config folder
+  // moved points at the new one.
+  await ensureMemoryPlugin(client, paths.root);
   await updateGlobalConfig(client, (cfg) => withMemoryInstructions(withoutMemoryPlugin(cfg), paths.context));
   return paths;
 }
 
-/** Turns memory off: removes our instruction and the old plugin, leaves every file. */
+/** Turns memory off: removes our instruction and both plugins, leaves every file. */
 export async function removeMemory(client: OpenCode): Promise<void> {
+  await removeMemoryPlugin(client);
   await updateGlobalConfig(client, (cfg) => withoutMemoryInstructions(withoutMemoryPlugin(cfg)));
 }

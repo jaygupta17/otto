@@ -17,7 +17,9 @@ import {
   formatDailyLine,
   installMemory,
   lineCount,
+  memoryFileName,
   memoryInstalled,
+  memoryRelPath,
   projectSlug,
   readMemoryState,
   removeMemory,
@@ -29,11 +31,14 @@ import {
   CONTEXT_LINE_LIMIT,
   MEMORY_PLUGIN,
 } from "./memory";
+import { agentMemoryPluginInstalled, memoryPluginDir } from "./memoryPlugin";
+import { prepareMemory } from "./memorySetup";
 import type { OpenCode } from "./opencode/client";
 import type { GlobalConfig } from "./opencode/config";
-import { teammatePrompt } from "./teammates";
+import { teammatePrompt, TEAMMATE_PROMPT_VERSION } from "./teammates";
 
 function fakeClient(dir: string): OpenCode {
+  const env = { ...process.env, HOME: dir, OTTO_HOME: dir } as Record<string, string>;
   const client = {
     async configEntries() {
       const entries: { type: "directory" | "document"; path: string }[] = [{ type: "directory", path: dir }];
@@ -58,7 +63,7 @@ function fakeClient(dir: string): OpenCode {
       await writeFile(path, content);
     },
     async exec(command: string) {
-      const r = spawnSync("bash", ["-c", command], { encoding: "utf8" });
+      const r = spawnSync("bash", ["-c", command], { encoding: "utf8", env });
       return { exit: r.status ?? 1, output: r.stdout ?? "" };
     },
     async reloadLocation() {},
@@ -200,6 +205,36 @@ describe("classification and names", () => {
     expect(classifyMemoryPath("notes.txt")).toEqual({ kind: "other", name: "notes.txt" });
   });
 
+  test("classifies a teammate's own injected file at the root", () => {
+    expect(classifyMemoryPath("juno_context.md")).toEqual({ kind: "agent-context", name: "juno" });
+    expect(classifyMemoryPath("patch_context.md")).toEqual({ kind: "agent-context", name: "patch" });
+    expect(classifyMemoryPath("piper-2_context.md")).toEqual({ kind: "agent-context", name: "piper-2" });
+    expect(classifyMemoryPath("review.bot_context.md")).toEqual({ kind: "agent-context", name: "review.bot" });
+    // The shared file is not one of them, and neither is a lookalike.
+    expect(classifyMemoryPath("context.md").kind).toBe("context");
+    expect(classifyMemoryPath("_context.md").kind).toBe("other");
+    expect(classifyMemoryPath("my notes_context.md").kind).toBe("other");
+    expect(classifyMemoryPath("projects/juno_context.md").kind).toBe("project");
+  });
+
+  test("names every kind as the panel shows it", () => {
+    expect(memoryFileName({ kind: "context", name: "context" })).toBe("context.md");
+    expect(memoryFileName({ kind: "agent-context", name: "juno" })).toBe("juno_context.md");
+    expect(memoryFileName({ kind: "project", name: "otto" })).toBe("otto.md");
+    expect(memoryFileName({ kind: "daily", name: "2026-10-22" })).toBe("2026-10-22");
+    expect(memoryFileName({ kind: "other", name: "notes.txt" })).toBe("notes.txt");
+  });
+
+  test("gives every kind a path relative to the memory folder", () => {
+    expect(memoryRelPath({ kind: "context", name: "context" })).toBe("context.md");
+    expect(memoryRelPath({ kind: "agent-context", name: "juno" })).toBe("juno_context.md");
+    expect(memoryRelPath({ kind: "daily", name: "2026-10-22" })).toBe("daily/2026-10-22.md");
+    expect(memoryRelPath({ kind: "project", name: "otto" })).toBe("projects/otto.md");
+    expect(memoryRelPath({ kind: "learning", name: "tauri" })).toBe("learnings/tauri.md");
+    expect(memoryRelPath({ kind: "agent", name: "patch" })).toBe("agents/patch.md");
+    expect(memoryRelPath({ kind: "other", name: "notes.txt" })).toBe("notes.txt");
+  });
+
   test("slugs project names and paths", () => {
     expect(projectSlug("My Project!")).toBe("my-project");
     expect(projectSlug("/home/me/projects/otto/")).toBe("otto");
@@ -218,7 +253,7 @@ describe("classification and names", () => {
 });
 
 describe("install and remove", () => {
-  test("install creates the folder, context.md and the instruction", async () => {
+  test("install creates the folder, context.md, the instruction and the plugin", async () => {
     await writeFile(
       join(dir, "opencode.json"),
       JSON.stringify({
@@ -236,8 +271,12 @@ describe("install and remove", () => {
 
     const cfg = JSON.parse(await readFile(join(dir, "opencode.json"), "utf8")) as GlobalConfig;
     expect(cfg.instructions).toEqual(["/home/me/AGENTS.md", paths.context]);
-    expect(cfg.plugins).toBeUndefined();
     expect(memoryInstalled(cfg)).toBe(true);
+    // The old third-party plugin is gone; ours carries the memory root.
+    const pluginDir = memoryPluginDir(dir);
+    expect(agentMemoryPluginInstalled(cfg, pluginDir, paths.root)).toBe(true);
+    expect(JSON.stringify(cfg.plugins)).not.toContain(MEMORY_PLUGIN);
+    expect(await readFile(`${pluginDir}/index.js`, "utf8")).toContain("otto.memory");
   });
 
   test("a second install changes nothing and never overwrites context.md", async () => {
@@ -252,22 +291,46 @@ describe("install and remove", () => {
     const after = JSON.parse(await readFile(join(dir, "opencode.json"), "utf8"));
     expect(after.instructions).toEqual(before.instructions);
     expect(after.instructions).toHaveLength(1);
+    expect(after.plugins).toEqual(before.plugins);
     expect(await readFile(context, "utf8")).toBe("# Mine\n\n## Now\nkeep this\n");
   });
 
-  test("remove drops the instruction and old plugin but leaves every file", async () => {
+  test("remove drops the instruction and both plugins but leaves every file", async () => {
     await installMemory(client);
     const date = new Date(2026, 9, 22, 9, 5);
     const daily = await appendDaily(client, "still here", date);
     const project = await ensureProjectFile(client, "Otto");
+    const mine = join(dir, "memory", "juno_context.md");
+    await writeFile(mine, "juno's notes\n");
     await removeMemory(client);
 
     const cfg = JSON.parse(await readFile(join(dir, "opencode.json"), "utf8")) as GlobalConfig;
     expect(cfg.instructions).toBeUndefined();
     expect(memoryInstalled(cfg)).toBe(false);
+    expect(cfg.plugins).toBeUndefined();
     expect(await exists(join(dir, "memory", "context.md"))).toBe(true);
     expect(await readFile(daily, "utf8")).toContain("still here");
     expect(await exists(project)).toBe(true);
+    expect(await readFile(mine, "utf8")).toBe("juno's notes\n");
+    // The plugin files stay too, so turning memory back on is instant.
+    expect(await exists(`${memoryPluginDir(dir)}/index.js`)).toBe(true);
+  });
+});
+
+describe("preparing a connection", () => {
+  test("leaves a machine where memory is off alone", async () => {
+    await prepareMemory(client);
+    expect(await exists(join(dir, ".otto", "agent-tool", "otto-memory"))).toBe(false);
+  });
+
+  test("brings a machine that turned memory on with an older build up to date", async () => {
+    // The instruction is there, as an older build left it; the plugin isn't.
+    await writeFile(join(dir, "opencode.json"), JSON.stringify({ instructions: [join(dir, "memory", "context.md")] }));
+    await prepareMemory(client);
+
+    const cfg = JSON.parse(await readFile(join(dir, "opencode.json"), "utf8")) as GlobalConfig;
+    expect(agentMemoryPluginInstalled(cfg, memoryPluginDir(dir), join(dir, "memory"))).toBe(true);
+    expect(cfg.instructions).toEqual([join(dir, "memory", "context.md")]);
   });
 });
 
@@ -312,11 +375,14 @@ describe("what may be written", () => {
 
 describe("the prompt points at files, not tools", () => {
   const base = { id: "patch", name: "Patch", job: "Code", instructions: "" };
+  const SHELF =
+    "Memory is a reference shelf, not a script. Use a saved fact when it changes the answer: how the user likes things done, the state of the work you're picking up, a decision that settles the question. If the user has told you a preference, follow it without being reminded. But don't force an old note into unrelated work, and don't mention that you remember something just to prove it. If the connection is a stretch, leave it out: most facts belong to the task they came from. When memory is thin, say so or ask instead of filling the gap.";
 
-  test("a lead owns context.md and rewrites it", () => {
+  test("a lead owns the shared context.md and rewrites it", () => {
     const p = teammatePrompt({ ...base, id: "juno", name: "Juno", leads: true });
     expect(p).toContain("~/.config/opencode/memory");
     expect(p).toContain("under 40 lines");
+    expect(p).toContain("`context.md` is shared");
     expect(p).toContain("You own it.");
     expect(p).toContain("Rewrite `context.md`");
     expect(p).not.toContain("memory_remember");
@@ -328,5 +394,33 @@ describe("the prompt points at files, not tools", () => {
     expect(p).toContain("`agents/patch.md`");
     expect(p).toContain("say so in your report");
     expect(p).not.toContain("memory_recall");
+  });
+
+  test("every teammate is told which injected file is theirs", () => {
+    const lead = teammatePrompt({ ...base, id: "juno", name: "Juno", leads: true });
+    const mate = teammatePrompt({ ...base, leads: false });
+    expect(lead).toContain("`juno_context.md` is yours alone");
+    expect(mate).toContain("`patch_context.md` is yours alone");
+    expect(mate).toContain("injected into your sessions only");
+    expect(mate).toContain("Never edit another teammate's file");
+    expect(mate).toContain("Create yours when you first have something worth keeping");
+    // A teammate never claims someone else's file, and never the shared one.
+    expect(mate).not.toContain("`juno_context.md`");
+    expect(lead).not.toContain("`patch_context.md`");
+  });
+
+  test("the reference-shelf section sits after the file list, before the reporting rule", () => {
+    const p = teammatePrompt({ ...base, leads: false });
+    expect(p).toContain("## Using what you remember");
+    expect(p).toContain(SHELF);
+    const shelf = p.indexOf("## Using what you remember");
+    const lastFile = p.indexOf("`agents/patch.md`");
+    const tell = p.indexOf("When the user tells you something about themselves");
+    expect(shelf).toBeGreaterThan(lastFile);
+    expect(shelf).toBeLessThan(tell);
+  });
+
+  test("the prompt version moved, so every existing teammate recompiles", () => {
+    expect(TEAMMATE_PROMPT_VERSION).toBeGreaterThan(10);
   });
 });
