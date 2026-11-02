@@ -6,6 +6,15 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 ## [Unreleased]
 
+### Added
+
+- **Sign in to a provider, not just paste a key.** The Providers tab now offers every way the agent server advertises: API key, a browser or device-code sign-in (ChatGPT, GitHub Copilot, SuperGrok, GitLab, Poe, OpenCode Console, DigitalOcean, Snowflake), a credential already on the agent machine (Claude Code login, AWS profile, Google Vertex), or the provider's own login command. The device code is shown and copyable, a sign-in can be cancelled, and a stale one ends on its own. Providers that only accept a sign-in — Claude Code and GitHub Copilot — now appear at all.
+
+### Changed
+
+- A provider row lists every saved credential, with Remove; one that needs signing in again says so instead of looking connected.
+- On a remote workspace, a browser sign-in says plainly that it finishes on the agent machine, and names the device-code option when there is one.
+
 ## [0.21.0] - 2026-11-02
 
 ### Added
