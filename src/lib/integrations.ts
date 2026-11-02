@@ -154,6 +154,37 @@ export function attemptNote(s: AttemptStatusLike | null | undefined): string | n
   return null;
 }
 
+/** The wait after an attempt's deadline before Otto stops asking. */
+export const ATTEMPT_GRACE = 2000;
+
+/**
+ * Whether an attempt's own deadline has passed. The server normally answers
+ * `expired` itself, but one that never does would leave a panel waiting
+ * forever, so the attempt's `time.expires` is enforced here too. The grace
+ * covers a status call already in flight when the deadline lands.
+ *
+ * Both attempt shapes carry the same `time`, and a non-finite `expires`
+ * (`Infinity` on a command attempt) means there is no deadline to enforce.
+ */
+export function attemptExpired(attempt: { time: { expires: number | string } } | null | undefined, now: number, grace = ATTEMPT_GRACE): boolean {
+  const expires = attempt?.time.expires;
+  if (typeof expires !== "number" || !Number.isFinite(expires)) return false;
+  return now >= expires + grace;
+}
+
+/**
+ * What a panel should show for an attempt: the server's own complete or
+ * failed wins, then Otto's deadline, then whatever the server last said. A
+ * `pending` that lands after the deadline therefore reads as expired.
+ */
+export function attemptView(run: { gone?: boolean; expired?: boolean; status?: AttemptStatusLike | null }): AttemptState {
+  if (run.gone) return "gone";
+  const reported = run.status?.status;
+  if (reported === "complete" || reported === "failed") return reported;
+  if (run.expired) return "expired";
+  return reported ?? "pending";
+}
+
 /**
  * The device code, when the server put it inside its instructions rather than
  * in a field of its own: "Enter code: VHMW-P6K3A".

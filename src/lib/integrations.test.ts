@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import type { FormField, IntegrationInfo } from "@opencode/client";
+import type { FormField, IntegrationAttempt, IntegrationCommandAttempt, IntegrationInfo } from "@opencode/client";
 import {
+  attemptExpired,
   attemptNote,
   attemptState,
+  attemptView,
   codeFromInstructions,
   connectMethods,
   connectionPending,
@@ -247,6 +249,33 @@ describe("an attempt's state", () => {
     expect(shouldPoll({ status: "complete", time })).toBe(false);
     expect(shouldPoll({ status: "failed", message: "No", time })).toBe(false);
     expect(shouldPoll({ status: "expired", time })).toBe(false);
+  });
+
+  test("an attempt's own deadline ends it, with a grace for a call in flight", () => {
+    const signIn: IntegrationAttempt = { attemptID: "oa", url: "https://auth.example/device", instructions: "", mode: "auto", time: { created: 1_000, expires: 601_000 } };
+    expect(attemptExpired(signIn, 600_999)).toBe(false);
+    expect(attemptExpired(signIn, 601_000)).toBe(false); // the deadline itself, still inside the grace
+    expect(attemptExpired(signIn, 602_999)).toBe(false);
+    expect(attemptExpired(signIn, 603_000)).toBe(true);
+    expect(attemptExpired(signIn, 601_500, 0)).toBe(true); // no grace: the deadline is the deadline
+    expect(attemptExpired(null, 10 ** 12)).toBe(false);
+  });
+
+  test("a command attempt carries the same deadline, and a missing one never expires", () => {
+    const login: IntegrationCommandAttempt = { attemptID: "cmd", time: { created: 0, expires: 60_000 } };
+    expect(attemptExpired(login, 61_000)).toBe(false);
+    expect(attemptExpired(login, 62_000)).toBe(true);
+    expect(attemptExpired({ attemptID: "endless", time: { created: 0, expires: "Infinity" } }, Number.MAX_SAFE_INTEGER)).toBe(false);
+  });
+
+  test("complete and failed win over the deadline; a pending that lands after it doesn't", () => {
+    expect(attemptView({ status: { status: "pending", time } })).toBe("pending");
+    expect(attemptView({ status: { status: "pending", time }, expired: true })).toBe("expired");
+    expect(attemptView({ status: { status: "complete", time }, expired: true })).toBe("complete");
+    expect(attemptView({ status: { status: "failed", message: "No", time }, expired: true })).toBe("failed");
+    expect(attemptView({ status: { status: "expired", time } })).toBe("expired");
+    expect(attemptView({ gone: true, expired: true })).toBe("gone");
+    expect(attemptView({})).toBe("pending");
   });
 
   test("the server's own words explain a failure", () => {

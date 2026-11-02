@@ -12,7 +12,9 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { FormField, FormValue, IntegrationAttempt, IntegrationAttemptStatus, IntegrationCommandAttempt, IntegrationCommandAttemptStatus, IntegrationInfo } from "@opencode/client";
 import { OpenCodeError } from "../../lib/opencode/client";
 import {
+  attemptExpired,
   attemptNote,
+  attemptView,
   codeFromInstructions,
   connectMethods,
   connectionPending,
@@ -58,8 +60,8 @@ const methodKey = (m: ConnectMethod) => (m.type === "key" ? "key" : m.id);
 
 const displayName = (info: IntegrationInfo) => (providerName(info.id) === info.id ? info.name : providerName(info.id));
 
-type OauthRun = { attempt: IntegrationAttempt; status: IntegrationAttemptStatus | null; error: string | null; gone: boolean };
-type CommandRun = { attempt: IntegrationCommandAttempt; status: IntegrationCommandAttemptStatus | null; error: string | null; gone: boolean };
+type OauthRun = { attempt: IntegrationAttempt; status: IntegrationAttemptStatus | null; error: string | null; gone: boolean; expired: boolean };
+type CommandRun = { attempt: IntegrationCommandAttempt; status: IntegrationCommandAttemptStatus | null; error: string | null; gone: boolean; expired: boolean };
 
 export function ProviderConnect({ info, remote, refresh, onDone }: { info: IntegrationInfo; remote: boolean; refresh: () => Promise<IntegrationInfo | undefined>; onDone: () => void }) {
   const client = useChat((s) => s.client);
@@ -126,12 +128,27 @@ export function ProviderConnect({ info, remote, refresh, onDone }: { info: Integ
   const attemptID = oauth?.attempt.attemptID ?? null;
   useEffect(() => {
     if (!client || !attemptID) return;
+    const attempt = oauth?.attempt;
+    if (!attempt) return;
     let stopped = false;
     let timer = 0;
+    /** Its own deadline passed: stop asking, and `expired` beats a stale `pending`. */
+    const expire = () => {
+      stopped = true;
+      pending.current = null;
+      setOauth((o) => (o && o.attempt.attemptID === attemptID ? { ...o, expired: true } : o));
+    };
     const poll = async () => {
+      if (attemptExpired(attempt, Date.now())) return expire();
       try {
         const s = await client.oauthStatus(info.id, attemptID);
         if (stopped) return;
+        if (shouldPoll(s) && attemptExpired(attempt, Date.now())) {
+          setOauth((o) => (o && o.attempt.attemptID === attemptID ? { ...o, status: s, expired: true } : o));
+          stopped = true;
+          pending.current = null;
+          return;
+        }
         setOauth((o) => (o && o.attempt.attemptID === attemptID ? { ...o, status: s, error: null } : o));
         if (shouldPoll(s)) timer = window.setTimeout(poll, POLL);
         else {
@@ -161,7 +178,7 @@ export function ProviderConnect({ info, remote, refresh, onDone }: { info: Integ
     setOauth(null);
     try {
       const attempt = await client.connectOauth(info.id, m.id, payloadAnswers(m.form ?? [], answers));
-      setOauth({ attempt, status: null, error: null, gone: false });
+      setOauth({ attempt, status: null, error: null, gone: false, expired: false });
       pending.current = { kind: "oauth", attemptID: attempt.attemptID };
     } catch (e) {
       setError((e as Error).message);
@@ -181,12 +198,27 @@ export function ProviderConnect({ info, remote, refresh, onDone }: { info: Integ
   const commandID = command?.attempt.attemptID ?? null;
   useEffect(() => {
     if (!client || !commandID) return;
+    const attempt = command?.attempt;
+    if (!attempt) return;
     let stopped = false;
     let timer = 0;
+    /** Its own deadline passed: stop asking, and `expired` beats a stale `pending`. */
+    const expire = () => {
+      stopped = true;
+      pending.current = null;
+      setCommand((c) => (c && c.attempt.attemptID === commandID ? { ...c, expired: true } : c));
+    };
     const poll = async () => {
+      if (attemptExpired(attempt, Date.now())) return expire();
       try {
         const s = await client.commandStatus(info.id, commandID);
         if (stopped) return;
+        if (shouldPoll(s) && attemptExpired(attempt, Date.now())) {
+          setCommand((c) => (c && c.attempt.attemptID === commandID ? { ...c, status: s, expired: true } : c));
+          stopped = true;
+          pending.current = null;
+          return;
+        }
         setCommand((c) => (c && c.attempt.attemptID === commandID ? { ...c, status: s, error: null } : c));
         if (shouldPoll(s)) timer = window.setTimeout(poll, POLL);
         else {
@@ -215,7 +247,7 @@ export function ProviderConnect({ info, remote, refresh, onDone }: { info: Integ
     setCommand(null);
     try {
       const attempt = await client.connectCommand(info.id, m.id);
-      setCommand({ attempt, status: null, error: null, gone: false });
+      setCommand({ attempt, status: null, error: null, gone: false, expired: false });
       pending.current = { kind: "command", attemptID: attempt.attemptID };
     } catch (e) {
       setError((e as Error).message);
@@ -257,6 +289,7 @@ export function ProviderConnect({ info, remote, refresh, onDone }: { info: Integ
   // A connection the server recorded but marked unauthenticated: its own words
   // say what the machine wants ("Run `claude auth login`…").
   const needsAuth = connectionSummary(info).needsAuth ?? notice;
+  const commandState = command ? attemptView(command) : "pending";
 
   return (
     <div className="mt-2">
@@ -336,8 +369,8 @@ export function ProviderConnect({ info, remote, refresh, onDone }: { info: Integ
           {command ? (
             <AttemptProgress
               running={<Spinner size={12} />}
-              state={command.gone ? "gone" : (command.status?.status ?? "pending")}
-              note={command.gone ? "The login command stopped." : attemptNote(command.status)}
+              state={commandState}
+              note={command.gone ? "The login command stopped." : commandState === "expired" ? "This sign-in expired before it finished." : attemptNote(command.status)}
               error={command.error}
               onCancel={() => void stopCommand(command)}
               onRetry={() => void startCommand(active)}
@@ -472,8 +505,8 @@ function OauthPanel({
   const [code, setCode] = useState("");
   const [copied, setCopied] = useState(false);
   const shown = codeFromInstructions(run.attempt.instructions);
-  const state = run.gone ? "gone" : (run.status?.status ?? "pending");
-  const note = run.gone ? "That sign-in ended. Start it again to get a fresh code." : attemptNote(run.status);
+  const state = attemptView(run);
+  const note = run.gone ? "That sign-in ended. Start it again to get a fresh code." : state === "expired" ? "This sign-in expired before it finished." : attemptNote(run.status);
   const waiting = state === "pending";
   const endsHere = remote && finishesOnAgentMachine(run.attempt.url);
 
