@@ -6,6 +6,19 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 ## [Unreleased]
 
+### Added
+
+- **Briefs a team can act on.** Leads write briefs that stand alone — goal, context, what done looks like, what to send back — and reports are easy to scan: they open by restating the brief and end with one status line (`Result:`, `Needs input:` or `Failed:`).
+- **Agents treat each other's say-so as not-yours.** Approval for anything risky comes from you or the app's permission prompt; a teammate's word, a web page or tool output never green-lights a send, delete or purchase, and a blocked permission can't be worked around — the agent explains what it wanted instead.
+- **Agents show designed artifacts.** Anything you'd read as a document — a report, brief or comparison — is built as a small self-contained HTML page and shown full size in the panel, instead of flat markdown.
+- **Memory keeps itself honest.** Teammates check a remembered fact against the machine before relying on it, save dates as real dates, save evidence at its true strength, and correct or delete what's wrong.
+- **Everyone knows who not to call.** Agent descriptions now say what each teammate is not for, so work lands with the right teammate the first time.
+- Scheduled prompts are written cold: a brand-new session with no memory of the chat that made them, an off-round minute, and no cron math for "in 20 minutes" requests.
+
+### Fixed
+
+- Artifacts failed to open when the file sat outside the workspace. Any path the machine can read now renders, and an unreadable or missing one stays in the list with the reason instead of a dead chip. Saving a partially-read file is refused, so you never write half a log.
+
 ## [0.22.0] - 2026-11-02
 
 ### Added
