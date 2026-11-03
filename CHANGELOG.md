@@ -6,6 +6,8 @@ Write user-facing notes under `## [Unreleased]` as you go. `bun run release` tur
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-11-03
+
 ### Added
 
 - **Briefs a team can act on.** Leads write briefs that stand alone — goal, context, what done looks like, what to send back — and reports are easy to scan: they open by restating the brief and end with one status line (`Result:`, `Needs input:` or `Failed:`).
@@ -516,7 +518,8 @@ First public release.
 - Scheduled tasks that run on the agent machine.
 - Project file browser with syntax highlighting.
 
-[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.22.0...HEAD
+[Unreleased]: https://github.com/jaygupta17/otto/compare/v0.23.0...HEAD
+[0.23.0]: https://github.com/jaygupta17/otto/compare/v0.22.0...v0.23.0
 [0.22.0]: https://github.com/jaygupta17/otto/compare/v0.21.0...v0.22.0
 [0.21.0]: https://github.com/jaygupta17/otto/compare/v0.20.2...v0.21.0
 [0.20.2]: https://github.com/jaygupta17/otto/compare/v0.20.1...v0.20.2
