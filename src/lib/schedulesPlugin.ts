@@ -719,7 +719,7 @@ export const TOOL_SCHEMA = {
     action: { type: "string", enum: ["list", "create", "update", "setEnabled", "delete", "run"], description: "What to do." },
     id: { type: "string", description: "Schedule id (from list). Required for update, setEnabled, delete and run." },
     name: { type: "string", description: "Short human name, e.g. Morning standup." },
-    prompt: { type: "string", description: "What the agent should do when the schedule fires." },
+    prompt: { type: "string", description: "What the scheduled session should do — written cold: a brand-new session reads it with no memory of you or this chat, so name what to do, in which folder, as which agent, and what to deliver. It never schedules another schedule." },
     frequency: {
       type: "object",
       description: "When to run, in this machine's local time.",
@@ -926,7 +926,7 @@ function makeTool(ctx, store) {
   return {
     name: "otto_schedule",
     description:
-      "Manage Otto's scheduled agent runs on this machine. A schedule starts a new agent session with a prompt on a cron-like timetable, even when the Otto app is closed (as long as the machine is awake; missed runs are not caught up). Times are this machine's local time. Use list to see ids and the current rev; pass that rev on update/delete so a newer change made in the app is not overwritten (a {stale:true} answer means: call list again and retry).",
+      "Manage Otto's scheduled agent runs on this machine. A schedule starts a new agent session with a prompt on a cron-like timetable, even when the Otto app is closed (as long as the machine is awake; missed runs are not caught up, and the machine may be asleep). Times are this machine's local time. Use list to see ids and the current rev; pass that rev on update/delete so a newer change made in the app is not overwritten (a {stale:true} answer means: call list again and retry).\\n\\nCraft: the schedule's prompt runs as a brand-new session with no memory of this chat — make it fully self-contained (what to do, in which folder, as which agent, what to deliver, and where the result goes). A schedule never schedules another one. For recurring jobs pick a minute that isn't 0 or 30 — every tool writes '0 9', so 21 or 37 is kinder. For 'in 20 minutes' style one-off requests, don't compute cron from now: a just-passed one-shot time reads a year off. Confirm an absolute time with the user, or do the work now. After you create or change a schedule, tell the user which one and when it next runs.",
     input: TOOL_SCHEMA,
     options: { codemode: false },
     execute: async (input, context) => {
