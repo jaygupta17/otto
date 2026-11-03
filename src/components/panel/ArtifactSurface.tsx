@@ -298,7 +298,9 @@ async function openUrl(url: string) {
 async function saveFile(client: OpenCode, path: string, root: string | null) {
   try {
     const r = await client.readFileBytes(path, root ?? undefined, { maxBytes: MAX_DOWNLOAD });
-    if (!r.bytes) {
+    // Files outside the root come back through a capped shell read: nothing
+    // here should write half a file down.
+    if (!r.bytes || r.truncated) {
       toast({ tone: "error", title: "Too big to save from here", body: `${fileSize(r.size)}. Copy it off the machine from the terminal instead.` });
       return;
     }

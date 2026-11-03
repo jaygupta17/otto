@@ -12,6 +12,15 @@ function client(files: string[]) {
         .filter((f) => f.startsWith(prefix) && !f.slice(prefix.length).includes("/"))
         .map((f) => ({ path: f.slice(prefix.length), type: "file" as const }));
     },
+    // Reads outside the root go through the shell path: existence only, one byte.
+    async readFileBytes(path: string) {
+      if (!files.includes(path)) {
+        const e = new Error(`File not found: ${path}`) as Error & { status: number };
+        e.status = 404;
+        throw e;
+      }
+      return { bytes: new Uint8Array(3), mime: "", size: 3 };
+    },
   };
 }
 
@@ -84,11 +93,37 @@ describe("recording a presentation", () => {
     expect(a.path).toBeUndefined();
   });
 
-  test("a path outside the session is recorded, and says why it can't be shown", async () => {
-    await useArtifacts.getState().presented(id("x"), { source: "../secrets.env" }, "ses_1", "/work/a", 1);
+  test("an absolute path outside the session is recorded and shown", async () => {
+    const c = client(["/work/a/cover.png", "/tmp/opencode/shot.png"]);
+    useChat.setState({ client: c as never });
+    await useArtifacts.getState().presented(id("t"), { source: "/tmp/opencode/shot.png", title: "Shot" }, "ses_1", "/work", 1);
     const a = useArtifacts.getState().bySession.ses_1[0];
-    expect(a.path).toBeUndefined();
-    expect(a.problem).toContain("outside this session's folder");
+    expect(a).toMatchObject({ kind: "image", path: "/tmp/opencode/shot.png", title: "Shot" });
+    expect(a.problem).toBeUndefined();
+  });
+
+  test("a relative path that climbs out resolves and shows too", async () => {
+    const c = client(["/work/a/cover.png", "/work/bench/shot.png", "/work/a/index.html", "/work/a/notes.md", "/work/a/build.zip"]);
+    useChat.setState({ client: c as never });
+    await useArtifacts.getState().presented(id("up"), { source: "../bench/shot.png" }, "ses_1", "/work/a", 2);
+    const a = useArtifacts.getState().bySession.ses_1[0];
+    expect(a).toMatchObject({ kind: "image", path: "/work/bench/shot.png" });
+    expect(a.problem).toBeUndefined();
+  });
+
+  test("an outside file that isn't there keeps its place and says why", async () => {
+    await useArtifacts.getState().presented(id("n"), { source: "/tmp/opencode/gone.png" }, "ses_1", "/work", 1);
+    const a = useArtifacts.getState().bySession.ses_1[0];
+    expect(a.path).toBe("/tmp/opencode/gone.png");
+    expect(a.problem).toBe("Couldn't find that file on the machine.");
+  });
+
+  test("an outside file that can't be read refuses with the reason, in the list", async () => {
+    useChat.setState({ client: { readFileBytes: async () => { const e = new Error("sh: cannot open /var/log/secret.log: Permission denied"); throw e; } } as never });
+    await useArtifacts.getState().presented(id("p"), { source: "/var/log/secret.log" }, "ses_1", "/work", 1);
+    const a = useArtifacts.getState().bySession.ses_1[0];
+    expect(a.path).toBe("/var/log/secret.log");
+    expect(a.problem).toBe("Can't read /var/log/secret.log: sh: cannot open /var/log/secret.log: Permission denied");
   });
 
   test("a file that isn't there says so, once the check comes back", async () => {

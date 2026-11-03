@@ -25,7 +25,7 @@ export interface Artifact {
   source: string;
   title: string;
   kind: ArtifactKind;
-  /** Absolute path, once the source is known to be inside the session root. */
+  /** Absolute, resolved path (anywhere on the machine, `.`/`..` collapsed). */
   path?: string;
   /** The address to frame, for a URL. */
   url?: string;
@@ -116,8 +116,12 @@ function insert(bySession: Record<string, Artifact[]>, a: Artifact): Record<stri
 type Built = { ok: true; artifact: Artifact } | { ok: false; problem: string };
 
 /**
- * Build an entry from a source. Paths are held to the session root here
- * (`resolveArtifactPath`), then checked for existence once (`checkFile`).
+ * Build an entry from a source. Paths resolve anywhere on the machine
+ * (`resolveArtifactPath`), then get one existence check: inside the root a
+ * directory listing (`checkFile`), outside it a size-first read probe, since
+ * listings only cover the workspace — a missing or unreadable file lands as a
+ * refused entry with the reason, not a blank. A check that can't run (no
+ * client, no budget) doesn't refuse; the renderer says what it finds.
  */
 async function build(callId: string, sessionId: string, root: string, source: string, opts: { title?: string; as?: ArtifactKind; at?: number } = {}): Promise<Built> {
   const shaped = classify(source, opts.as);
@@ -134,9 +138,23 @@ async function build(callId: string, sessionId: string, root: string, source: st
   const artifact: Artifact = { id: callId, sessionId, source, title, kind, path: within.path, at: opts.at ?? Date.now() };
   const client = useChat.getState().client;
   if (client) {
-    // A check that can't run (no budget, an RPC that failed) reports false;
-    // the renderer still tries the file and says so itself if it isn't there.
-    if ((await checkFile(client, root, within.path).catch(() => true)) === false) artifact.problem = "Couldn't find that file in this session's folder.";
+    if (within.inside) {
+      // A check that can't run (no budget, an RPC that failed) reports false;
+      // the renderer still tries the file and says so itself if it isn't there.
+      if ((await checkFile(client, root, within.path).catch(() => true)) === false) artifact.problem = "Couldn't find that file in this session's folder.";
+    } else {
+      // Outside the root the panel reads through the shell, so existence is
+      // probed with the smallest read of the path. The error carries the
+      // reason (not found, permission denied, a directory), and the entry
+      // stays on the list saying so.
+      try {
+        await client.readFileBytes(within.path, undefined, { maxBytes: 1 });
+      } catch (e) {
+        const err = e as { status?: number; message?: string };
+        const reason = (err?.message ?? "unreadable").trim().slice(0, 200);
+        artifact.problem = err?.status === 404 ? "Couldn't find that file on the machine." : `Can't read ${within.path}: ${reason}`;
+      }
+    }
   }
   return { ok: true, artifact };
 }

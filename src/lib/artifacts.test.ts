@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import { classify, extOf, fileSize, isHttpUrl, isUrlSource, kindOfPath, localAddress, looksLikeMarkup, MAX_SOURCE, parsePresent, resolveArtifactPath, titleFor } from "./artifacts";
-import { insideRoot } from "./mdLinks";
 
 describe("parsePresent", () => {
   test("takes a source, a title and a renderer", () => {
@@ -24,6 +23,11 @@ describe("parsePresent", () => {
   test("a page's worth of markup is refused with a way out", () => {
     const big = `<html>${"x".repeat(MAX_SOURCE)}</html>`;
     const out = parsePresent({ source: big });
+    expect("problem" in out && /write it to a file/i.test(out.problem)).toBe(true);
+  });
+
+  test("the cap holds for a path too, not only markup", () => {
+    const out = parsePresent({ source: `/tmp/big/bundle.bin.${"x".repeat(MAX_SOURCE)}` });
     expect("problem" in out && /write it to a file/i.test(out.problem)).toBe(true);
   });
 
@@ -90,24 +94,31 @@ describe("what a source is", () => {
   });
 });
 
-describe("paths stay in the session", () => {
+describe("paths on this machine", () => {
   const root = "/work/project";
 
-  test("a relative path resolves inside the root", () => {
-    expect(resolveArtifactPath(root, "out/cover.png")).toEqual({ path: "/work/project/out/cover.png" });
-    expect(resolveArtifactPath(root, "/work/project/index.html")).toEqual({ path: "/work/project/index.html" });
-    expect(resolveArtifactPath(root, "./a/../b.txt")).toEqual({ path: "/work/project/b.txt" });
+  test("a relative path resolves against the root", () => {
+    expect(resolveArtifactPath(root, "out/cover.png")).toEqual({ path: "/work/project/out/cover.png", inside: true });
+    expect(resolveArtifactPath(root, "/work/project/index.html")).toEqual({ path: "/work/project/index.html", inside: true });
+    expect(resolveArtifactPath(root, "./a/../b.txt")).toEqual({ path: "/work/project/b.txt", inside: true });
   });
 
-  test("climbing out is refused, however it's written", () => {
-    for (const p of ["../secrets.env", "a/../../secrets.env", "/etc/passwd", "/work/other/x.txt"]) {
-      const out = resolveArtifactPath(root, p);
-      expect("problem" in out).toBe(true);
-      expect(!("path" in out) || insideRoot(root, out.path)).toBe(true);
-    }
+  test("an absolute path outside the root is taken, wherever the file lives", () => {
+    expect(resolveArtifactPath(root, "/tmp/opencode/x.png")).toEqual({ path: "/tmp/opencode/x.png", inside: false });
+    expect(resolveArtifactPath(root, "/var/log/app.log")).toEqual({ path: "/var/log/app.log", inside: false });
+    expect(resolveArtifactPath(root, "/work/other/x.txt")).toEqual({ path: "/work/other/x.txt", inside: false });
   });
 
-  test("a session with no folder shows nothing", () => {
+  test("without a session root an absolute path still resolves", () => {
+    expect(resolveArtifactPath("", "/tmp/opencode/x.png")).toEqual({ path: "/tmp/opencode/x.png", inside: false });
+  });
+
+  test("climbing is resolved, not shown raw: `..` never reaches a reader", () => {
+    expect(resolveArtifactPath(root, "../bench/shot.png")).toEqual({ path: "/work/bench/shot.png", inside: false });
+    expect(resolveArtifactPath(root, "a/../../etc/passwd")).toEqual({ path: "/work/etc/passwd", inside: false });
+  });
+
+  test("a session with no folder still refuses a bare name", () => {
     expect(resolveArtifactPath("", "a.png")).toEqual({ problem: "This session has no folder to look in yet." });
   });
 });

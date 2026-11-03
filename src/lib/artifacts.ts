@@ -5,8 +5,9 @@
  * A `source` is one of three shapes, and the shape is decided by what it is,
  * not by asking the agent:
  *
- *   a path   `out/cover.png`, `/work/app/index.html` — resolved against the
- *            session root and refused outside it (mdLinks' `insideRoot`)
+ *   a path   `out/cover.png`, `/tmp/opencode/x.png` — resolved (`.`/`..`
+ *            collapse; relative joins the session root) and accepted wherever
+ *            on this machine it lands (`resolveArtifactPath`)
  *   a URL    `https://…`, `localhost:5173` — a page to frame
  *   markup   `<html>…` — raw HTML from the agent, framed as-is
  *
@@ -176,16 +177,29 @@ export function titleFor(source: string, as?: ArtifactKind): string {
 }
 
 /**
- * A file path from the agent, resolved and kept inside the session root.
- * `insideRoot` answers for the path and for its folder, so a symlinked parent
- * written as `..` can't slip out either.
+ * Why a path from the agent may point anywhere on this machine, not only in
+ * the workspace: the server runs as this user, the agent can already read
+ * every one of these files with its own tools (shell, fs), and showing one in
+ * the panel is the user seeing what the agent saw. No new access — the panel
+ * reads through the same server the agent's tools already use, so this is
+ * display, not a permission grant; nothing here offers a read or write an
+ * agent tool didn't have already. A path the user can't open (missing,
+ * unreadable) still lands on the list saying so rather than vanishing.
+ *
+ * A file path from the agent, resolved to its real location. Relative paths
+ * join the session root; `.`/`..` collapse before anything is read, so what
+ * a reader receives is a plain absolute path. `inside` only answers whether
+ * the result happens to fall in the session root: it picks the
+ * existence-check at record time (a listing inside, a read probe outside),
+ * never whether the file may be shown.
  */
-export function resolveArtifactPath(root: string, source: string): { path: string } | { problem: string } {
-  if (!root) return { problem: "This session has no folder to look in yet." };
+export function resolveArtifactPath(root: string, source: string): { path: string; inside: boolean } | { problem: string } {
+  // Absolute the way Unix writes it, or Windows (`C:\…`). Without a session
+  // root there is still nothing to join a bare name against.
+  const abs = source.startsWith("/") || /^[A-Za-z]:[\\/]/.test(source);
+  if (!root && !abs) return { problem: "This session has no folder to look in yet." };
   const path = normalizePath(absolutePath(root, source));
-  const dir = path.slice(0, path.lastIndexOf("/")) || "/";
-  if (!insideRoot(root, path) || !insideRoot(root, dir)) return { problem: "That file is outside this session's folder, so it isn't shown here." };
-  return { path };
+  return { path, inside: !!root && insideRoot(root, path) };
 }
 
 /** Bytes as the panel writes them ("12.4 KB"). */
